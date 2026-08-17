@@ -4,13 +4,13 @@
 package company
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"gitea.dev/models/organization"
 	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
 	"gitea.dev/services/context"
 )
 
@@ -18,6 +18,8 @@ import (
 // as a constant so the whitelist and RequireSignIn's redirect can't drift
 // apart. There is no GET /company landing page — see routes.go.
 const companyPrefix = "/company"
+
+const tplNoDepartment templates.TplName = "company/no_department"
 
 // RequireSignIn redirects anonymous visitors to the login page, remembering
 // the exact page they were headed to (e.g. a deploy form) via Gitea's
@@ -132,19 +134,23 @@ func GateNonAdminUI(ctx *context.Context) {
 // routes.go). orgs is whatever GateNonAdminUI already fetched; department
 // membership comes from the same org/team assignment LDAP/OAuth2 group sync
 // applies at login (docs/company/departments.md), not anything in the URL.
+// The zero/multiple-orgs cases render a normal page (base/head+footer),
+// not ctx.PlainText — that left someone in either state on a bare
+// text response with no navbar, so no way to even log out, until an
+// admin fixed their org membership. See custom/templates/company/no_department.tmpl.
 func redirectToDepartment(ctx *context.Context, orgs []*organization.MinimalOrg) {
 	switch len(orgs) {
 	case 1:
 		ctx.Redirect(setting.AppSubURL + "/org/" + orgs[0].Name + "/dashboard")
 	case 0:
-		ctx.PlainText(http.StatusOK, "No department assigned yet — contact an admin to be added to your department's organization.")
+		ctx.Data["Title"] = string(ctx.Locale.Tr("company.gate.no_department_title"))
+		ctx.Data["Message"] = string(ctx.Locale.Tr("company.gate.no_department"))
+		ctx.HTML(http.StatusOK, tplNoDepartment)
 	default:
-		var b strings.Builder
-		b.WriteString("You belong to multiple departments — pick one:\n")
-		for _, org := range orgs {
-			fmt.Fprintf(&b, "%s/org/%s/dashboard\n", setting.AppSubURL, org.Name)
-		}
-		ctx.PlainText(http.StatusOK, b.String())
+		ctx.Data["Title"] = string(ctx.Locale.Tr("company.gate.multiple_departments_title"))
+		ctx.Data["Message"] = string(ctx.Locale.Tr("company.gate.multiple_departments"))
+		ctx.Data["Orgs"] = orgs
+		ctx.HTML(http.StatusOK, tplNoDepartment)
 	}
 }
 

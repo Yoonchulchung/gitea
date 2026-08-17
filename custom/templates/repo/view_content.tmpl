@@ -81,39 +81,48 @@
 		><div class="ui small input global-shortcut-wrapper"><input placeholder="{{ctx.Locale.Tr "repo.find_file.go_to_file"}}"><kbd>T</kbd></div></div>
 
 		{{if .RefFullName.IsBranch}}
-			{{$addFilePath := .TreePath}}
-			{{if .IsViewFile}}
-				{{if gt (len .TreeNames) 1}}
-					{{$addFilePath = StringUtils.Join (slice .TreeNames 0 (Eval (len .TreeNames) "-" 1)) "/"}}
-				{{else}}
-					{{$addFilePath = ""}}
-				{{end}}
-			{{end}}
-			<button class="ui dropdown basic compact jump button repo-add-file" {{if not .Repository.CanEnableEditor}}disabled{{end}}>
-				{{ctx.Locale.Tr "repo.editor.add_file"}}
-				{{svg "octicon-triangle-down" 14 "dropdown icon"}}
-				<div class="menu">
-					<a class="item" href="{{.RepoLink}}/_new/{{.BranchName | PathEscapeSegments}}/{{$addFilePath | PathEscapeSegments}}">
-						{{svg "octicon-file-added" 16 "tw-mr-2"}}{{ctx.Locale.Tr "repo.editor.new_file"}}
-					</a>
-					{{if .RepositoryUploadEnabled}}
-					<a class="item" href="{{.RepoLink}}/_upload/{{.BranchName | PathEscapeSegments}}/{{$addFilePath | PathEscapeSegments}}">
-						{{svg "octicon-upload" 16 "tw-mr-2"}}{{ctx.Locale.Tr "repo.editor.upload_file"}}
-					</a>
+			{{if .IsAdmin}}
+				{{/* Admins keep the full native experience — same reasoning as
+				     the PR-tab/compare-button gating elsewhere in this file, see
+				     docs/company/repo-ui.md. */}}
+				{{$addFilePath := .TreePath}}
+				{{if .IsViewFile}}
+					{{if gt (len .TreeNames) 1}}
+						{{$addFilePath = StringUtils.Join (slice .TreeNames 0 (Eval (len .TreeNames) "-" 1)) "/"}}
+					{{else}}
+						{{$addFilePath = ""}}
 					{{end}}
-					<a class="item" href="{{.RepoLink}}/_diffpatch/{{.BranchName | PathEscapeSegments}}/{{$addFilePath | PathEscapeSegments}}">
-						{{svg "octicon-diff" 16 "tw-mr-2"}}{{ctx.Locale.Tr "repo.editor.patch"}}
-					</a>
-				</div>
-			</button>
+				{{end}}
+				<button class="ui dropdown basic compact jump button repo-add-file" {{if not .Repository.CanEnableEditor}}disabled{{end}}>
+					{{ctx.Locale.Tr "repo.editor.add_file"}}
+					{{svg "octicon-triangle-down" 14 "dropdown icon"}}
+					<div class="menu">
+						<a class="item" href="{{.RepoLink}}/_new/{{.BranchName | PathEscapeSegments}}/{{$addFilePath | PathEscapeSegments}}">
+							{{svg "octicon-file-added" 16 "tw-mr-2"}}{{ctx.Locale.Tr "repo.editor.new_file"}}
+						</a>
+						{{if .RepositoryUploadEnabled}}
+						<a class="item" href="{{.RepoLink}}/_upload/{{.BranchName | PathEscapeSegments}}/{{$addFilePath | PathEscapeSegments}}">
+							{{svg "octicon-upload" 16 "tw-mr-2"}}{{ctx.Locale.Tr "repo.editor.upload_file"}}
+						</a>
+						{{end}}
+						<a class="item" href="{{.RepoLink}}/_diffpatch/{{.BranchName | PathEscapeSegments}}/{{$addFilePath | PathEscapeSegments}}">
+							{{svg "octicon-diff" 16 "tw-mr-2"}}{{ctx.Locale.Tr "repo.editor.patch"}}
+						</a>
+					</div>
+				</button>
+			{{end}}
 			{{if .Repository.CanEnableEditor}}
 			{{/* Multi-file editor (company/workspace.go) — additive, not a
 			     native Gitea page, but mounted alongside Gitea's own _new/
 			     _edit/_upload routes. Reuses Gitea's own CodeMirror + tree-
-			     list/raw routes; see custom/templates/company/workspace.tmpl. */}}
+			     list/raw routes; see custom/templates/company/workspace.tmpl.
+			     For non-admins this replaces the native "Add File" dropdown
+			     entirely (hidden above) — this one editor covers all of that,
+			     and is the only file-editing entry point non-technical staff
+			     need. Admins get both: native tools plus this. */}}
 			<a role="button" class="ui compact basic button" href="{{.RepoLink}}/_edits/{{.BranchName | PathEscapeSegments}}"
 				data-tooltip-content="{{ctx.Locale.Tr "company.workspace.edit_multiple_tooltip"}}">
-				{{svg "octicon-stack" 16}}
+				{{svg "octicon-stack" 16}}{{if not .IsAdmin}} {{ctx.Locale.Tr "company.workspace.edit_file"}}{{end}}
 			</a>
 			{{end}}
 

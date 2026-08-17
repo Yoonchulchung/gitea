@@ -51,6 +51,20 @@ type workspaceTmpEntry struct {
 	Path      string `json:"path"`
 	Content   string `json:"content"`
 	CreatedAt int64  `json:"createdAt"` // unix milliseconds, client clock
+	// Cleared marks this entry as an explicit clearTmpEntry sentinel, not
+	// real staged content — kept as its own field rather than inferring
+	// "cleared" from an empty Content, which a genuinely empty staged file
+	// (a brand-new file created with no content yet) would satisfy just as
+	// well, making it indistinguishable from a real clear and silently
+	// unrecoverable after a refresh even though nothing ever cleared it.
+	Cleared bool `json:"cleared,omitempty"`
+	// BaseSha is the blob SHA the edit that produced this draft started
+	// from (OpenTab.baseSha client-side; empty for a brand-new file).
+	// Stored so recovery-after-refresh can still tell that someone else
+	// saved a newer version while this draft sat here — without it, a
+	// refresh would silently rebase the draft onto whatever's newest and
+	// the next Save would overwrite that person's change with no conflict.
+	BaseSha string `json:"baseSha,omitempty"`
 }
 
 // workspaceTmpMaxAge is how long an orphaned tmp entry (page closed
@@ -174,7 +188,7 @@ func listTmpEntries(userID, repoID int64, branch string) ([]workspaceTmpEntry, e
 			_ = os.Remove(full) // best-effort — a failed cleanup just gets retried next list
 			continue
 		}
-		if entry.Content == "" {
+		if entry.Cleared {
 			continue // a clearTmpEntry sentinel (see below) — nothing to recover, not a real staged draft
 		}
 		entries = append(entries, *entry)
@@ -192,15 +206,18 @@ func listTmpEntries(userID, repoID int64, branch string) ([]workspaceTmpEntry, e
 // discard uses the browser's clock at the moment of discarding, same
 // clock the debounced writes it needs to outrank were stamped with).
 //
-// This writes an empty-content sentinel through the normal saveTmpEntry
-// path rather than deleting the file outright — deleting would leave
-// nothing behind to reject a write that's still in flight at clear time
-// (the debounced autosave fired moments before Save was clicked, land
-// after the clear) from silently resurrecting exactly the content Save
-// just superseded. listTmpEntries above treats an empty-content entry as
-// "nothing to recover," so this stays invisible to recovery either way.
+// This writes a Cleared sentinel through the normal saveTmpEntry path
+// rather than deleting the file outright — deleting would leave nothing
+// behind to reject a write that's still in flight at clear time (the
+// debounced autosave fired moments before Save was clicked, lands after
+// the clear) from silently resurrecting exactly the content Save just
+// superseded. listTmpEntries above treats a Cleared entry as "nothing to
+// recover," so this stays invisible to recovery either way — Content is
+// left empty too, but that's incidental now, not what recovery actually
+// checks (a real staged file can legitimately have empty content, e.g. a
+// brand-new file created with nothing written to it yet).
 func clearTmpEntry(userID, repoID int64, branch, path string, clearedAt int64) {
-	_ = saveTmpEntry(userID, repoID, branch, workspaceTmpEntry{Path: path, Content: "", CreatedAt: clearedAt}) // best-effort — an orphaned real entry just ages out via workspaceTmpMaxAge instead
+	_ = saveTmpEntry(userID, repoID, branch, workspaceTmpEntry{Path: path, Cleared: true, CreatedAt: clearedAt}) // best-effort — an orphaned real entry just ages out via workspaceTmpMaxAge instead
 }
 
 // ---- HTTP handlers ----
@@ -209,6 +226,7 @@ type workspaceTmpSaveRequest struct {
 	Path      string `json:"path"`
 	Content   string `json:"content"`
 	CreatedAt int64  `json:"createdAt"`
+	BaseSha   string `json:"baseSha,omitempty"` // see workspaceTmpEntry.BaseSha
 	// Deleted, when true, clears this path's staged draft outright instead
 	// of writing one — an explicit "버릴까요?" discard (closeTab,
 	// company-workspace.ts) needs this too, not just a Save: otherwise the
@@ -238,7 +256,7 @@ func WorkspaceTmpSave(ctx *context.Context) {
 		return
 	}
 	if err := saveTmpEntry(ctx.Doer.ID, ctx.Repo.Repository.ID, ctx.Repo.BranchName, workspaceTmpEntry{
-		Path: req.Path, Content: req.Content, CreatedAt: req.CreatedAt,
+		Path: req.Path, Content: req.Content, CreatedAt: req.CreatedAt, BaseSha: req.BaseSha,
 	}); err != nil {
 		ctx.ServerError("saveTmpEntry", err)
 		return

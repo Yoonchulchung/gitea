@@ -67,9 +67,19 @@ export type ChatPanelHandle = {
 // custom/templates/company/workspace.tmpl for the markup this expects. The
 // panel itself always renders (docs/company/ai-agent.md — people should be
 // able to see the feature exists even before AI is set up); el's own
-// `data-ai-ready`/`data-ai-settings-url` attributes say whether AI is
-// actually usable yet, checked once here rather than only discovered after
-// a failed send.
+// `data-ai-ready` says whether AI is actually usable yet, checked once
+// here rather than only discovered after a failed send; `data-ai-*`
+// otherwise carries every locale-translated string this module needs
+// (see custom/templates/company/workspace.tmpl) — none of the text here
+// is hardcoded, so it follows whatever language the page itself renders
+// in, not just Korean.
+// Falls back to '' instead of null — a missing data-ai-* attribute (a
+// stale page from before one was added, say) previously meant a status
+// message or confirm dialog showing the literal word "null".
+function attr(el: Element, name: string): string {
+  return el.getAttribute(name) ?? '';
+}
+
 export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPanelHandle {
   const messagesEl = el.querySelector<HTMLElement>('.company-ai-chat-messages')!;
   const inputEl = el.querySelector<HTMLTextAreaElement>('.company-ai-chat-input')!;
@@ -94,58 +104,45 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
 
   function showEmptyState(text: string): void {
     emptyStateEl = createElementFromHTML<HTMLElement>('<div class="company-ai-chat-empty"></div>');
-    emptyStateEl.innerHTML = `${svg('octicon-copilot', 22)}<div>${text}</div>`;
+    emptyStateEl.innerHTML = `<div>${text}</div>`;
     messagesEl.append(emptyStateEl);
   }
 
   if (el.getAttribute('data-ai-ready') !== 'true') {
-    const settingsUrl = el.getAttribute('data-ai-settings-url') ?? '#';
-    showEmptyState(`AI가 아직 설정되지 않았습니다.<br><a href="${settingsUrl}">설정에서 API 키를 등록</a>해주세요.`);
+    showEmptyState(attr(el, 'data-ai-not-configured'));
     inputEl.disabled = true;
-    inputEl.placeholder = 'AI 설정이 필요합니다';
+    inputEl.placeholder = attr(el, 'data-ai-not-configured-placeholder');
     sendButton.disabled = true;
     return {setActiveFilePath};
   }
 
   if (opts.emptyStateText) showEmptyState(opts.emptyStateText);
 
-  // addMessage returns the element new text should be appended to — for
-  // "assistant" that's the inner `.company-ai-chat-text` (the bubble itself
-  // is an avatar+text flex row), everything else appends directly to the
-  // bubble it returns.
+  // addMessage returns the element new text should be appended to —
+  // everything appends directly to the bubble it returns.
   function addMessage(role: 'user' | 'assistant' | 'status' | 'error', text: string): HTMLElement {
     emptyStateEl?.remove();
     emptyStateEl = null;
 
-    let bubble: HTMLElement;
-    let textTarget: HTMLElement;
-    if (role === 'assistant') {
-      bubble = createElementFromHTML<HTMLElement>(
-        `<div class="company-ai-chat-message company-ai-chat-message-assistant">` +
-        `<div class="company-ai-chat-avatar">${svg('octicon-copilot', 13)}</div>` +
-        `<div class="company-ai-chat-text"></div></div>`,
-      );
-      textTarget = bubble.querySelector('.company-ai-chat-text')!;
-    } else if (role === 'status') {
-      bubble = createElementFromHTML<HTMLElement>(
-        `<div class="company-ai-chat-message company-ai-chat-message-status">${svg('octicon-sync', 12)}<span></span></div>`,
-      );
-      textTarget = bubble.querySelector('span')!;
-    } else {
-      bubble = createElementFromHTML<HTMLElement>(`<div class="company-ai-chat-message company-ai-chat-message-${role}"></div>`);
-      textTarget = bubble;
-    }
+    const bubble = createElementFromHTML<HTMLElement>(`<div class="company-ai-chat-message company-ai-chat-message-${role}"></div>`);
+    const textTarget = bubble;
     textTarget.textContent = text;
     messagesEl.append(bubble);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return textTarget;
   }
 
+  const stopLabel = attr(el, 'data-ai-stop');
+  const sendLabel = attr(sendButton, 'aria-label'); // set server-side from company.workspace.ai_send
+  const requestFailedText = attr(el, 'data-ai-request-failed');
+  const readStatusTemplate = attr(el, 'data-ai-read-status'); // has a literal "%s" placeholder — see the comment on handleToolEvent below
+  const editStatusTemplate = attr(el, 'data-ai-edit-status');
+
   function setSending(sending: boolean): void {
     sendButton.disabled = sending && !abortController; // disabled only while genuinely unable to act; "sending" itself repurposes the button as Stop
     sendButton.classList.toggle('sending', sending);
     sendButton.innerHTML = sending ? svg('octicon-stop', 14) : svg('octicon-arrow-up', 16);
-    sendButton.setAttribute('aria-label', sending ? '중단' : '전송');
+    sendButton.setAttribute('aria-label', sending ? stopLabel : sendLabel);
   }
 
   async function send(): Promise<void> {
@@ -157,8 +154,18 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
     inputEl.value = '';
     inputEl.style.height = 'auto';
 
+    // The model can read/write files in between chunks of its own reply —
+    // one long bubble built by just appending every delta would visually
+    // collapse those tool calls to the bottom, after all the text, no
+    // matter when they actually happened mid-stream (this was a real bug:
+    // https://github.com/.../issues, reported as "status pills show up
+    // after the whole message instead of where the read happened"). Each
+    // text segment between tool events gets its own bubble instead, so the
+    // status lines land inline, in the order they actually occurred, and
+    // text resumes in a fresh bubble below them.
     let replyTarget: HTMLElement | null = null;
-    let replyText = '';
+    let segmentText = '';
+    let replyText = ''; // full reply across every segment, for history
 
     abortController = new AbortController();
     setSending(true);
@@ -175,18 +182,25 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
       const onEvent = (raw: string) => {
         const event = JSON.parse(raw);
         if (event.type === 'text') {
-          if (!replyTarget) replyTarget = addMessage('assistant', '');
+          if (!replyTarget) {
+            replyTarget = addMessage('assistant', '');
+            segmentText = '';
+          }
+          segmentText += event.delta;
           replyText += event.delta;
-          replyTarget.textContent = replyText;
+          replyTarget.textContent = segmentText;
           messagesEl.scrollTop = messagesEl.scrollHeight;
           return;
         }
         if (event.type === 'error') {
-          addMessage('error', event.message || 'AI 요청에 실패했습니다.');
+          addMessage('error', event.message || requestFailedText);
           return;
         }
         if (event.type === 'done') return;
         handleToolEvent(event);
+        // Whatever text comes next belongs after this tool call, not
+        // appended into the bubble that came before it.
+        replyTarget = null;
       };
       for (;;) {
         const {done, value} = await reader.read();
@@ -202,7 +216,7 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
 
       if (replyText) history.push({role: 'assistant', content: replyText});
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') addMessage('error', 'AI 요청에 실패했습니다.');
+      if ((err as Error).name !== 'AbortError') addMessage('error', requestFailedText);
     } finally {
       abortController = null;
       setSending(false);
@@ -219,11 +233,11 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
         // the same action twice. read_file is the only "tool" call left
         // worth a line of its own.
         if (event.name === 'read_file' && event.args?.path) {
-          addMessage('status', `읽음: ${event.args.path}`);
+          addMessage('status', readStatusTemplate.replace('%s', event.args.path));
         }
         break;
       case 'edit':
-        addMessage('status', `수정: ${event.path}`);
+        addMessage('status', editStatusTemplate.replace('%s', event.path));
         opts.onEdit?.(event.path, event.content);
         break;
     }

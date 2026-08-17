@@ -27,7 +27,7 @@
 		</a>
 		{{/* everyone's own AI key/model — see company/settings_ai.go */}}
 		<a class="{{if .PageIsSettingsAI}}active {{end}}item" href="{{AppSubUrl}}/user/settings/ai">
-			{{svg "octicon-copilot" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.settings_ai.nav_title"}}
+			{{ctx.Locale.Tr "company.settings_ai.nav_title"}}
 		</a>
 		{{if $.IsAdmin}}
 		{{if not ($.UserDisabledFeatures.Contains "manage_mfa" "manage_credentials")}}

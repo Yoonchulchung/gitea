@@ -29,6 +29,7 @@ export default {
     '!**/*_test.go',
     './{build,models,modules,routers,services}/**/*.go',
     './templates/**/*.tmpl',
+    './custom/templates/**/*.tmpl', // company/ package's own templates — see docs/company/
     './web_src/js/**/*.{ts,js,vue}',
   ].filter(Boolean as unknown as <T>(x: T | boolean) => x is T),
   blocklist: [

@@ -16,8 +16,8 @@
 -->
 {{template "base/head" .}}
 <div role="main" class="page-content company-workspace-page">
-	<div class="ui container fluid tw-pt-6 tw-pb-2 tw-px-4">
-		<a href="{{.Repo.Link}}" class="muted">&larr; {{.Repo.Name}}</a>
+	<div class="ui container fluid tw-pt-2 tw-pb-4 tw-px-4">
+		<a href="{{.BackLink}}" class="muted company-workspace-back-link">&larr; {{.Repo.Name}}</a>
 	</div>
 
 	<div class="company-workspace tw-flex" data-global-init="initCompanyWorkspace"
@@ -25,6 +25,36 @@
 		data-save-url="{{.Repo.Link}}/_edits/{{.Branch | PathEscapeSegments}}/save"
 		data-ai-url="{{.Repo.Link}}/_edits_ai/{{.Branch | PathEscapeSegments}}"
 		data-tmp-url="{{.Repo.Link}}/_edits_tmp/{{.Branch | PathEscapeSegments}}"
+		data-folders-url="{{.Repo.Link}}/_edits_folders/{{.Branch | PathEscapeSegments}}"
+		data-icon-url="{{.Repo.Link}}/_edits_icon/{{.Branch | PathEscapeSegments}}"
+		data-i18n-confirm-discard-tab="{{ctx.Locale.Tr "company.workspace.confirm_discard_tab" "%s"}}"
+		data-i18n-confirm-delete-file="{{ctx.Locale.Tr "company.workspace.confirm_delete_file" "%s"}}"
+		data-i18n-status-delete-pending="{{ctx.Locale.Tr "company.workspace.status_delete_pending" "%s"}}"
+		data-i18n-status-deleted="{{ctx.Locale.Tr "company.workspace.status_deleted" "%s"}}"
+		data-i18n-loading="{{ctx.Locale.Tr "company.workspace.loading"}}"
+		data-i18n-error-load-file="{{ctx.Locale.Tr "company.workspace.error_load_file" "%s"}}"
+		data-i18n-status-recovering="{{ctx.Locale.Tr "company.workspace.status_recovering" "%d"}}"
+		data-i18n-error-file-exists="{{ctx.Locale.Tr "company.workspace.error_file_exists" "%s"}}"
+		data-i18n-status-moved="{{ctx.Locale.Tr "company.workspace.status_moved" "%s" "%s"}}"
+		data-i18n-new-file-placeholder="{{ctx.Locale.Tr "company.workspace.new_file_placeholder"}}"
+		data-i18n-new-folder-placeholder="{{ctx.Locale.Tr "company.workspace.new_folder_placeholder"}}"
+		data-i18n-status-no-changes="{{ctx.Locale.Tr "company.workspace.status_no_changes"}}"
+		data-i18n-status-saving="{{ctx.Locale.Tr "company.workspace.status_saving"}}"
+		data-i18n-status-saved="{{ctx.Locale.Tr "company.workspace.status_saved"}}"
+		data-i18n-error-save-failed="{{ctx.Locale.Tr "company.workspace.error_save_failed"}}"
+		data-i18n-folder-closed="{{ctx.Locale.Tr "company.workspace.folder_closed"}}"
+		data-i18n-folder-open="{{ctx.Locale.Tr "company.workspace.folder_open"}}"
+		data-i18n-delete-file="{{ctx.Locale.Tr "company.workspace.delete_file"}}"
+		data-i18n-confirm-leave-unsaved="{{ctx.Locale.Tr "company.workspace.confirm_leave_unsaved"}}"
+		data-i18n-conflict-yours="{{ctx.Locale.Tr "company.workspace.conflict_yours"}}"
+		data-i18n-conflict-theirs="{{ctx.Locale.Tr "company.workspace.conflict_theirs" "%s" "%s"}}"
+		data-i18n-conflict-theirs-latest="{{ctx.Locale.Tr "company.workspace.conflict_theirs_latest"}}"
+		data-i18n-conflict-use-yours="{{ctx.Locale.Tr "company.workspace.conflict_use_yours"}}"
+		data-i18n-conflict-use-theirs="{{ctx.Locale.Tr "company.workspace.conflict_use_theirs"}}"
+		data-i18n-conflict-use-both="{{ctx.Locale.Tr "company.workspace.conflict_use_both"}}"
+		data-i18n-conflict-unresolved="{{ctx.Locale.Tr "company.workspace.conflict_unresolved" "%s"}}"
+		data-i18n-status-auto-merged="{{ctx.Locale.Tr "company.workspace.status_auto_merged" "%s"}}"
+		data-i18n-status-conflict="{{ctx.Locale.Tr "company.workspace.status_conflict" "%s"}}"
 	>
 		<div class="company-workspace-sidebar">
 			<div class="flex-text-block">
@@ -42,17 +72,22 @@
 				<div class="company-workspace-tabs"></div>
 				<div class="company-workspace-actions">
 					<span class="company-workspace-status tw-text-text-light"></span>
-					<button type="button" class="ui basic tiny red button company-workspace-delete" data-tooltip-content="{{ctx.Locale.Tr "company.workspace.delete_current_file"}}">
-						{{svg "octicon-trash" 14}}
-					</button>
 					<button type="button" class="ui primary tiny button company-workspace-save">{{ctx.Locale.Tr "save"}}</button>
 				</div>
 			</div>
 			<div class="company-workspace-panes"></div>
 		</div>
-		<div class="company-workspace-ai-chat" data-ai-ready="{{.AIEnabled}}" data-ai-settings-url="{{AppSubUrl}}/user/settings/ai">
+		<div class="company-workspace-ai-chat" data-ai-ready="{{.AIEnabled}}"
+			data-ai-empty-state="{{ctx.Locale.Tr "company.workspace.ai_empty_state"}}"
+			data-ai-not-configured="{{ctx.Locale.Tr "company.workspace.ai_not_configured" (printf "%s/user/settings/ai" AppSubUrl)}}"
+			data-ai-not-configured-placeholder="{{ctx.Locale.Tr "company.workspace.ai_not_configured_placeholder"}}"
+			data-ai-stop="{{ctx.Locale.Tr "company.workspace.ai_stop"}}"
+			data-ai-request-failed="{{ctx.Locale.Tr "company.workspace.ai_request_failed"}}"
+			data-ai-read-status="{{ctx.Locale.Tr "company.workspace.ai_read_status" "%s"}}"
+			data-ai-edit-status="{{ctx.Locale.Tr "company.workspace.ai_edit_status" "%s"}}"
+		>
 			<div class="company-workspace-ai-chat-header">
-				{{svg "octicon-copilot" 16 "tw-mr-1"}}AI
+				AI
 			</div>
 			<div class="company-ai-chat-messages"></div>
 			<div class="company-ai-chat-inputbar">
@@ -131,7 +166,6 @@
 .company-workspace-tree-row:hover { background: var(--color-hover); }
 .company-workspace-tree-row.selected {
 	background: var(--color-active);
-	box-shadow: inset 2px 0 0 var(--color-primary);
 }
 .company-workspace-tree-item[draggable] {
 	cursor: grab;
@@ -144,6 +178,32 @@
 .company-workspace-tree-row .company-workspace-tree-name {
 	overflow: hidden;
 	text-overflow: ellipsis;
+	flex: 1;
+	min-width: 0;
+}
+.company-workspace-tree-delete {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--color-text-light-2);
+	cursor: pointer;
+	opacity: 0;
+	/* Only the file rows get one — folders delete via their own contents,
+	   not as a unit, and the new-item/pending rows have nothing to delete
+	   yet. */
+}
+.company-workspace-tree-item:hover .company-workspace-tree-delete {
+	opacity: 1;
+}
+.company-workspace-tree-delete:hover {
+	background: var(--color-danger-hover, var(--color-hover));
+	color: var(--color-danger, var(--color-red));
 }
 .company-workspace-tree-chevron {
 	display: inline-flex;
@@ -222,7 +282,45 @@
 	display: flex;
 	align-items: center;
 	gap: .5rem;
+	min-width: 0; /* a long status message must truncate, not push Save under the AI panel */
+}
+.company-workspace-status {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.company-workspace-actions .button {
 	flex-shrink: 0;
+}
+/* conflict-resolution UI (company-conflict.ts): tinted sections + one-click buttons */
+.cm-line.company-conflict-yours {
+	background: var(--color-diff-added-row-bg);
+}
+.cm-line.company-conflict-theirs {
+	background: var(--color-info-bg);
+}
+.cm-line.company-conflict-marker {
+	background: var(--color-warning-bg);
+	color: var(--color-text-light-2);
+}
+.company-conflict-actions {
+	display: flex;
+	gap: .75rem;
+	padding: 2px 8px;
+	font-size: 12px;
+	background: var(--color-box-header);
+	border-top: 1px solid var(--color-secondary);
+}
+.company-conflict-actions button {
+	background: none;
+	border: none;
+	padding: 0;
+	color: var(--color-primary);
+	cursor: pointer;
+	font-size: 12px;
+}
+.company-conflict-actions button:hover {
+	text-decoration: underline;
 }
 .company-workspace-panes {
 	flex: 1;
@@ -316,10 +414,6 @@
 	font-size: .92rem;
 	padding: 1.5rem 1rem;
 }
-.company-ai-chat-empty svg {
-	color: var(--color-text-light-3, var(--color-text-light-2));
-	margin-bottom: .5rem;
-}
 .company-ai-chat-message {
 	font-size: .98rem;
 	line-height: 1.6;
@@ -337,40 +431,14 @@
 }
 .company-ai-chat-message-assistant {
 	align-self: stretch;
-	display: flex;
-	gap: .6rem;
-}
-.company-ai-chat-message-assistant .company-ai-chat-avatar {
-	flex-shrink: 0;
-	width: 26px;
-	height: 26px;
-	border-radius: 50%;
-	background: var(--color-active);
-	color: var(--color-text-light-1);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	margin-top: .1rem;
-}
-.company-ai-chat-message-assistant .company-ai-chat-text {
-	flex: 1;
-	min-width: 0;
-	padding-top: .2rem;
 }
 .company-ai-chat-message-status {
 	align-self: flex-start;
-	display: inline-flex;
-	align-items: center;
-	gap: .35rem;
 	font-size: .85rem;
 	color: var(--color-text-light-1);
 	background: var(--color-active);
 	border-radius: 999px;
-	padding: .3rem .8rem .3rem .6rem;
-}
-.company-ai-chat-message-status svg {
-	flex-shrink: 0;
-	color: var(--color-text-light-2);
+	padding: .3rem .8rem;
 }
 .company-ai-chat-message-error {
 	align-self: stretch;
@@ -428,10 +496,13 @@
 .company-ai-chat-inputtoolbar {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
 	gap: .5rem;
 }
 .company-ai-chat-send {
+	/* space-between only works while the context chip beside it is also
+	   visible — it's tw-hidden until a tab is active (setActiveFilePath),
+	   which otherwise collapses this to the left as the lone flex child. */
+	margin-left: auto;
 	flex-shrink: 0;
 	width: 32px;
 	height: 32px;

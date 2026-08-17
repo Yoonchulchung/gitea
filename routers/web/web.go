@@ -1293,7 +1293,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 	// end "/{username}/{reponame}/settings"
 
 	// user/org home, including rss feeds like "/{username}/{reponame}.rss"
-	m.Get("/{username}/{reponame}", optSignIn, webAuth.AllowBasic, context.RepoAssignment, context.RepoRefByType(git.RefTypeBranch), repo.SetEditorconfigIfExists, repo.Home)
+	m.Get("/{username}/{reponame}", optSignIn, webAuth.AllowBasic, context.RepoAssignment, context.RepoRefByType(git.RefTypeBranch), repo.SetEditorconfigIfExists, company.RedirectToWorkspaceIfEmpty, repo.Home)
 
 	m.Post("/{username}/{reponame}/markup", optSignIn, context.RepoAssignment, reqUnitsWithMarkdown, web.Bind[*structs.MarkupOption](), misc.Markup)
 
@@ -1496,6 +1496,14 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 				// pattern as _edits_ai above. See company/workspace_tmp.go.
 				m.Get("/{editor_action:_edits_tmp}/*", company.WorkspaceTmpList)
 				m.Post("/{editor_action:_edits_tmp}/*", canWriteToBranch, company.WorkspaceTmpSave)
+				// Which sidebar folders this person left expanded — same
+				// sibling pattern again, branch-independent (see
+				// company/workspace_folders.go).
+				m.Get("/{editor_action:_edits_folders}/*", company.WorkspaceExpandedFolders)
+				m.Post("/{editor_action:_edits_folders}/*", canWriteToBranch, company.WorkspaceExpandedFoldersSave)
+				// The right icon for a file that doesn't exist yet — same
+				// sibling pattern again. See company/workspace_icon.go.
+				m.Get("/{editor_action:_edits_icon}/*", company.WorkspaceFileIcon)
 			}, context.RepoRefByType(git.RefTypeBranch), repo.WebGitOperationCommonData)
 			m.Group("", func() {
 				m.Post("/upload-file", repo.UploadFileToServer)

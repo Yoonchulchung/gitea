@@ -1,38 +1,71 @@
 {{template "base/head" .}}
 <div role="main" class="page-content">
-	<div class="ui container tw-max-w-2xl">
+	<div class="ui container">
 		<div class="tw-mb-4">
 			<a href="{{.Repo.Link}}" class="muted">&larr; {{.Repo.Name}}</a>
 		</div>
 
-		<h1 class="tw-mb-2">{{svg "octicon-rocket" 22 "tw-mr-2"}}Deploy Request — {{.Repo.Name}}</h1>
+		<h1 class="tw-mb-2">{{svg "octicon-rocket" 22 "tw-mr-2"}}{{ctx.Locale.Tr "company.deploy.title"}} — {{.Repo.Name}}</h1>
 
-		<form class="ui form" id="deploy-form" method="post">
+		{{if .DeployRequestStatus}}
+			<div class="ui {{if eq .DeployRequestStatus.Status "approved"}}green{{else if eq .DeployRequestStatus.Status "rejected"}}red{{else if eq .DeployRequestStatus.Status "cancelled"}}grey{{else}}yellow{{end}} label tw-mb-4">
+				{{ctx.Locale.Tr (printf "company.deploy_status.%s" .DeployRequestStatus.Status)}} - {{DateUtils.AbsoluteShort .DeployRequestStatus.Date}}
+			</div>
+		{{end}}
+
+		<form class="ui form tw-max-w-2xl" id="deploy-form" method="post">
 			<div class="field">
-				<label>이건 어떤 배포인가요?</label>
-				<textarea name="message" rows="3" placeholder="검토하는 관리자에게 남길 짧은 설명" required></textarea>
+				<label>{{ctx.Locale.Tr "company.deploy.message_label"}}</label>
+				<textarea name="message" rows="3" placeholder="{{ctx.Locale.Tr "company.deploy.message_placeholder"}}" required></textarea>
 			</div>
 			<button type="submit" id="submit-button" class="ui primary button">
-				{{svg "octicon-rocket" 16 "tw-mr-1"}}Deploy Request
+				{{svg "octicon-rocket" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.deploy.title"}}
 			</button>
 		</form>
 
 		<div class="tw-mt-5">
-			<h4 class="tw-mb-2 flex-text-block">{{svg "octicon-file-diff" 16}}함께 올라가는 파일 ({{len .DeployFiles}})</h4>
+			<h4 class="tw-mb-2 flex-text-block">{{svg "octicon-file-diff" 16}}{{ctx.Locale.Tr "company.deploy.files_heading" (len .DeployFiles)}}</h4>
 			{{if .DeployFiles}}
-				<div class="ui segments company-deploy-file-list tw-max-h-64 tw-overflow-y-auto">
-					{{range .DeployFiles}}
-						<a class="ui segment flex-text-block tw-justify-between muted" href="{{$.Repo.Link}}/src/branch/{{PathEscapeSegments $.Repo.DefaultBranch}}/{{PathEscapeSegments .}}" target="_blank" rel="noopener" title="{{ctx.Locale.Tr "company.deploy.view_file"}}">
-							<span class="flex-text-block tw-gap-2 tw-font-mono tw-text-13">
-								{{svg "octicon-file" 14 "tw-text-light-2"}}
-								{{.}}
-							</span>
-							{{svg "octicon-link-external" 12 "tw-text-light-2"}}
-						</a>
-					{{end}}
-				</div>
+				{{range .DeployFiles}}
+					<div class="ui top attached header flex-text-block company-deploy-diff-file-header">
+						{{if .IsNew}}
+							{{svg "octicon-diff-added" 16 "tw-text-green"}}
+						{{else if .IsRemoved}}
+							{{svg "octicon-diff-removed" 16 "tw-text-red"}}
+						{{else}}
+							{{svg "octicon-diff-modified" 16 "tw-text-yellow"}}
+						{{end}}
+						<span class="tw-flex-1 tw-font-mono tw-text-14">{{.Path}}</span>
+						{{if not .IsRemoved}}
+							<a class="muted tw-text-13" href="{{$.Repo.Link}}/src/branch/{{PathEscapeSegments $.Repo.DefaultBranch}}/{{PathEscapeSegments .Path}}" target="_blank" rel="noopener" title="{{ctx.Locale.Tr "company.deploy.view_file"}}">
+								{{svg "octicon-link-external" 13}}
+							</a>
+						{{end}}
+					</div>
+					<div class="ui attached unstackable table segment tw-mb-4 tw-p-0 tw-overflow-x-auto">
+						{{if .IsBinary}}
+							<div class="tw-p-3 text-grey">{{ctx.Locale.Tr "repo.diff.bin"}}</div>
+						{{else if .TooLarge}}
+							<div class="tw-p-3 text-grey">{{ctx.Locale.Tr "repo.diff.file_suppressed"}}</div>
+						{{else}}
+							{{/* code-diff-unified is what scopes native Gitea's own add-code/
+							     del-code row styling (web_src/css/repo.css) — reusing it here
+							     means the green/red backgrounds come for free, no new CSS. */}}
+							<table class="chroma tw-w-full code-diff-unified">
+								<tbody>
+									{{range .Lines}}
+										<tr class="{{if eq .Type "add"}}add-code{{else if eq .Type "del"}}del-code{{else}}same-code{{end}}">
+											<td class="lines-type-marker"><span class="tw-font-mono" data-type-marker="{{if eq .Type "add"}}+{{else if eq .Type "del"}}-{{end}}"></span></td>
+											<td class="lines-code chroma"><code class="code-inner">{{.Content}}</code></td>
+										</tr>
+									{{end}}
+								</tbody>
+							</table>
+						{{end}}
+					</div>
+				{{end}}
 			{{else}}
-				<div class="text-grey tw-text-13">올라갈 파일이 없습니다.</div>
+				<div class="text-grey tw-text-13">{{ctx.Locale.Tr "company.deploy.no_files"}}</div>
 			{{end}}
 		</div>
 	</div>

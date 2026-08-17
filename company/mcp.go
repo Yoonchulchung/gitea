@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"gitea.dev/modules/git"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -94,7 +95,13 @@ func newWorkspaceMCPServer(gitRepo *git.Repository, branch string, edits map[str
 		if err != nil {
 			return errorResult(fmt.Errorf("no such file: %s", args.Path)), nil
 		}
-		content, err := entry.Blob(gitRepo).GetBlobBytes(ctx, -1)
+		blob := entry.Blob(gitRepo)
+		// GetBlobBytes treats a non-positive limit as "read nothing", not
+		// "unlimited" — pass the blob's real size instead of -1. Left as
+		// -1 here, read_file always returned "" for any committed file not
+		// already open in a tab, which could make the model think a real
+		// file was empty and confidently "rewrite" it from scratch.
+		content, err := blob.GetBlobBytes(ctx, blob.Size(ctx))
 		if err != nil {
 			return errorResult(err), nil
 		}

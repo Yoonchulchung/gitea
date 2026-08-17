@@ -51,7 +51,7 @@ func AISettings(ctx *gitea_context.Context) {
 		return
 	}
 
-	ctx.Data["Title"] = "AI Agent"
+	ctx.Data["Title"] = string(ctx.Locale.Tr("company.settings_ai.nav_title"))
 	ctx.Data["PageIsSettingsAI"] = true
 	ctx.Data["Provider"] = provider
 	ctx.Data["ModelID"] = modelID

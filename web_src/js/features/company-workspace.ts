@@ -7,6 +7,8 @@ import {GET, POST} from '../modules/fetch.ts';
 import {svg} from '../svg.ts';
 import {initChatPanel} from './company-ai-chat.ts';
 import type {ChatPanelHandle} from './company-ai-chat.ts';
+import {formatDatetime} from '../utils/time.ts';
+import {attachConflictUI, buildConflictText, conflictMarkerPattern} from './company-conflict.ts';
 
 // Multi-file editor for company/workspace.tmpl. Reuses Gitea's own
 // CodeMirror setup (modules/codeeditor) verbatim — one instance per open
@@ -43,6 +45,24 @@ type OpenTab = {
   // replaces: a keystroke right before clicking Save must not be allowed
   // to re-stage now-superseded content moments later.
   tmpSaveTimer?: ReturnType<typeof setTimeout>;
+  // Blob SHA this tab's content was opened from (the raw-content
+  // endpoint's own ETag — a git blob ID), sent with Save so the server
+  // can tell whether someone else saved a newer version of this exact
+  // file in the meantime (company/workspace.go's ErrSHADoesNotMatch
+  // handling). undefined for a file that never existed before this tab —
+  // nothing to compare against, and the server already treats a missing
+  // SHA as "no check needed" for a brand-new upload.
+  baseSha?: string;
+};
+
+type WorkspaceConflict = {
+  path: string;
+  serverContent: string;
+  serverSha: string;
+  serverMessage: string;
+  serverAuthor: string;
+  serverDate: number; // unix seconds
+  baseContent?: string; // common ancestor for 3-way merging — see company/workspace.go
 };
 
 // File tree, VSCode-style: folders before files, each level sorted with the
@@ -171,7 +191,7 @@ function clearLegacyDrafts(): void {
   }
 }
 
-type PendingWrite = {content: string, createdAt: number};
+type PendingWrite = {content: string, createdAt: number, baseSha?: string};
 
 function pendingKeyPrefix(repoLink: string, branch: string): string {
   return `${PENDING_PREFIX}${repoLink}:${branch}:`;
@@ -192,6 +212,14 @@ function readPending(key: string): PendingWrite | null {
   }
 }
 
+// Falls back to '' instead of null — a missing data-i18n-* attribute
+// (a stale page from before one was added, say) previously meant
+// `window.confirm(null)` displaying the literal word "null" as the
+// dialog's whole message, which is worse than just showing nothing.
+function attr(el: Element, name: string): string {
+  return el.getAttribute(name) ?? '';
+}
+
 export function initCompanyWorkspace() {
   registerGlobalInitFunc('initCompanyWorkspace', async (el: HTMLElement) => {
     const repoLink = el.getAttribute('data-repo-link')!;
@@ -199,6 +227,43 @@ export function initCompanyWorkspace() {
     const saveUrl = el.getAttribute('data-save-url')!;
     const aiUrl = el.getAttribute('data-ai-url')!;
     const tmpUrl = el.getAttribute('data-tmp-url')!;
+    const foldersUrl = el.getAttribute('data-folders-url')!;
+    const iconUrl = el.getAttribute('data-icon-url')!;
+
+    // Every user-facing string below comes from here, not a hardcoded
+    // literal — so this page follows whatever language it's rendered in
+    // (custom/templates/company/workspace.tmpl), not just Korean. Each
+    // still has its own "%s"/"%d" placeholder(s) baked in server-side by
+    // ctx.Locale.Tr, substituted client-side with a plain .replace().
+    const i18n = {
+      confirmDiscardTab: attr(el, 'data-i18n-confirm-discard-tab'),
+      confirmDeleteFile: attr(el, 'data-i18n-confirm-delete-file'),
+      statusDeletePending: attr(el, 'data-i18n-status-delete-pending'),
+      statusDeleted: attr(el, 'data-i18n-status-deleted'),
+      loading: attr(el, 'data-i18n-loading'),
+      errorLoadFile: attr(el, 'data-i18n-error-load-file'),
+      statusRecovering: attr(el, 'data-i18n-status-recovering'),
+      errorFileExists: attr(el, 'data-i18n-error-file-exists'),
+      statusMoved: attr(el, 'data-i18n-status-moved'),
+      newFilePlaceholder: attr(el, 'data-i18n-new-file-placeholder'),
+      newFolderPlaceholder: attr(el, 'data-i18n-new-folder-placeholder'),
+      statusNoChanges: attr(el, 'data-i18n-status-no-changes'),
+      statusSaving: attr(el, 'data-i18n-status-saving'),
+      statusSaved: attr(el, 'data-i18n-status-saved'),
+      errorSaveFailed: attr(el, 'data-i18n-error-save-failed'),
+      folderClosed: attr(el, 'data-i18n-folder-closed'),
+      folderOpen: attr(el, 'data-i18n-folder-open'),
+      deleteFile: attr(el, 'data-i18n-delete-file'),
+      conflictYours: attr(el, 'data-i18n-conflict-yours'),
+      conflictTheirs: attr(el, 'data-i18n-conflict-theirs'),
+      conflictTheirsLatest: attr(el, 'data-i18n-conflict-theirs-latest'),
+      statusConflict: attr(el, 'data-i18n-status-conflict'),
+      conflictUseYours: attr(el, 'data-i18n-conflict-use-yours'),
+      conflictUseTheirs: attr(el, 'data-i18n-conflict-use-theirs'),
+      conflictUseBoth: attr(el, 'data-i18n-conflict-use-both'),
+      conflictUnresolved: attr(el, 'data-i18n-conflict-unresolved'),
+      statusAutoMerged: attr(el, 'data-i18n-status-auto-merged'),
+    };
 
     clearLegacyDrafts(); // one-time hygiene, see the comment above — nothing writes that prefix anymore, and this is NOT repeated on leave: pending writes below need to survive a close if the server hasn't acknowledged them yet.
 
@@ -207,13 +272,19 @@ export function initCompanyWorkspace() {
     // advance, so a fixed calc(100vh - Npx) in CSS always ends up either
     // leaving dead space or clipping content the moment either one's real
     // height drifts from whatever number was hardcoded. Measuring el's own
-    // actual top offset at runtime and sizing to reach the viewport's
-    // bottom (minus a little clearance so the footer still shows) adapts
-    // to whatever's actually rendered, no guessing required.
-    const VIEWPORT_BOTTOM_CLEARANCE_PX = 24;
+    // actual top offset, plus the real rendered height of .full.height's
+    // own bottom padding (--page-space-bottom) and the site footer below
+    // it, adapts to whatever's actually rendered — a flat guess here
+    // previously undercounted that space and made the whole page scroll.
+    const FALLBACK_CLEARANCE_PX = 24; // only used if .page-footer/.full.height aren't found
     function sizeToViewport(): void {
       const top = el.getBoundingClientRect().top;
-      const height = window.innerHeight - top - VIEWPORT_BOTTOM_CLEARANCE_PX;
+      const footerEl = document.querySelector<HTMLElement>('.page-footer');
+      const fullHeightEl = el.closest<HTMLElement>('.full.height');
+      const footerHeight = footerEl?.getBoundingClientRect().height ?? 0;
+      const pageSpaceBottom = fullHeightEl ? (Number.parseFloat(getComputedStyle(fullHeightEl).paddingBottom) || 0) : 0;
+      const clearance = (footerHeight + pageSpaceBottom) || FALLBACK_CLEARANCE_PX;
+      const height = window.innerHeight - top - clearance;
       el.style.height = `${Math.max(height, 480)}px`; // 480 matches the CSS min-height fallback
     }
     sizeToViewport();
@@ -223,7 +294,6 @@ export function initCompanyWorkspace() {
     const tabsEl = el.querySelector<HTMLElement>('.company-workspace-tabs')!;
     const panesEl = el.querySelector<HTMLElement>('.company-workspace-panes')!;
     const saveButton = el.querySelector<HTMLButtonElement>('.company-workspace-save')!;
-    const deleteButton = el.querySelector<HTMLButtonElement>('.company-workspace-delete')!;
     const newFileButton = el.querySelector<HTMLButtonElement>('.company-workspace-new-file')!;
     const newFolderButton = el.querySelector<HTMLButtonElement>('.company-workspace-new-folder')!;
     const statusEl = el.querySelector<HTMLElement>('.company-workspace-status')!;
@@ -245,7 +315,11 @@ export function initCompanyWorkspace() {
     // authoritative again.
     let selectedFolderPath: string | null = null;
     const treeRoot: FolderNode = {name: '', path: '', folders: [], files: []};
-    const collapsedFolders = new Set<string>();
+    // Tracks which folders are explicitly opened, not which are collapsed —
+    // an empty Set then means every folder starts collapsed by default (no
+    // separate "seed every known path as collapsed" step needed, since
+    // "not in this Set" already means that).
+    const expandedFolders = new Set<string>();
 
     // Icon HTML per full path, filled in by fetchFolderIcons() below.
     // <use href="#svg-mfi-xxx"> in that HTML resolves against whatever
@@ -258,6 +332,12 @@ export function initCompanyWorkspace() {
     el.append(iconPoolEl);
 
     const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
+
+    // The raw-content endpoint's ETag is a git blob SHA — read as this
+    // tab's baseline for the conflict check on Save (see OpenTab.baseSha).
+    // Quoted per the HTTP spec ("abc123"), stripped here since the server
+    // side wants the bare SHA to compare against ChangeRepoFile.SHA.
+    const readETag = (resp: Response): string | undefined => resp.headers.get('etag')?.replaceAll('"', '') ?? undefined;
 
     async function fetchFolderIcons(folderPath: string): Promise<void> {
       const url = `${repoLink}/tree-view/branch/${encodeURIComponent(branch)}/${folderPath ? encodePath(folderPath) : ''}?sub_path=`;
@@ -276,8 +356,51 @@ export function initCompanyWorkspace() {
       }
     }
 
-    const setStatus = (text: string) => { statusEl.textContent = text };
-    const isAnyDirty = () => openTabs.values().some((tab) => tab.textarea.value !== tab.originalContent);
+    // Same idea as fetchFolderIcons, but for a path that isn't in the repo
+    // yet at all (a brand-new tab: New File, an AI-created file, a dropped
+    // file) — tree-view only knows about paths actually in the git tree,
+    // so it has nothing to match a new one against. company/workspace_icon.go
+    // reuses the same server-side icon-matching logic fed a synthetic
+    // entry instead, keyed by filename alone.
+    async function fetchFileIcon(path: string): Promise<void> {
+      if (iconCache.has(path)) return;
+      try {
+        const resp = await GET(`${iconUrl}?name=${encodeURIComponent(path.split('/').pop()!)}`);
+        if (!resp.ok) return;
+        const data = await resp.json() as {icon: string, renderedIconPool: Record<string, string>};
+        for (const [id, html] of Object.entries(data.renderedIconPool || {})) {
+          if (!iconPoolEl.querySelector(`#${CSS.escape(id)}`)) iconPoolEl.insertAdjacentHTML('beforeend', html);
+        }
+        iconCache.set(path, {icon: data.icon, iconOpen: data.icon});
+        renderTree();
+      } catch {
+        // fall back to the generic octicon already used for anything not in the cache
+      }
+    }
+
+    const setStatus = (text: string) => {
+      statusEl.textContent = text;
+      statusEl.title = text; // the status line ellipsizes when space is tight — hover still shows all of it
+    };
+
+    // Fired by company-conflict.ts when its buttons just removed the last
+    // conflict block in some tab — the "resolve the conflict below" status
+    // line would otherwise keep announcing a conflict that's gone.
+    el.addEventListener('company-conflict-resolved', () => setStatus(''));
+    // Same "needs saving" definition the Save button itself uses below —
+    // not just changed content: a brand-new file (serverPath still null)
+    // or one dragged into a different folder is unsaved work too, even
+    // with its content untouched (an empty new file is still a new
+    // file), and so is a pending delete that hasn't been saved yet.
+    const isAnyDirty = () => pendingDeletes.size > 0 ||
+      openTabs.values().some((tab) => tab.textarea.value !== tab.originalContent || tab.serverPath !== tab.path);
+
+    // Set right before intentionally letting a navigation through after
+    // our own confirm below already asked once — without this, the
+    // beforeunload listener right after fires its own native "leave
+    // site?" prompt for the exact same navigation a moment later, so
+    // confirming once still meant answering the question twice.
+    let leavingConfirmed = false;
 
     // Back button, closing the tab, typing a new URL — anything that
     // navigates away without saving. Browsers ignore any custom message
@@ -285,8 +408,31 @@ export function initCompanyWorkspace() {
     // restriction, not something we can change), but the prompt itself
     // still appears exactly when there's something unsaved.
     window.addEventListener('beforeunload', (e) => {
-      if (!isAnyDirty()) return;
+      if (!isAnyDirty() || leavingConfirmed) return;
       e.preventDefault(); // spec-current way to trigger the browser's own leave-site prompt
+    });
+
+    // Any plain link click that navigates away — the breadcrumb's own
+    // "← {repo}" link, but just as much the native navbar's logo/
+    // notifications/"Deploy Requests"/etc, none of which are ours to wire
+    // up individually — is exactly the same case beforeunload above
+    // already covers, but worth this page's own explicit, translated
+    // confirm instead of leaning on the browser's fixed, unlocalizable
+    // wording. Delegated on document (not each link) specifically to
+    // reach that native navbar markup without touching it.
+    const leaveConfirmMessage = attr(el, 'data-i18n-confirm-leave-unsaved');
+    document.addEventListener('click', (e) => {
+      if (!isAnyDirty() || e.defaultPrevented) return;
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; // let modifier/middle clicks (new tab) through untouched
+      const link = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[href]');
+      if (!link || link.target === '_blank' || link.hasAttribute('download')) return;
+      const href = link.getAttribute('href')!;
+      if (href.startsWith('#') || !link.protocol.startsWith('http')) return; // same-page or non-navigating scheme (mailto:, javascript:) — not a real navigation
+      if (window.confirm(leaveConfirmMessage)) {
+        leavingConfirmed = true; // let beforeunload stand down for this navigation
+      } else {
+        e.preventDefault();
+      }
     });
 
     function activateTab(path: string) {
@@ -304,7 +450,7 @@ export function initCompanyWorkspace() {
     function closeTab(path: string) {
       const tab = openTabs.get(path);
       if (!tab) return;
-      if (tab.textarea.value !== tab.originalContent && !window.confirm(`'${path}'의 변경사항을 버릴까요?`)) return;
+      if (tab.textarea.value !== tab.originalContent && !window.confirm(i18n.confirmDiscardTab.replace('%s', path))) return;
       clearTimeout(tab.tmpSaveTimer);
       localStorage.removeItem(pendingKey(repoLink, branch, path)); // explicit discard — don't offer it back next time
       clearTmpEditRemote(path);
@@ -320,38 +466,48 @@ export function initCompanyWorkspace() {
       }
     }
 
-    // Deletes the currently-open (active) file: closes its tab, drops it
-    // from the tree, and — only if it actually exists on the server —
-    // queues a real delete for the next save. A file that was only ever a
-    // local, unsaved "새 파일" just disappears with nothing to tell the
-    // server about.
-    function deleteActiveFile(): void {
-      if (!activePath) return;
-      const path = activePath;
+    // Deletes any file by path, open or not: closes its tab if it has one,
+    // drops it from the tree, and — only if it actually exists on the
+    // server — queues a real delete for the next save. A file that was
+    // only ever a local, unsaved "새 파일" just disappears with nothing to
+    // tell the server about. Called from a tree row's own hover-delete
+    // button (renderFolderContents below) as much as from an open tab —
+    // deleting doesn't require opening it first.
+    function deleteFile(path: string): void {
+      if (!window.confirm(i18n.confirmDeleteFile.replace('%s', path))) return;
+
       const tab = openTabs.get(path);
-      if (!tab) return;
-      if (!window.confirm(`'${path}'을(를) 삭제할까요?`)) return;
-
-      clearTimeout(tab.tmpSaveTimer);
-      localStorage.removeItem(pendingKey(repoLink, branch, path));
-      clearTmpEditRemote(path);
-      tab.tabEl.remove();
-      tab.pane.remove();
-      openTabs.delete(path);
-      removeFilePath(treeRoot, path);
-      if (tab.serverPath) pendingDeletes.add(tab.serverPath);
-
-      const next = openTabs.keys().next().value;
-      if (next) activateTab(next);
-      else {
-        activePath = null;
-        chatHandle?.setActiveFilePath(null);
-        renderTree();
+      let hadServerPath = false;
+      if (tab) {
+        clearTimeout(tab.tmpSaveTimer);
+        localStorage.removeItem(pendingKey(repoLink, branch, path));
+        clearTmpEditRemote(path);
+        tab.tabEl.remove();
+        tab.pane.remove();
+        openTabs.delete(path);
+        if (tab.serverPath) {
+          pendingDeletes.add(tab.serverPath);
+          hadServerPath = true;
+        }
+      } else {
+        // Never opened this session — its tree path is its real server
+        // path (an unopened, unsaved file has no tree row to begin with).
+        pendingDeletes.add(path);
+        hadServerPath = true;
       }
-      setStatus(tab.serverPath ? `'${path}' 삭제 예정 — 저장하면 반영됩니다.` : `'${path}'을(를) 지웠습니다.`);
-    }
+      removeFilePath(treeRoot, path);
 
-    deleteButton.addEventListener('click', deleteActiveFile);
+      if (activePath === path) {
+        const next = openTabs.keys().next().value;
+        if (next) activateTab(next);
+        else {
+          activePath = null;
+          chatHandle?.setActiveFilePath(null);
+        }
+      }
+      renderTree();
+      setStatus(hadServerPath ? i18n.statusDeletePending.replace('%s', path) : i18n.statusDeleted.replace('%s', path));
+    }
 
     // content is the true baseline (originalContent) the dirty-check and
     // Save compare against — normally also what's shown, except when
@@ -360,12 +516,19 @@ export function initCompanyWorkspace() {
     // instead, while content stays the real server baseline, so the
     // recovered tab correctly shows as dirty and Save sends the recovered
     // content, not a no-op.
-    async function openFile(path: string, content: string, serverPath: string | null = null, initialValue?: string): Promise<void> {
+    async function openFile(path: string, content: string, serverPath: string | null = null, initialValue?: string, baseSha?: string): Promise<void> {
       const existing = openTabs.get(path);
       if (existing) {
         activateTab(path);
         return;
       }
+
+      // A real serverPath means this path already exists in the repo —
+      // its icon comes from fetchFolderIcons the normal way, once the
+      // tree loads/expands to it. Only a brand-new file (New File, AI,
+      // a dropped file — serverPath still null) has nothing for that to
+      // match, hence its own lookup.
+      if (serverPath === null) fetchFileIcon(path);
 
       const tabEl = createElementFromHTML<HTMLElement>(
         '<div class="company-workspace-tab"><span class="company-workspace-tab-name"></span><button type="button" class="company-workspace-tab-close">×</button></div>',
@@ -379,7 +542,7 @@ export function initCompanyWorkspace() {
       // throws (modules/codeeditor/main.ts). Prevent the (never-triggered
       // by us) implicit submit just in case a future keymap adds one.
       const pane = createElementFromHTML<HTMLElement>(
-        '<div class="company-workspace-pane tw-hidden"><form class="company-workspace-editor-form"><div class="editor-loading">불러오는 중…</div></form></div>',
+        `<div class="company-workspace-pane tw-hidden"><form class="company-workspace-editor-form"><div class="editor-loading">${i18n.loading}</div></form></div>`,
       );
       panesEl.append(pane);
       const formEl = pane.querySelector('form')!;
@@ -408,7 +571,7 @@ export function initCompanyWorkspace() {
       // renames `tab.path` in place, and a stale captured string would
       // make the tab's own click/close handlers silently target the path
       // it *used* to have.
-      const tab: OpenTab = {path, serverPath, textarea, pane, tabEl, originalContent: content};
+      const tab: OpenTab = {path, serverPath, textarea, pane, tabEl, originalContent: content, baseSha};
       openTabs.set(path, tab);
 
       tabEl.querySelector('.company-workspace-tab-name')!.textContent = tab.path;
@@ -427,11 +590,19 @@ export function initCompanyWorkspace() {
       });
 
       tab.editor = await createCodeEditor(textarea);
+      // Every tab gets the conflict-resolution UI (company-conflict.ts) —
+      // it renders nothing until conflict markers actually appear in the
+      // document (handleConflict / recoverPendingEdits put them there).
+      attachConflictUI(tab.editor.view, {
+        useYours: i18n.conflictUseYours,
+        useTheirs: i18n.conflictUseTheirs,
+        useBoth: i18n.conflictUseBoth,
+      });
       activateTab(tab.path);
     }
 
     async function openExistingFile(path: string) {
-      setStatus('불러오는 중…');
+      setStatus(i18n.loading);
       try {
         // Gitea's native raw-content endpoint sets Cache-Control:
         // private, max-age=21600 (6h) — fine for a commit-pinned URL, but
@@ -446,12 +617,22 @@ export function initCompanyWorkspace() {
         // caching is left alone for whatever else relies on it.
         const resp = await GET(`${repoLink}/raw/branch/${encodeURIComponent(branch)}/${encodePath(path)}`, {cache: 'no-store'});
         if (!resp.ok) throw new Error(String(resp.status));
-        await openFile(path, await resp.text(), path);
+        await openFile(path, await resp.text(), path, undefined, readETag(resp));
         setStatus('');
       } catch {
         setStatus('');
-        showErrorToast(`파일을 불러오지 못했습니다: ${path}`);
+        showErrorToast(i18n.errorLoadFile.replace('%s', path));
       }
+    }
+
+    // The synchronous half of stageTmpEdit below, split out so callers that
+    // can't await a tab's own mount (applyAIEdit, for a brand-new file —
+    // see there) can still guarantee the localStorage copy lands the
+    // instant content exists, not only once some later async step settles.
+    function writePendingLocal(path: string, content: string, createdAt: number, baseSha?: string): string {
+      const key = pendingKey(repoLink, branch, path);
+      localStorage.setItem(key, JSON.stringify({content, createdAt, baseSha} satisfies PendingWrite));
+      return key;
     }
 
     // Fire-and-forget: mirrors one tab's current content to the server's
@@ -464,14 +645,25 @@ export function initCompanyWorkspace() {
     // of whether the POST below ever landed.
     async function stageTmpEdit(tab: OpenTab): Promise<void> {
       const createdAt = Date.now();
-      const key = pendingKey(repoLink, branch, tab.path);
-      localStorage.setItem(key, JSON.stringify({content: tab.textarea.value, createdAt} satisfies PendingWrite));
+      const key = writePendingLocal(tab.path, tab.textarea.value, createdAt, tab.baseSha);
       try {
-        const resp = await POST(tmpUrl, {data: {path: tab.path, content: tab.textarea.value, createdAt}});
+        const resp = await POST(tmpUrl, {data: {path: tab.path, content: tab.textarea.value, createdAt, baseSha: tab.baseSha}});
         if (resp.ok) localStorage.removeItem(key); // server now durably has it — this tab's own copy of the fallback is redundant
       } catch {
         // stays in localStorage; recoverPendingEdits picks it up if the page reloads before a later write succeeds
       }
+    }
+
+    // For a brand-new file created without a keystroke (drop, New File,
+    // AI edit): opens its tab, then stages it the moment the tab exists —
+    // no 'change' event will ever fire for it, so waiting on one would
+    // mean a refresh loses it. Callers deliberately don't await this
+    // (their own synchronous writePendingLocal already made the content
+    // safe); the tab lookup re-checks because openFile can bail.
+    async function openFileAndStage(path: string, content: string): Promise<void> {
+      await openFile(path, content);
+      const tab = openTabs.get(path);
+      if (tab) stageTmpEdit(tab);
     }
 
     // Fire-and-forget explicit discard — closeTab/deleteActiveFile call
@@ -506,8 +698,8 @@ export function initCompanyWorkspace() {
       try {
         const resp = await GET(tmpUrl);
         if (resp.ok) {
-          const {entries} = await resp.json() as {entries: {path: string, content: string, createdAt: number}[]};
-          for (const e of entries) merged.set(e.path, {content: e.content, createdAt: e.createdAt});
+          const {entries} = await resp.json() as {entries: {path: string, content: string, createdAt: number, baseSha?: string}[]};
+          for (const e of entries) merged.set(e.path, {content: e.content, createdAt: e.createdAt, baseSha: e.baseSha});
         }
       } catch {
         // server list failed — still worth checking localStorage below rather than giving up entirely
@@ -524,20 +716,43 @@ export function initCompanyWorkspace() {
       }
 
       if (!merged.size) return;
-      setStatus(`저장하지 않은 편집 내용 ${merged.size}개를 복구하는 중…`);
+      setStatus(i18n.statusRecovering.replace('%d', String(merged.size)));
+      let firstConflictPath: string | null = null;
       for (const [path, entry] of merged) {
         try {
           // cache: 'no-store' — see the comment on this same call in openExistingFile above.
           const resp = await GET(`${repoLink}/raw/branch/${encodeURIComponent(branch)}/${encodePath(path)}`, {cache: 'no-store'});
           const serverContent = resp.ok ? await resp.text() : ''; // not on the branch yet — recovering a file that was never saved at all
+          const freshSha = resp.ok ? readETag(resp) : undefined;
           insertFilePath(treeRoot, path, true);
-          await openFile(path, serverContent, resp.ok ? path : null, entry.content);
+          // The draft remembers which blob SHA it started from (staged
+          // alongside the content — see stageTmpEdit). If the branch has
+          // a different blob now, someone else saved this file while the
+          // draft sat unsaved through a refresh — the exact "A refreshed
+          // at 10:03 after B saved at 10:02" case. Surface it right here
+          // as git conflict markers instead of restoring the stale draft
+          // as if nothing happened, which would make the next Save
+          // silently overwrite that person's change (tab.baseSha is set
+          // to the fresh blob below, so it couldn't 409 on its own).
+          const conflicted = entry.baseSha && freshSha && entry.baseSha !== freshSha && entry.content !== serverContent;
+          // No common ancestor is available here (only its SHA was staged),
+          // so this is a 2-way merge: common lines stay plain, each
+          // genuinely differing run gets its own marker block.
+          const seed = conflicted ? buildConflictText(null, entry.content, serverContent, i18n.conflictYours, i18n.conflictTheirsLatest).text : entry.content;
+          await openFile(path, serverContent, resp.ok ? path : null, seed, freshSha);
+          if (conflicted) firstConflictPath ??= path;
         } catch {
           // leave this one's server/localStorage entry alone — picked up again next visit
         }
       }
       renderTree();
-      setStatus('');
+      if (firstConflictPath) {
+        const message = i18n.statusConflict.replace('%s', firstConflictPath);
+        setStatus(message);
+        showErrorToast(message);
+      } else {
+        setStatus('');
+      }
     }
 
     // Drag-and-drop move (files only — dragging a whole folder isn't
@@ -551,7 +766,7 @@ export function initCompanyWorkspace() {
       const newPath = targetFolder ? `${targetFolder}/${basename}` : basename;
       if (newPath === path) return;
       if (openTabs.has(newPath)) {
-        showErrorToast(`이미 '${newPath}' 파일이 있습니다.`);
+        showErrorToast(i18n.errorFileExists.replace('%s', newPath));
         return;
       }
 
@@ -576,14 +791,103 @@ export function initCompanyWorkspace() {
       const icon = iconCache.get(path);
       if (icon) iconCache.set(newPath, icon);
       activateTab(newPath);
-      setStatus(`'${path}' → '${newPath}'로 이동했습니다. 저장하면 반영됩니다.`);
+      setStatus(i18n.statusMoved.replace('%s', path).replace('%s', newPath));
     }
 
     let dragSourcePath: string | null = null;
 
+    // A file dragged in from outside the browser (Finder/Explorer) carries
+    // no dragSourcePath (that's only set by our own tree rows' dragstart,
+    // above) but does show up in e.dataTransfer.files — checked for on
+    // dragover too, not just drop, so the drop-target highlight (and
+    // dropEffect, without which some browsers show a "forbidden" cursor)
+    // appears while dragging over, the same as an internal move.
+    function hasExternalFiles(e: DragEvent): boolean {
+      return !dragSourcePath && (e.dataTransfer?.types.includes('Files') ?? false);
+    }
+
+    // Reads every dropped file's content and opens/stages each as a new
+    // tab in targetFolder — same "still needs Save" rule as any other new
+    // file (openFile + writePendingLocal/stageTmpEdit, same pattern
+    // commitNewItem and applyAIEdit's new-file branch already use).
+    // Directories can't be read this way (the plain File API has no
+    // recursive folder-reading without the non-standard
+    // webkitGetAsEntry() API) — silently skipped rather than erroring,
+    // same as dropping a folder just does nothing.
+    // readEntries only returns up to 100 entries per call — has to be
+    // called repeatedly until it comes back empty to see everything in a
+    // folder, per the (non-standard but universally implemented) File and
+    // Directory Entries API's own documented behavior.
+    async function readAllDirectoryEntries(reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> {
+      const entries: FileSystemEntry[] = [];
+      for (;;) {
+        const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject));
+        if (!batch.length) return entries;
+        entries.push(...batch);
+      }
+    }
+
+    // Recursively walks one dropped entry (file or folder) into a flat
+    // {path, file} list, relative-pathed from wherever the drop started —
+    // dropping a folder named "src" containing "a.txt" yields "src/a.txt".
+    async function collectFilesFromEntry(entry: FileSystemEntry, basePath: string, out: {path: string, file: File}[]): Promise<void> {
+      const path = basePath ? `${basePath}/${entry.name}` : entry.name;
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
+        out.push({path, file});
+      } else if (entry.isDirectory) {
+        const children = await readAllDirectoryEntries((entry as FileSystemDirectoryEntry).createReader());
+        for (const child of children) await collectFilesFromEntry(child, path, out);
+      }
+    }
+
+    // Reads every dropped file's (or folder's, recursively) content and
+    // opens/stages each as a new tab in targetFolder — same "still needs
+    // Save" rule as any other new file (openFile + writePendingLocal/
+    // stageTmpEdit, same pattern commitNewItem and applyAIEdit's new-file
+    // branch already use).
+    async function handleExternalFileDrop(dataTransfer: DataTransfer, targetFolder: string): Promise<void> {
+      const collected: {path: string, file: File}[] = [];
+      // webkitGetAsEntry is what unlocks folder support (DataTransfer.files
+      // alone is always a flat file list, even for a dropped folder) — every
+      // current browser has it under this name despite the prefix. Checked
+      // per item, not once up front: it returns null for anything that
+      // isn't a real OS-originated drag (synthetic DataTransfers included),
+      // so a single dropped plain file still needs its own getAsFile()
+      // fallback even in a browser that generally supports entries.
+      for (const item of dataTransfer.items) {
+        const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null;
+        if (entry) {
+          await collectFilesFromEntry(entry, '', collected);
+          continue;
+        }
+        const file = item.getAsFile();
+        if (file) collected.push({path: file.name, file});
+      }
+
+      for (const {path: relPath, file} of collected) {
+        const path = targetFolder ? `${targetFolder}/${relPath}` : relPath;
+        if (openTabs.has(path)) {
+          showErrorToast(i18n.errorFileExists.replace('%s', path));
+          continue;
+        }
+        let content: string;
+        try {
+          content = await file.text();
+        } catch {
+          showErrorToast(i18n.errorLoadFile.replace('%s', path));
+          continue;
+        }
+        insertFilePath(treeRoot, path, true);
+        renderTree();
+        writePendingLocal(path, content, Date.now()); // see the same call in commitNewItem for why this can't wait for openFile
+        openFileAndStage(path, content);
+      }
+    }
+
     function wireDropTarget(el: HTMLElement, targetFolder: string): void {
       el.addEventListener('dragover', (e) => {
-        if (!dragSourcePath) return;
+        if (!dragSourcePath && !hasExternalFiles(e)) return;
         e.preventDefault();
         e.stopPropagation();
         el.classList.add('drop-target');
@@ -595,7 +899,11 @@ export function initCompanyWorkspace() {
         el.classList.remove('drop-target');
         const source = dragSourcePath;
         dragSourcePath = null;
-        if (source) moveFileToFolder(source, targetFolder);
+        if (source) {
+          moveFileToFolder(source, targetFolder);
+        } else if (e.dataTransfer?.files.length) {
+          handleExternalFileDrop(e.dataTransfer, targetFolder);
+        }
       });
     }
 
@@ -636,17 +944,25 @@ export function initCompanyWorkspace() {
         }
         insertFilePath(treeRoot, fullValue, true);
         renderTree();
-        openFile(fullValue, '');
+        // Same reasoning as applyAIEdit's new-tab branch: openFile only
+        // wires up staging on the textarea's own 'change' event, which
+        // never fires for a brand-new file nobody has typed into yet — an
+        // empty file created here and refreshed before its first keystroke
+        // was never staged at all, not even as an empty entry, so it just
+        // vanished. Stage it the moment it's created instead of waiting on
+        // a change that might never come before a refresh.
+        writePendingLocal(fullValue, '', Date.now());
+        openFileAndStage(fullValue, '');
       } else {
         insertFolderPath(treeRoot, fullValue);
-        collapsedFolders.delete(fullValue);
+        expandedFolders.add(fullValue);
         renderTree();
       }
     }
 
     function buildNewItemRow(kind: 'file' | 'folder', parent: string, depth: number): HTMLElement {
       const iconSvg = kind === 'file' ? svg('octicon-file', 14) : svg('octicon-file-directory-fill', 14);
-      const placeholder = kind === 'file' ? '파일 이름 (예: notes.txt, sub/notes.txt)' : '폴더 이름';
+      const placeholder = kind === 'file' ? i18n.newFilePlaceholder : i18n.newFolderPlaceholder;
       const row = createElementFromHTML<HTMLElement>(
         `<div class="company-workspace-tree-row company-workspace-tree-new-item" style="padding-left:${depth * 16 + (kind === 'file' ? 18 : 0)}px">` +
         `${iconSvg}<input type="text" class="company-workspace-tree-new-input" placeholder="${placeholder}"></div>`,
@@ -677,8 +993,23 @@ export function initCompanyWorkspace() {
       return row;
     }
 
+    // Fire-and-forget, debounced like stageTmpEdit — a click toggling a
+    // folder shouldn't wait on a network round trip, and clicking several
+    // in a row (opening a nested path) only needs the final state saved.
+    let expandedFoldersSaveTimer: ReturnType<typeof setTimeout> | undefined;
+    function saveExpandedFolders(): void {
+      clearTimeout(expandedFoldersSaveTimer);
+      expandedFoldersSaveTimer = setTimeout(async () => {
+        try {
+          await POST(foldersUrl, {data: {paths: [...expandedFolders]}});
+        } catch {
+          // best-effort — worst case the sidebar just reopens with yesterday's state next visit
+        }
+      }, TMP_SAVE_DEBOUNCE_MS);
+    }
+
     function renderTree(): void {
-      if (pendingNewItem) collapsedFolders.delete(pendingNewItem.parent); // make sure its folder is open so the input is visible
+      if (pendingNewItem) expandedFolders.add(pendingNewItem.parent); // make sure its folder is open so the input is visible
       renderFolderContents(treeRoot, treeEl, 0);
     }
 
@@ -690,24 +1021,25 @@ export function initCompanyWorkspace() {
         row.querySelector('input')!.focus();
       }
       for (const folder of node.folders) {
-        const collapsed = collapsedFolders.has(folder.path);
+        const collapsed = !expandedFolders.has(folder.path);
         const chevronSvg = svg(collapsed ? 'octicon-chevron-right' : 'octicon-chevron-down', 12);
         const cachedFolderIcon = iconCache.get(folder.path);
         const folderSvg = cachedFolderIcon ?
           (collapsed ? cachedFolderIcon.icon : cachedFolderIcon.iconOpen) :
           svg(collapsed ? 'octicon-file-directory-fill' : 'octicon-file-directory-open-fill', 14);
         const row = createElementFromHTML<HTMLElement>(
-          `<div class="company-workspace-tree-row company-workspace-tree-folder" style="padding-left:${depth * 16}px">` +
+          `<div class="company-workspace-tree-row company-workspace-tree-folder" style="padding-left:${depth * 16}px" data-tooltip-content="${collapsed ? i18n.folderClosed : i18n.folderOpen}">` +
           `<span class="company-workspace-tree-chevron">${chevronSvg}</span>${folderSvg}` +
           `<span class="company-workspace-tree-name"></span></div>`,
         );
         row.querySelector('.company-workspace-tree-name')!.textContent = folder.name;
         row.classList.toggle('selected', folder.path === selectedFolderPath);
         row.addEventListener('click', () => {
-          if (collapsed) collapsedFolders.delete(folder.path);
-          else collapsedFolders.add(folder.path);
+          if (collapsed) expandedFolders.add(folder.path);
+          else expandedFolders.delete(folder.path);
           selectedFolderPath = folder.path;
           renderTree();
+          saveExpandedFolders();
         });
         wireDropTarget(row, folder.path);
         container.append(row);
@@ -723,7 +1055,8 @@ export function initCompanyWorkspace() {
         const fileSvg = iconCache.get(fullPath)?.icon ?? svg('octicon-file', 14);
         const row = createElementFromHTML<HTMLElement>(
           `<div class="company-workspace-tree-row company-workspace-tree-item" style="padding-left:${depth * 16 + 18}px">` +
-          `${fileSvg}<span class="company-workspace-tree-name"></span></div>`,
+          `${fileSvg}<span class="company-workspace-tree-name"></span>` +
+          `<button type="button" class="company-workspace-tree-delete" data-tooltip-content="${i18n.deleteFile}" aria-label="${i18n.deleteFile}">${svg('octicon-x', 12)}</button></div>`,
         );
         row.querySelector('.company-workspace-tree-name')!.textContent = file;
         row.classList.toggle('selected', fullPath === activePath);
@@ -735,6 +1068,10 @@ export function initCompanyWorkspace() {
         row.addEventListener('click', () => {
           if (openTabs.has(fullPath)) activateTab(fullPath);
           else openExistingFile(fullPath);
+        });
+        row.querySelector('.company-workspace-tree-delete')!.addEventListener('click', (e) => {
+          e.stopPropagation(); // don't also trigger the row's own open-file click above
+          deleteFile(fullPath);
         });
         row.draggable = true;
         row.addEventListener('dragstart', (e) => {
@@ -791,11 +1128,28 @@ export function initCompanyWorkspace() {
           existing.textarea.value = content;
         }
         activateTab(path);
+        // Neither branch above fires the textarea's own 'change' event
+        // (that's what schedules stageTmpEdit for a person's own typing),
+        // so an AI edit never reached tmp staging — a refresh before
+        // clicking Save silently lost it. Stage it directly instead of
+        // debouncing: this is one discrete write, not a keystroke stream.
+        clearTimeout(existing.tmpSaveTimer);
+        stageTmpEdit(existing);
         return;
       }
       insertFilePath(treeRoot, path, true);
       renderTree();
-      openFile(path, content);
+      // Same reasoning as above, but the localStorage write can't wait for
+      // stageTmpEdit here: openFile is async (it awaits createCodeEditor
+      // mounting CodeMirror), so calling stageTmpEdit only once that
+      // promise resolves left a real gap — a refresh landing before the
+      // editor finished mounting (easy to hit right after the AI creates
+      // several files in a row) still lost the content, even after the
+      // fix above. Writing to localStorage synchronously, right now,
+      // closes that gap; the network POST + localStorage cleanup can still
+      // wait for the tab to exist.
+      writePendingLocal(path, content, Date.now());
+      openFileAndStage(path, content);
     }
 
     const aiChatEl = el.querySelector<HTMLElement>('.company-workspace-ai-chat');
@@ -803,7 +1157,7 @@ export function initCompanyWorkspace() {
       chatHandle = initChatPanel(aiChatEl, {
         sendUrl: aiUrl,
         onEdit: applyAIEdit,
-        emptyStateText: '파일을 읽고 수정을 제안해드려요.<br>저장은 직접 눌러야 반영됩니다.',
+        emptyStateText: aiChatEl.getAttribute('data-ai-empty-state')!,
         // Every open tab's live content — including whatever's not saved
         // yet — not just the active one: read_file needs to see an
         // unsaved edit in ANY open tab, not only whichever happened to be
@@ -821,6 +1175,43 @@ export function initCompanyWorkspace() {
       renderTree();
     });
 
+    // Someone else saved a newer version of this exact file while it was
+    // still open here (company/workspace.go's WorkspaceSave returned 409,
+    // Gitea's own optimistic-lock check on the blob SHA this tab started
+    // from). Rather than silently overwrite their change or silently
+    // discard this person's own edit, run a real 3-way merge against the
+    // common ancestor the 409 carries (company-conflict.ts): edits that
+    // touched different lines just combine, and only lines both sides
+    // changed differently become <<<<<<< / ======= / >>>>>>> blocks with
+    // one-click resolution buttons. tab.baseSha is advanced to the version
+    // just merged in as "theirs" so that retry compares against the right
+    // baseline, not the stale one that just caused this conflict.
+    function handleConflict(conflict: WorkspaceConflict): void {
+      const tab = openTabs.get(conflict.path);
+      if (!tab) return; // the path came from our own save request — should always still be open
+      activateTab(conflict.path);
+
+      const theirsLabel = i18n.conflictTheirs.replace('%s', conflict.serverAuthor).replace('%s', formatDatetime(conflict.serverDate * 1000));
+      const {text, conflicts} = buildConflictText(conflict.baseContent ?? null, tab.textarea.value, conflict.serverContent, i18n.conflictYours, theirsLabel);
+
+      if (tab.editor) {
+        const {view} = tab.editor;
+        view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: text}});
+      } else {
+        tab.textarea.value = text;
+      }
+      tab.baseSha = conflict.serverSha;
+      if (conflicts === 0) {
+        // every edit landed on different lines — merged cleanly, nothing
+        // to resolve, just review and save again
+        setStatus(i18n.statusAutoMerged.replace('%s', conflict.path));
+        return;
+      }
+      const message = i18n.statusConflict.replace('%s', conflict.path);
+      setStatus(message);
+      showErrorToast(message);
+    }
+
     saveButton.addEventListener('click', async () => {
       // A tab needs saving if its content changed OR it was dragged into
       // a different folder (path !== serverPath) with no content change.
@@ -831,17 +1222,39 @@ export function initCompanyWorkspace() {
         path: tab.path,
         content: tab.textarea.value,
         ...tab.serverPath && tab.serverPath !== tab.path && {fromPath: tab.serverPath},
+        // Sent so the server can tell whether someone else saved a newer
+        // version of this exact file since it was opened here — undefined
+        // for a file that never existed before (nothing to compare
+        // against). Not sent for deletes below: those aren't tracked back
+        // to a specific tab/baseline once queued in pendingDeletes, so a
+        // delete can't currently detect "someone else changed this file
+        // first" — a narrower gap than the edit-vs-edit case this exists
+        // for, left alone for now.
+        baseSha: tab.baseSha,
       }));
       const deletes = [...pendingDeletes].map((path) => ({path, deleted: true}));
       if (!files.length && !deletes.length) {
-        setStatus('변경된 내용이 없습니다.');
+        setStatus(i18n.statusNoChanges);
+        return;
+      }
+      // Unresolved conflict markers about to be committed as literal file
+      // content — almost always a mistake for this editor's audience, so
+      // ask first (git itself allows it, so proceeding stays possible).
+      const unresolved = changedTabs.find((tab) => conflictMarkerPattern.test(tab.textarea.value));
+      if (unresolved && !window.confirm(i18n.conflictUnresolved.replace('%s', unresolved.path))) {
         return;
       }
       saveButton.disabled = true;
-      setStatus('저장 중…');
+      setStatus(i18n.statusSaving);
       try {
         const resp = await POST(saveUrl, {data: {files: [...files, ...deletes]}});
+        if (resp.status === 409) {
+          const {conflict} = await resp.json() as {conflict: WorkspaceConflict};
+          handleConflict(conflict);
+          return;
+        }
         if (!resp.ok) throw new Error(String(resp.status));
+        const {shas} = await resp.json() as {shas: Record<string, string>};
         // This Save just became the authoritative content for every one of
         // these paths — the server already clears its own staged copy as
         // part of handling it (company/workspace.go's WorkspaceSave); the
@@ -855,29 +1268,54 @@ export function initCompanyWorkspace() {
           localStorage.removeItem(pendingKey(repoLink, branch, tab.path));
           tab.originalContent = tab.textarea.value;
           tab.serverPath = tab.path;
+          tab.baseSha = shas[tab.path] ?? tab.baseSha; // see the comment on WorkspaceSave's own "shas" response field
         }
         pendingDeletes.clear();
-        setStatus('저장했습니다.');
+        setStatus(i18n.statusSaved);
       } catch {
         setStatus('');
-        showErrorToast('저장에 실패했습니다.');
+        showErrorToast(i18n.errorSaveFailed);
       } finally {
         saveButton.disabled = false;
       }
     });
 
+    // Fetched before the tree paints at all (below) so the very first
+    // render already reflects last visit's expand/collapse state, instead
+    // of a flash of "everything collapsed" that then reopens a moment
+    // later once this lands.
+    try {
+      const resp = await GET(foldersUrl);
+      if (resp.ok) {
+        const {paths} = await resp.json() as {paths: string[]};
+        for (const path of paths) expandedFolders.add(path);
+      }
+    } catch {
+      // best-effort — worst case the sidebar just starts fully collapsed this once
+    }
+
     try {
       const resp = await GET(`${repoLink}/tree-list/branch/${encodeURIComponent(branch)}`);
-      const paths: string[] = await resp.json();
-      for (const path of paths) insertFilePath(treeRoot, path, false); // server order, appended below any new entries
-      renderTree(); // paint the structure immediately with generic icons
+      // A repo with zero commits yet has no branch ref for this to list —
+      // native tree-list (repo/treelist.go) 500s against that rather than
+      // returning an empty array. RedirectAwayFromEmptyRepo
+      // (company/workspace.go) keeps most people from ever reaching this
+      // page in that state, but an exempted admin still can — treat the
+      // failure as "nothing to show yet" instead of a scary error toast,
+      // since starting from an empty tree here is completely valid (same
+      // as any other empty folder) and creating the first file still works.
+      if (resp.ok) {
+        const paths: string[] = await resp.json();
+        for (const path of paths) insertFilePath(treeRoot, path, false); // server order, appended below any new entries
+        renderTree(); // paint the structure immediately with generic icons
 
-      const folderPaths: string[] = [];
-      collectFolderPaths(treeRoot, folderPaths);
-      await Promise.all(folderPaths.map(fetchFolderIcons));
-      renderTree(); // repaint once the real per-file-type icons are in
+        const folderPaths: string[] = [];
+        collectFolderPaths(treeRoot, folderPaths);
+        await Promise.all(folderPaths.map(fetchFolderIcons));
+        renderTree(); // repaint once the real per-file-type icons are in
+      }
     } catch {
-      showErrorToast('파일 목록을 불러오지 못했습니다.');
+      // same reasoning as the !resp.ok branch above
     }
 
     await recoverPendingEdits();

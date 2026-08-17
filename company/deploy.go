@@ -6,6 +6,7 @@ package company
 import (
 	"bytes"
 	"fmt"
+	"html/template"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,14 +18,18 @@ import (
 	"gitea.dev/models/unit"
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/git"
+	"gitea.dev/modules/highlight"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
 	"gitea.dev/modules/templates"
+	"gitea.dev/modules/typesniffer"
 	"gitea.dev/services/context"
 	git_service "gitea.dev/services/git"
 	issue_service "gitea.dev/services/issue"
 	pull_svc "gitea.dev/services/pull"
 	files_service "gitea.dev/services/repository/files"
+
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 const (
@@ -98,34 +103,79 @@ func parseDeployBranchName(branch string) (owner, name string, requesterID int64
 	return parts[1], parts[2], requesterID, true
 }
 
+// deployFilePreviewMaxSize caps how much of a file DeployForm will render
+// inline — staff are meant to eyeball what's shipping, not read a whole
+// generated data file; anything bigger falls back to "too large to preview"
+// with a link out to the native file view instead.
+const deployFilePreviewMaxSize = 200 * 1024
+
+// deployDiffLine is one line of a deployFilePreview's rendered diff —
+// Content is already syntax-highlighted (modules/highlight), same as the
+// old flat file dump was, just now attributed to a side (context/add/del)
+// instead of always being "the whole file."
+type deployDiffLine struct {
+	Type    string // "context", "add", or "del"
+	Content template.HTML
+}
+
+// deployFilePreview is one row of DeployForm's file list — a real diff
+// against whatever's already live (the corresponding path under
+// deployPathPrefix on the central repo's default branch), same idea as a
+// pull request's Files Changed tab, not just a flat dump of the new
+// content. IsNew/IsRemoved cover the two cases where there's only one
+// side to show.
+type deployFilePreview struct {
+	Path      string
+	IsBinary  bool
+	TooLarge  bool
+	IsNew     bool
+	IsRemoved bool
+	Lines     []deployDiffLine
+}
+
 // DeployForm renders the "Deploy Request" message form for the repo in
 // the URL — mounted at /{owner}/{repo}/deploy alongside Gitea's own repo
 // routes (routers/web/web.go), so ctx.Repo.Repository/.Permission are
-// already resolved by the time this runs. Also lists every file that will
-// actually be uploaded (DeployPost snapshots the whole default branch, not
-// just recently-changed files — see snapshotFilesUnderPrefix), so staff can
-// see what they're sending before they click through.
+// already resolved by the time this runs. Also shows every file that will
+// actually be uploaded, content included (DeployPost snapshots the whole
+// default branch, not just recently-changed files — see
+// snapshotFilesUnderPrefix), so staff can see exactly what they're sending
+// before they click through.
 func DeployForm(ctx *context.Context) {
 	if !ctx.Repo.Permission.CanRead(unit.TypeCode) {
 		ctx.NotFound(nil)
 		return
 	}
-	files, err := defaultBranchFilePaths(ctx, ctx.Repo.Repository)
+	files, err := deployFilePreviews(ctx, ctx.Repo.Repository)
 	if err != nil {
-		ctx.ServerError("defaultBranchFilePaths", err)
+		ctx.ServerError("deployFilePreviews", err)
 		return
 	}
-	ctx.Data["Title"] = "Deploy Request"
+	pr, err := latestDeployRequest(ctx, ctx.Repo.Repository.OwnerName, ctx.Repo.Repository.Name)
+	if err != nil {
+		ctx.ServerError("latestDeployRequest", err)
+		return
+	}
+	if pr != nil {
+		status, err := deployStatusFor(ctx, pr)
+		if err != nil {
+			ctx.ServerError("deployStatusFor", err)
+			return
+		}
+		ctx.Data["DeployRequestStatus"] = status
+	}
+	ctx.Data["Title"] = string(ctx.Locale.Tr("company.deploy.title"))
 	ctx.Data["Repo"] = ctx.Repo.Repository
 	ctx.Data["DeployFiles"] = files
 	ctx.HTML(http.StatusOK, tplDeployForm)
 }
 
-// defaultBranchFilePaths lists every non-directory, non-submodule path in
-// repo's default branch, sorted — the same tree snapshotFilesUnderPrefix
-// walks to build the upload list, minus reading each blob's content (the
-// form only needs to show paths).
-func defaultBranchFilePaths(ctx *context.Context, repo *repo_model.Repository) ([]string, error) {
+// deployFilePreviews computes a real diff between repo's current default
+// branch and whatever's already live for this department (the
+// corresponding path under deployPathPrefix, on the central repo's own
+// default branch) — same idea as a pull request's Files Changed tab,
+// not just a flat dump of the new content.
+func deployFilePreviews(ctx *context.Context, repo *repo_model.Repository) ([]deployFilePreview, error) {
 	gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, repo)
 	if err != nil {
 		return nil, err
@@ -138,19 +188,163 @@ func defaultBranchFilePaths(ctx *context.Context, repo *repo_model.Repository) (
 	if err != nil {
 		return nil, err
 	}
-	entries, err := tree.ListEntriesRecursiveFast(ctx, gitRepo)
+	afterEntries, err := tree.ListEntriesRecursiveFast(ctx, gitRepo)
 	if err != nil {
 		return nil, err
 	}
-	paths := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || entry.IsSubModule() {
+	afterPaths := make(map[string]bool, len(afterEntries))
+	for _, entry := range afterEntries {
+		if !entry.IsDir() && !entry.IsSubModule() {
+			afterPaths[entry.Name()] = true
+		}
+	}
+
+	central, err := centralDeployRepo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	centralGitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, central)
+	if err != nil {
+		return nil, err
+	}
+	centralCommit, err := centralGitRepo.GetBranchCommit(ctx, central.DefaultBranch)
+	if err != nil {
+		return nil, err
+	}
+	prefix := deployPathPrefix(repo.OwnerName, repo.Name)
+	beforePaths := map[string]bool{}
+	// A missing prefix subtree just means this department has never
+	// deployed anything yet — every file below is new, beforePaths stays
+	// empty; not a real error.
+	if centralPrefixTree, err := centralCommit.SubTree(ctx, centralGitRepo, prefix); err == nil {
+		centralEntries, err := centralPrefixTree.ListEntriesRecursiveFast(ctx, centralGitRepo)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range centralEntries {
+			if !entry.IsDir() && !entry.IsSubModule() {
+				beforePaths[entry.Name()] = true
+			}
+		}
+	}
+
+	allPaths := make(map[string]bool, len(afterPaths)+len(beforePaths))
+	for p := range afterPaths {
+		allPaths[p] = true
+	}
+	for p := range beforePaths {
+		allPaths[p] = true
+	}
+
+	previews := make([]deployFilePreview, 0, len(allPaths))
+	for path := range allPaths {
+		preview := deployFilePreview{Path: path, IsNew: !beforePaths[path], IsRemoved: !afterPaths[path]}
+
+		var beforeContent, afterContent []byte
+		var tooLarge bool
+		if beforePaths[path] {
+			content, big, err := readBlobAt(ctx, centralCommit, centralGitRepo, prefix+"/"+path)
+			if err != nil {
+				return nil, fmt.Errorf("read central blob for %s: %w", path, err)
+			}
+			beforeContent, tooLarge = content, tooLarge || big
+		}
+		if afterPaths[path] {
+			content, big, err := readBlobAt(ctx, commit, gitRepo, path)
+			if err != nil {
+				return nil, fmt.Errorf("read blob for %s: %w", path, err)
+			}
+			afterContent, tooLarge = content, tooLarge || big
+		}
+		if tooLarge {
+			preview.TooLarge = true
+			previews = append(previews, preview)
 			continue
 		}
-		paths = append(paths, entry.Name())
+		if !typesniffer.DetectContentType(beforeContent).IsText() || !typesniffer.DetectContentType(afterContent).IsText() {
+			// DetectContentType([]byte{}) reports plain text, so an empty
+			// nil-content side (the file doesn't exist there) never
+			// wrongly trips this on its own.
+			preview.IsBinary = true
+			previews = append(previews, preview)
+			continue
+		}
+
+		preview.Lines = diffPreviewLines(path, beforeContent, afterContent)
+		previews = append(previews, preview)
 	}
-	sort.Strings(paths)
-	return paths, nil
+	sort.Slice(previews, func(i, j int) bool { return previews[i].Path < previews[j].Path })
+	return previews, nil
+}
+
+// readBlobAt reads one file's content at path out of commit (in gitRepo),
+// or (nil, true, nil) if it's over deployFilePreviewMaxSize — same size
+// guard deployFilePreviews always applied, now shared by both the
+// "before" (central) and "after" (department) side.
+func readBlobAt(ctx *context.Context, commit *git.Commit, gitRepo *git.Repository, path string) (content []byte, tooLarge bool, err error) {
+	entry, err := commit.GetTreeEntryByPath(ctx, gitRepo, path)
+	if err != nil {
+		return nil, false, err
+	}
+	blob := entry.Blob(gitRepo)
+	size := blob.Size(ctx)
+	if size > deployFilePreviewMaxSize {
+		return nil, true, nil
+	}
+	// GetBlobBytes treats a non-positive limit as "read nothing", not
+	// "unlimited" — pass the blob's real size instead of -1.
+	content, err = blob.GetBlobBytes(ctx, size)
+	return content, false, err
+}
+
+// diffPreviewLines computes a line-level diff between before and after
+// (empty on whichever side doesn't apply — a brand-new or fully-removed
+// file), syntax-highlighting each side once (modules/highlight, same as
+// the native file view) and distributing the resulting highlighted lines
+// according to the diff's own operation sequence, so the output looks the
+// same as any other highlighted file, not plain unstyled text.
+func diffPreviewLines(filename string, before, after []byte) []deployDiffLine {
+	dmp := diffmatchpatch.New()
+	a, b, lineArray := dmp.DiffLinesToChars(string(before), string(after))
+	diffs := dmp.DiffCharsToLines(dmp.DiffMain(a, b, false), lineArray)
+
+	beforeLines, _ := highlight.RenderFullFile(filename, "", before)
+	afterLines, _ := highlight.RenderFullFile(filename, "", after)
+
+	var result []deployDiffLine
+	var bi, ai int
+	for _, d := range diffs {
+		text := strings.TrimSuffix(d.Text, "\n")
+		if text == "" {
+			continue
+		}
+		n := strings.Count(text, "\n") + 1
+		switch d.Type {
+		case diffmatchpatch.DiffDelete:
+			for range n {
+				if bi < len(beforeLines) {
+					result = append(result, deployDiffLine{Type: "del", Content: beforeLines[bi]})
+				}
+				bi++
+			}
+		case diffmatchpatch.DiffInsert:
+			for range n {
+				if ai < len(afterLines) {
+					result = append(result, deployDiffLine{Type: "add", Content: afterLines[ai]})
+				}
+				ai++
+			}
+		default: // Equal
+			for range n {
+				if ai < len(afterLines) {
+					result = append(result, deployDiffLine{Type: "context", Content: afterLines[ai]})
+				}
+				bi++
+				ai++
+			}
+		}
+	}
+	return result
 }
 
 // DeployPost snapshots this department repo's current default branch into
@@ -402,7 +596,7 @@ func Submitted(ctx *context.Context) {
 		return
 	}
 
-	ctx.Data["Title"] = "Submitted"
+	ctx.Data["Title"] = string(ctx.Locale.Tr("company.deploy.submitted_title"))
 	ctx.Data["Repo"] = deptRepo
 	ctx.Data["Issue"] = pr.Issue
 	ctx.HTML(http.StatusOK, tplSubmitted)

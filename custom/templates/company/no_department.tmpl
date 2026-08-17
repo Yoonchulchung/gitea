@@ -1,0 +1,25 @@
+<!--
+	Shown to a signed-in, non-admin user with zero (or more than one)
+	department memberships — company/gate.go's redirectToDepartment. Uses
+	the normal base/head+footer page frame (not ctx.PlainText) specifically
+	so the native navbar, logout included, is still there: a bare
+	plain-text response left someone in this state with no way to leave
+	the page at all. See docs/company/departments.md.
+-->
+{{template "base/head" .}}
+<div role="main" class="page-content">
+	<div class="ui container tw-max-w-2xl tw-mt-5">
+		<h1 class="tw-mb-4">{{.Title}}</h1>
+		<p class="tw-mb-4">{{.Message}}</p>
+		{{if .Orgs}}
+			<div class="ui relaxed list">
+				{{range .Orgs}}
+					<div class="item">
+						<a href="{{AppSubUrl}}/org/{{.Name}}/dashboard">{{svg "octicon-organization" 16 "tw-mr-2"}}{{.Name}}</a>
+					</div>
+				{{end}}
+			</div>
+		{{end}}
+	</div>
+</div>
+{{template "base/footer" .}}
