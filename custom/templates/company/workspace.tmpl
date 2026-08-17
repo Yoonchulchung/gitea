@@ -1,0 +1,484 @@
+<!--
+	Multi-file editor for one repo/branch. Additive company/ page — no
+	upstream template to diff against. Mounted at
+	/{owner}/{repo}/_edits/{branch}, alongside Gitea's own _new/_edit/_upload
+	routes (routers/web/web.go), so it inherits their branch parsing and
+	write-access gate. The file tree and file contents load client-side
+	from Gitea's own existing routes (tree-list/raw), and the actual
+	editing reuses Gitea's own bundled CodeMirror setup
+	(web_src/js/modules/codeeditor, wired in here through
+	web_src/js/features/company-workspace.ts, data-global-init="initCompanyWorkspace")
+	— one CodeMirror instance per open tab. Saving posts every changed/
+	moved/deleted tab to company/workspace.go's WorkspaceSave, which
+	commits them all as a single commit straight to this branch, same
+	"direct" rule the simplified single-file editor follows
+	(custom/templates/repo/editor/commit_form.tmpl). See docs/company/repo-ui.md.
+-->
+{{template "base/head" .}}
+<div role="main" class="page-content company-workspace-page">
+	<div class="ui container fluid tw-pt-6 tw-pb-2 tw-px-4">
+		<a href="{{.Repo.Link}}" class="muted">&larr; {{.Repo.Name}}</a>
+	</div>
+
+	<div class="company-workspace tw-flex" data-global-init="initCompanyWorkspace"
+		data-repo-link="{{.Repo.Link}}" data-branch="{{.Branch}}"
+		data-save-url="{{.Repo.Link}}/_edits/{{.Branch | PathEscapeSegments}}/save"
+		data-ai-url="{{.Repo.Link}}/_edits_ai/{{.Branch | PathEscapeSegments}}"
+		data-tmp-url="{{.Repo.Link}}/_edits_tmp/{{.Branch | PathEscapeSegments}}"
+	>
+		<div class="company-workspace-sidebar">
+			<div class="flex-text-block">
+				<button type="button" class="ui basic tiny fluid button company-workspace-new-file">
+					{{svg "octicon-file-added" 14 "tw-mr-1"}}{{ctx.Locale.Tr "repo.editor.new_file"}}
+				</button>
+				<button type="button" class="ui basic tiny icon button company-workspace-new-folder" data-tooltip-content="{{ctx.Locale.Tr "company.workspace.new_folder"}}">
+					{{svg "octicon-file-directory" 14}}
+				</button>
+			</div>
+			<div class="company-workspace-tree"></div>
+		</div>
+		<div class="company-workspace-main">
+			<div class="company-workspace-toolbar">
+				<div class="company-workspace-tabs"></div>
+				<div class="company-workspace-actions">
+					<span class="company-workspace-status tw-text-text-light"></span>
+					<button type="button" class="ui basic tiny red button company-workspace-delete" data-tooltip-content="{{ctx.Locale.Tr "company.workspace.delete_current_file"}}">
+						{{svg "octicon-trash" 14}}
+					</button>
+					<button type="button" class="ui primary tiny button company-workspace-save">{{ctx.Locale.Tr "save"}}</button>
+				</div>
+			</div>
+			<div class="company-workspace-panes"></div>
+		</div>
+		<div class="company-workspace-ai-chat" data-ai-ready="{{.AIEnabled}}" data-ai-settings-url="{{AppSubUrl}}/user/settings/ai">
+			<div class="company-workspace-ai-chat-header">
+				{{svg "octicon-copilot" 16 "tw-mr-1"}}AI
+			</div>
+			<div class="company-ai-chat-messages"></div>
+			<div class="company-ai-chat-inputbar">
+				<div class="company-ai-chat-inputwrap">
+					<textarea class="company-ai-chat-input" rows="1" placeholder="{{ctx.Locale.Tr "company.workspace.ai_placeholder"}}"></textarea>
+					<div class="company-ai-chat-inputtoolbar">
+						<span class="company-ai-chat-context tw-hidden" data-tooltip-content="{{ctx.Locale.Tr "company.workspace.ai_context_tooltip"}}"></span>
+						<button type="button" class="company-ai-chat-send" aria-label="{{ctx.Locale.Tr "company.workspace.ai_send"}}"></button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<style>
+.company-workspace {
+	/* No fixed height here on purpose — how much vertical chrome sits
+	   above (navbar, our own breadcrumb) and below (site footer) isn't
+	   ours to know from CSS alone, and any fixed calc() guess drifts the
+	   moment either one's height changes. company-workspace.ts measures
+	   the box's own actual top offset at runtime instead and sets height
+	   to reach exactly to the bottom of the viewport (minus the footer's
+	   own reserved space) — see initCompanyWorkspace's sizeToViewport. */
+	min-height: 480px;
+	border: 1px solid var(--color-secondary);
+	border-radius: 6px;
+	overflow: hidden;
+	overscroll-behavior: contain;
+}
+.company-workspace-sidebar {
+	width: 240px;
+	flex-shrink: 0;
+	border-right: 1px solid var(--color-secondary);
+	background: var(--color-box-body);
+	padding: .75rem;
+	overflow-y: auto;
+	/* A long filename (no spaces to wrap on) forced this flex column wider
+	   than its own width, which then made the whole sidebar scroll
+	   sideways — clip it instead; ellipsis below is what should show the
+	   overflow, not a scrollbar. */
+	overflow-x: hidden;
+	/* Same fix as .cm-scroller below: without this, scrolling the file
+	   tree past its own content chains up to the whole page once the
+	   browser considers the sidebar's own scroll "done" for that wheel
+	   tick — the page visibly jumps along with it. */
+	overscroll-behavior: contain;
+	display: flex;
+	flex-direction: column;
+	gap: .5rem;
+}
+.company-workspace-tree {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	/* Without flex:1 this only takes up its own content's height, so the
+	   blank area below the last row belongs to .company-workspace-sidebar
+	   instead — which has no drop handling wired to it at all, so a drop
+	   there (or a click meant to deselect a folder) silently did nothing
+	   unless it landed exactly on a row. */
+	flex: 1;
+}
+.company-workspace-tree-row {
+	display: flex;
+	align-items: center;
+	gap: .35rem;
+	padding: .3rem .5rem;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: .9rem;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0; /* let text-overflow:ellipsis actually apply instead of pushing the row wider */
+}
+.company-workspace-tree-row:hover { background: var(--color-hover); }
+.company-workspace-tree-row.selected {
+	background: var(--color-active);
+	box-shadow: inset 2px 0 0 var(--color-primary);
+}
+.company-workspace-tree-item[draggable] {
+	cursor: grab;
+}
+.drop-target {
+	outline: 2px dashed var(--color-primary);
+	outline-offset: -2px;
+	background: var(--color-primary-light-7, rgba(0,0,0,.03));
+}
+.company-workspace-tree-row .company-workspace-tree-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.company-workspace-tree-chevron {
+	display: inline-flex;
+	flex-shrink: 0;
+	color: var(--color-text-light);
+}
+.company-workspace-tree-folder svg:not(.company-workspace-tree-chevron svg) {
+	flex-shrink: 0;
+	color: var(--color-text-light);
+}
+.company-workspace-tree-item svg {
+	flex-shrink: 0;
+	color: var(--color-text-light);
+}
+.company-workspace-tree-new-item {
+	cursor: default;
+}
+.company-workspace-tree-new-item svg {
+	flex-shrink: 0;
+	color: var(--color-text-light);
+}
+.company-workspace-tree-new-input {
+	flex: 1;
+	min-width: 0;
+	border: 1px solid var(--color-primary);
+	border-radius: 3px;
+	padding: .1rem .3rem;
+	font-size: .9rem;
+	background: var(--color-input-background);
+	color: var(--color-text);
+}
+.company-workspace-main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+.company-workspace-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	border-bottom: 1px solid var(--color-secondary);
+	padding: .65rem .75rem;
+	gap: .5rem;
+}
+.company-workspace-tabs {
+	display: flex;
+	overflow-x: auto;
+	flex: 1;
+	min-width: 0;
+}
+.company-workspace-tab {
+	display: flex;
+	align-items: center;
+	gap: .4rem;
+	padding: .35rem .6rem;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: .85rem;
+	white-space: nowrap;
+	color: var(--color-text-light);
+}
+.company-workspace-tab.active {
+	background: var(--color-active);
+	color: var(--color-text);
+}
+.company-workspace-tab-close {
+	border: none;
+	background: none;
+	cursor: pointer;
+	color: inherit;
+	line-height: 1;
+	padding: 0 .15rem;
+}
+.company-workspace-actions {
+	display: flex;
+	align-items: center;
+	gap: .5rem;
+	flex-shrink: 0;
+}
+.company-workspace-panes {
+	flex: 1;
+	min-height: 0;
+	position: relative;
+}
+.company-workspace-pane {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+}
+.company-workspace-editor-form {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+.company-workspace-pane .code-editor-container,
+.company-workspace-pane .CodeMirror {
+	flex: 1;
+	min-height: 0;
+	height: 100%;
+}
+.company-workspace-pane .cm-editor {
+	/* Gitea's own codeeditor.css never constrains .cm-editor's height —
+	   native pages let it grow to its content and the whole page scrolls.
+	   Our page needs a fixed-height box with internal scrolling instead;
+	   without this, .cm-editor renders at its natural (taller) content
+	   height, overflows its 100%-height parent, and the last lines get
+	   silently clipped by .company-workspace's overflow:hidden — the
+	   editor thinks it has more visible room than it actually does, so
+	   scrolling to the bottom still doesn't show the last line. */
+	height: 100%;
+	/* codeeditor.css's own default is 12px — sized for the native, more
+	   compact single-file editor. This page is the primary editing
+	   surface, not a secondary panel, so it gets a size closer to a real
+	   code editor's default. */
+	font-size: 14px;
+}
+.company-workspace-pane .cm-content {
+	/* codeeditor.css zeroes this out ("avoid the small top and bottom
+	   padding") for the native compact editor — this page wants real
+	   breathing room above the first line instead, so the text doesn't
+	   start flush against the toolbar. */
+	padding-top: 1rem;
+}
+.company-workspace-pane .cm-scroller {
+	/* Without this, scrolling the editor past what the mouse wheel needs to
+	   move it chains up to the page itself once the browser decides the
+	   inner scroll is "done" for that wheel tick — the whole page (header,
+	   file tree) visibly jumps along with the editor content. */
+	overscroll-behavior: contain;
+}
+.company-workspace-ai-chat {
+	width: 460px;
+	flex-shrink: 0;
+	border-left: 1px solid var(--color-secondary);
+	background: var(--color-box-body);
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+.company-workspace-ai-chat-header {
+	display: flex;
+	align-items: center;
+	padding: .7rem 1rem;
+	border-bottom: 1px solid var(--color-secondary);
+	font-weight: 600;
+	font-size: .95rem;
+	flex-shrink: 0;
+	color: var(--color-text-light-1);
+	letter-spacing: .02em;
+}
+.company-ai-chat-messages {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: .9rem .75rem;
+	display: flex;
+	flex-direction: column;
+	gap: .7rem;
+}
+/* Empty-state hint shown once, before the first message — points at the
+   input bar rather than leaving a blank panel with no explanation. */
+.company-ai-chat-empty {
+	margin: auto 0;
+	text-align: center;
+	color: var(--color-text-light-2);
+	font-size: .92rem;
+	padding: 1.5rem 1rem;
+}
+.company-ai-chat-empty svg {
+	color: var(--color-text-light-3, var(--color-text-light-2));
+	margin-bottom: .5rem;
+}
+.company-ai-chat-message {
+	font-size: .98rem;
+	line-height: 1.6;
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-width: 100%;
+}
+.company-ai-chat-message-user {
+	align-self: flex-end;
+	max-width: 85%;
+	background: var(--color-primary);
+	color: var(--color-primary-contrast, #fff);
+	padding: .55rem .9rem;
+	border-radius: 14px 14px 3px 14px;
+}
+.company-ai-chat-message-assistant {
+	align-self: stretch;
+	display: flex;
+	gap: .6rem;
+}
+.company-ai-chat-message-assistant .company-ai-chat-avatar {
+	flex-shrink: 0;
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	background: var(--color-active);
+	color: var(--color-text-light-1);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-top: .1rem;
+}
+.company-ai-chat-message-assistant .company-ai-chat-text {
+	flex: 1;
+	min-width: 0;
+	padding-top: .2rem;
+}
+.company-ai-chat-message-status {
+	align-self: flex-start;
+	display: inline-flex;
+	align-items: center;
+	gap: .35rem;
+	font-size: .85rem;
+	color: var(--color-text-light-1);
+	background: var(--color-active);
+	border-radius: 999px;
+	padding: .3rem .8rem .3rem .6rem;
+}
+.company-ai-chat-message-status svg {
+	flex-shrink: 0;
+	color: var(--color-text-light-2);
+}
+.company-ai-chat-message-error {
+	align-self: stretch;
+	background: var(--color-error-bg);
+	color: var(--color-error-text);
+	border: 1px solid color-mix(in srgb, var(--color-error-text) 35%, transparent);
+	border-radius: 10px;
+	padding: .55rem .75rem;
+	font-size: .82rem;
+}
+.company-ai-chat-inputbar {
+	padding: .65rem .75rem .8rem;
+	border-top: 1px solid var(--color-secondary);
+	flex-shrink: 0;
+}
+/* Stacked (textarea on top, its own toolbar row below) rather than a
+   single row with the send button beside the text — a single row either
+   has to keep the button vertically anchored (awkward once the textarea
+   grows past one line) or drags it down the right edge as the box grows.
+   Stacking keeps the button's row pinned to the bottom of the whole
+   control regardless of how many lines the message grows to. */
+.company-ai-chat-inputwrap {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--color-secondary);
+	border-radius: 18px;
+	background: var(--color-input-background);
+	padding: .7rem .6rem .55rem .9rem;
+	transition: border-color .15s ease, box-shadow .15s ease;
+}
+.company-ai-chat-inputwrap:focus-within {
+	border-color: var(--color-primary);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+.company-ai-chat-input {
+	resize: none;
+	min-height: 1.6rem;
+	max-height: 220px;
+	border: none;
+	background: none;
+	padding: 0 0 .5rem;
+	font-size: .95rem;
+	line-height: 1.45;
+	color: var(--color-text);
+}
+.company-ai-chat-input:focus {
+	outline: none;
+}
+.company-ai-chat-input::placeholder {
+	color: var(--color-text-light-3, var(--color-text-light-2));
+}
+.company-ai-chat-input:disabled {
+	cursor: not-allowed;
+}
+.company-ai-chat-inputtoolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: .5rem;
+}
+.company-ai-chat-send {
+	flex-shrink: 0;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	padding: 0;
+	background: var(--color-primary);
+	color: var(--color-primary-contrast, #fff);
+	cursor: pointer;
+	transition: background-color .15s ease, opacity .15s ease, transform .1s ease;
+}
+.company-ai-chat-send:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--color-primary) 85%, black);
+}
+.company-ai-chat-send:active:not(:disabled) {
+	transform: scale(.92);
+}
+.company-ai-chat-send:disabled {
+	opacity: .35;
+	cursor: not-allowed;
+}
+.company-ai-chat-send.sending {
+	background: var(--color-red, #d1383d);
+}
+/* The active-tab filename chip — Claude-Code-style ambient context, shows
+   what file a plain "이거 고쳐줘" would apply to. See
+   web_src/js/features/company-ai-chat.ts's setActiveFilePath. */
+.company-ai-chat-context {
+	display: inline-flex;
+	align-items: center;
+	gap: .3rem;
+	font-size: .76rem;
+	color: var(--color-text-light-1);
+	background: var(--color-active);
+	border-radius: 999px;
+	padding: .2rem .55rem .2rem .45rem;
+	max-width: 65%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.company-ai-chat-context svg {
+	flex-shrink: 0;
+	color: var(--color-text-light-2);
+}
+</style>
+{{template "base/footer" .}}

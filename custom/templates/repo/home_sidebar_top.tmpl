@@ -1,0 +1,212 @@
+<!--
+	Override of templates/repo/home_sidebar_top.tmpl. Non-admins only:
+	- the code-search box is removed (git/code-search jargon, and
+	  /{owner}/{repo}/search is blocked for them anyway — see gate.go's
+	  isRepoScopedAllow, "search" isn't in the default-allow list... actually
+	  it falls to the default case so it IS reachable, but showing a raw
+	  code-search box still isn't something this audience needs).
+	- an inline "편집" button next to the Description label lets a
+	  Write-access (not necessarily repo-Admin) user change the
+	  description directly — native Gitea only offers this on the repo
+	  Settings page, which requires actual repo-Admin permission
+	  (routers/web/web.go's reqRepoAdmin) and is out of reach for a
+	  regular department-team member. Posts to company/description.go's
+	  UpdateDescription, which uses the same Write-access check as the
+	  workspace editor (company/workspace.go's resolveWritableRepo).
+	Admins get the complete, unmodified upstream sidebar.
+	See docs/company/repo-ui.md.
+	Keep this in sync with the upstream file; diff it on every Gitea
+	upgrade — see docs/company/architecture.md on custom/templates drift.
+-->
+{{if .IsAdmin}}
+<div class="repo-home-sidebar-top flex-relaxed-list">
+	<form class="ignore-dirty tw-flex" action="{{.RepoLink}}/search" method="get">
+		<div class="ui small action input tw-flex tw-flex-1">
+			<div class="ui input tw-flex tw-flex-1 global-shortcut-wrapper">
+				<input name="q" size="10" placeholder="{{ctx.Locale.Tr "search.code_kind"}}">
+				<kbd data-global-init="onGlobalShortcut" data-shortcut-keys="s">S</kbd>
+			</div>
+			{{template "shared/search/button"}}
+		</div>
+	</form>
+
+	<div class="flex-relaxed-list">
+		<div class="repo-home-sidebar-header">{{ctx.Locale.Tr "repo.repo_desc"}}</div>
+
+		<div class="repo-description tw-break-anywhere tw-gap-2">
+			{{- $description := .Repository.DescriptionHTML ctx -}}
+			{{if $description}}{{$description | RenderCodeBlock}}{{else}}{{ctx.Locale.Tr "repo.repo_no_desc"}}{{end}}
+		</div>
+
+		{{if .Repository.Website}}
+			<a class="flex-text-block" href="{{.Repository.Website}}">
+				{{svg "octicon-link" 16 "tw-text-text"}} <span class="tw-text-primary">{{.Repository.Website}}</span>
+			</a>
+		{{end}}
+
+		<div id="repo-topics" class="flex-text-block tw-flex-wrap tw-gap-1 tw-my-1 tw-text-text">
+			{{/* !!!! it SHOULD and MUST match the code in repo-home.ts */}}
+			{{range .Topics}}<a class="repo-topic ui large label gt-ellipsis" title={{.Name}} href="{{AppSubUrl}}/explore/repos?q={{.Name}}&topic=1">{{.Name}}</a>{{end}}
+		</div>
+		{{if and .Permission.IsAdmin (not .Repository.IsArchived)}}
+			<button id="manage_topic" class="btn interact-fg tw-mb-2 tw-text-12">{{ctx.Locale.Tr "repo.topic.manage_topics"}}</button>
+			<div class="ui form tw-hidden tw-my-2" id="topic_edit">
+				<div class="ui fluid multiple search selection dropdown tw-flex-wrap tw-flex-1">
+					<input type="hidden" name="topics" value="{{range $i, $v := .Topics}}{{.Name}}{{if Eval $i "+" 1 "<" (len $.Topics)}},{{end}}{{end}}">
+					{{range .Topics}}
+						{{/* keep the same layout as Fomantic UI generated labels */}}
+						<a class="ui label transition visible tw-cursor-default tw-inline-block repo-topic" data-value="{{.Name}}">{{.Name}}{{svg "octicon-x" 16 "delete icon"}}</a>
+					{{end}}
+					<div class="text"></div>
+				</div>
+				<div class="tw-my-2">
+					<button class="ui primary button" id="save_topic" data-link="{{.RepoLink}}/topics">{{ctx.Locale.Tr "save"}}</button>
+					<button class="ui basic button" id="cancel_topic_edit">{{ctx.Locale.Tr "cancel"}}</button>
+				</div>
+			</div>
+		{{end}}
+
+		{{if .ReadmeExist}}
+			<a class="flex-text-block muted" href="{{.RepoLink}}/src/{{.RefTypeNameSubURL}}/{{PathEscapeSegments .FileTreePath}}">
+				{{svg "octicon-book"}} {{ctx.Locale.Tr "readme"}}
+			</a>
+		{{end}}
+
+		{{range $licenseGroup := .LicenseGroups}}
+			{{$licenseDisplayName := StringUtils.Join $licenseGroup.LicenseNames ", "}}
+			<a class="flex-text-block muted" title="{{$licenseDisplayName}}" href="{{$.RepoLink}}/src/{{$.Repository.DefaultBranch}}/{{PathEscapeSegments $licenseGroup.LicensePath}}">
+				{{svg "octicon-law"}} {{$licenseDisplayName}}
+			</a>
+		{{end}}
+
+		{{if .CitiationExist}}
+			{{template "repo/cite/cite_modal" .}}
+			<a class="flex-text-block muted" id="cite-repo-button">
+				{{svg "octicon-cross-reference"}} {{ctx.Locale.Tr "repo.cite_this_repo"}}
+			</a>
+		{{end}}
+		<div class="flex-text-block muted" {{if not (eq .Repository.Size 0)}}data-tooltip-content="{{.Repository.SizeDetailsString}}"{{end}}>
+			{{$fileSizeFormatted := FileSize .Repository.Size}}{{/* the formatted string is always "{val} {unit}" */}}
+			{{$fileSizeFields := StringUtils.Split $fileSizeFormatted " "}}
+			{{svg "octicon-database"}} <b>{{ctx.Locale.PrettyNumber (index $fileSizeFields 0)}}</b> {{index $fileSizeFields 1}}
+		</div>
+
+		{{if not .DisableStars}}
+			<a class="flex-text-block muted" href="{{.RepoLink}}/stars">
+				{{svg "octicon-star"}} <b>{{CountFmt .Repository.NumStars}}</b> {{ctx.Locale.Tr "repo.stars"}}
+			</a>
+		{{end}}
+		<a class="flex-text-block muted" href="{{.RepoLink}}/watchers">
+			{{svg "octicon-eye"}} <b>{{CountFmt .Repository.NumWatches}}</b> {{ctx.Locale.Tr "repo.watchers"}}
+		</a>
+		<a class="flex-text-block muted" href="{{.RepoLink}}/forks">
+			{{svg "octicon-repo-forked"}} <b>{{CountFmt .Repository.NumForks}}</b> {{ctx.Locale.Tr "repo.forks"}}
+		</a>
+	</div>
+</div>
+{{else}}
+{{$canEditDesc := .Permission.CanWrite ctx.Consts.RepoUnitTypeCode}}
+<div class="repo-home-sidebar-top flex-relaxed-list">
+	<div class="flex-relaxed-list">
+		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
+			<span>{{ctx.Locale.Tr "repo.repo_desc"}}</span>
+			{{if $canEditDesc}}
+			<button type="button" class="btn interact-fg tw-text-12" id="company-desc-edit-btn">{{ctx.Locale.Tr "edit"}}</button>
+			{{end}}
+		</div>
+
+		<div class="repo-description tw-break-anywhere tw-gap-2" id="company-desc-view">
+			{{- $description := .Repository.DescriptionHTML ctx -}}
+			{{if $description}}{{$description | RenderCodeBlock}}{{else}}{{ctx.Locale.Tr "repo.repo_no_desc"}}{{end}}
+		</div>
+
+		{{if $canEditDesc}}
+		<div class="tw-hidden" id="company-desc-edit-panel">
+			<textarea id="company-desc-textarea" rows="4" class="tw-w-full" maxlength="2048" data-original="{{.Repository.Description}}">{{.Repository.Description}}</textarea>
+			<div class="flex-text-block tw-mt-1">
+				<button type="button" class="ui primary tiny button" id="company-desc-save">{{ctx.Locale.Tr "save"}}</button>
+				<button type="button" class="ui basic tiny button" id="company-desc-cancel">{{ctx.Locale.Tr "cancel"}}</button>
+			</div>
+		</div>
+		<script nonce="{{ctx.CspScriptNonce}}">
+		(function () {
+			var editBtn = document.getElementById('company-desc-edit-btn');
+			var view = document.getElementById('company-desc-view');
+			var panel = document.getElementById('company-desc-edit-panel');
+			var textarea = document.getElementById('company-desc-textarea');
+			var saveBtn = document.getElementById('company-desc-save');
+			var cancelBtn = document.getElementById('company-desc-cancel');
+
+			function openEdit() {
+				view.classList.add('tw-hidden');
+				editBtn.classList.add('tw-hidden');
+				panel.classList.remove('tw-hidden');
+				textarea.focus();
+			}
+			function closeEdit() {
+				panel.classList.add('tw-hidden');
+				view.classList.remove('tw-hidden');
+				editBtn.classList.remove('tw-hidden');
+			}
+
+			editBtn.addEventListener('click', openEdit);
+			cancelBtn.addEventListener('click', function () {
+				textarea.value = textarea.dataset.original;
+				closeEdit();
+			});
+			saveBtn.addEventListener('click', function () {
+				saveBtn.disabled = true;
+				fetch('{{AppSubUrl}}/company/repo-description/{{.Repository.OwnerName}}/{{.Repository.Name}}', {
+					method: 'POST',
+					headers: {'Content-Type': 'application/json'},
+					body: JSON.stringify({description: textarea.value}),
+				}).then(function (resp) {
+					if (!resp.ok) throw new Error(String(resp.status));
+					window.location.reload();
+				}).catch(function () {
+					saveBtn.disabled = false;
+					window.alert({{ctx.Locale.Tr "error.occurred"}});
+				});
+			});
+		})();
+		</script>
+		{{end}}
+
+		{{if .Repository.Website}}
+			<a class="flex-text-block" href="{{.Repository.Website}}">
+				{{svg "octicon-link" 16 "tw-text-text"}} <span class="tw-text-primary">{{.Repository.Website}}</span>
+			</a>
+		{{end}}
+
+		<div id="repo-topics" class="flex-text-block tw-flex-wrap tw-gap-1 tw-my-1 tw-text-text">
+			{{/* !!!! it SHOULD and MUST match the code in repo-home.ts */}}
+			{{range .Topics}}<a class="repo-topic ui large label gt-ellipsis" title={{.Name}} href="{{AppSubUrl}}/explore/repos?q={{.Name}}&topic=1">{{.Name}}</a>{{end}}
+		</div>
+
+		{{if .ReadmeExist}}
+			<a class="flex-text-block muted" href="{{.RepoLink}}/src/{{.RefTypeNameSubURL}}/{{PathEscapeSegments .FileTreePath}}">
+				{{svg "octicon-book"}} {{ctx.Locale.Tr "readme"}}
+			</a>
+		{{end}}
+
+		{{range $licenseGroup := .LicenseGroups}}
+			{{$licenseDisplayName := StringUtils.Join $licenseGroup.LicenseNames ", "}}
+			<a class="flex-text-block muted" title="{{$licenseDisplayName}}" href="{{$.RepoLink}}/src/{{$.Repository.DefaultBranch}}/{{PathEscapeSegments $licenseGroup.LicensePath}}">
+				{{svg "octicon-law"}} {{$licenseDisplayName}}
+			</a>
+		{{end}}
+
+		{{if .CitiationExist}}
+			{{template "repo/cite/cite_modal" .}}
+			<a class="flex-text-block muted" id="cite-repo-button">
+				{{svg "octicon-cross-reference"}} {{ctx.Locale.Tr "repo.cite_this_repo"}}
+			</a>
+		{{end}}
+		<div class="flex-text-block muted" {{if not (eq .Repository.Size 0)}}data-tooltip-content="{{.Repository.SizeDetailsString}}"{{end}}>
+			{{$fileSizeFormatted := FileSize .Repository.Size}}{{/* the formatted string is always "{val} {unit}" */}}
+			{{$fileSizeFields := StringUtils.Split $fileSizeFormatted " "}}
+			{{svg "octicon-database"}} <b>{{ctx.Locale.PrettyNumber (index $fileSizeFields 0)}}</b> {{index $fileSizeFields 1}}
+		</div>
+	</div>
+</div>
+{{end}}

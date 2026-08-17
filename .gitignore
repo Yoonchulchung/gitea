@@ -61,6 +61,10 @@ cpu.out
 /dist
 /custom/*
 !/custom/conf/app.example.ini
+# custom/templates is tracked source for this fork (company/ overrides +
+# pages), not local-only customization — only custom/conf stays ignored.
+# See docs/company/README.md.
+!/custom/templates
 /data
 /indexers
 /log

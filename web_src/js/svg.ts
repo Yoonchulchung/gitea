@@ -9,6 +9,7 @@ import giteaRunning from '../../public/assets/img/svg/gitea-running.svg';
 import octiconArchive from '../../public/assets/img/svg/octicon-archive.svg';
 import octiconArrowLeft from '../../public/assets/img/svg/octicon-arrow-left.svg';
 import octiconArrowSwitch from '../../public/assets/img/svg/octicon-arrow-switch.svg';
+import octiconArrowUp from '../../public/assets/img/svg/octicon-arrow-up.svg';
 import octiconBlocked from '../../public/assets/img/svg/octicon-blocked.svg';
 import octiconBold from '../../public/assets/img/svg/octicon-bold.svg';
 import octiconCheck from '../../public/assets/img/svg/octicon-check.svg';
@@ -20,6 +21,7 @@ import octiconChevronRight from '../../public/assets/img/svg/octicon-chevron-rig
 import octiconCircle from '../../public/assets/img/svg/octicon-circle.svg';
 import octiconClock from '../../public/assets/img/svg/octicon-clock.svg';
 import octiconCode from '../../public/assets/img/svg/octicon-code.svg';
+import octiconCopilot from '../../public/assets/img/svg/octicon-copilot.svg';
 import octiconColumns from '../../public/assets/img/svg/octicon-columns.svg';
 import octiconCopy from '../../public/assets/img/svg/octicon-copy.svg';
 import octiconDiffAdded from '../../public/assets/img/svg/octicon-diff-added.svg';
@@ -99,6 +101,7 @@ const svgs = {
   'octicon-archive': octiconArchive,
   'octicon-arrow-left': octiconArrowLeft,
   'octicon-arrow-switch': octiconArrowSwitch,
+  'octicon-arrow-up': octiconArrowUp,
   'octicon-blocked': octiconBlocked,
   'octicon-bold': octiconBold,
   'octicon-check': octiconCheck,
@@ -110,6 +113,7 @@ const svgs = {
   'octicon-circle': octiconCircle,
   'octicon-clock': octiconClock,
   'octicon-code': octiconCode,
+  'octicon-copilot': octiconCopilot,
   'octicon-columns': octiconColumns,
   'octicon-copy': octiconCopy,
   'octicon-diff-added': octiconDiffAdded,

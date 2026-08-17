@@ -1,0 +1,23 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-activity")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">Cross-department activity</h4>
+		<div class="ui attached table segment">
+			<table class="ui very basic table">
+				<thead>
+					<tr><th>When</th><th>Repo</th><th>Action</th></tr>
+				</thead>
+				<tbody>
+					{{range .Actions}}
+						<tr>
+							<td>{{DateUtils.FullTime .CreatedUnix}}</td>
+							<td>{{if .Repo}}<a href="{{.Repo.Link}}">{{.Repo.OwnerName}}/{{.Repo.Name}}</a>{{end}}</td>
+							<td>{{.OpType}}</td>
+						</tr>
+					{{else}}
+						<tr><td colspan="3" class="text-grey">No activity yet.</td></tr>
+					{{end}}
+				</tbody>
+			</table>
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}

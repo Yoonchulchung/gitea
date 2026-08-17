@@ -1,0 +1,40 @@
+{{template "base/head" .}}
+<div role="main" class="page-content">
+	<div class="ui container tw-max-w-2xl">
+		<div class="tw-mb-4">
+			<a href="{{.Repo.Link}}" class="muted">&larr; {{.Repo.Name}}</a>
+		</div>
+
+		<h1 class="tw-mb-2">{{svg "octicon-rocket" 22 "tw-mr-2"}}Deploy Request — {{.Repo.Name}}</h1>
+
+		<form class="ui form" id="deploy-form" method="post">
+			<div class="field">
+				<label>이건 어떤 배포인가요?</label>
+				<textarea name="message" rows="3" placeholder="검토하는 관리자에게 남길 짧은 설명" required></textarea>
+			</div>
+			<button type="submit" id="submit-button" class="ui primary button">
+				{{svg "octicon-rocket" 16 "tw-mr-1"}}Deploy Request
+			</button>
+		</form>
+
+		<div class="tw-mt-5">
+			<h4 class="tw-mb-2 flex-text-block">{{svg "octicon-file-diff" 16}}함께 올라가는 파일 ({{len .DeployFiles}})</h4>
+			{{if .DeployFiles}}
+				<div class="ui segments company-deploy-file-list tw-max-h-64 tw-overflow-y-auto">
+					{{range .DeployFiles}}
+						<a class="ui segment flex-text-block tw-justify-between muted" href="{{$.Repo.Link}}/src/branch/{{PathEscapeSegments $.Repo.DefaultBranch}}/{{PathEscapeSegments .}}" target="_blank" rel="noopener" title="{{ctx.Locale.Tr "company.deploy.view_file"}}">
+							<span class="flex-text-block tw-gap-2 tw-font-mono tw-text-13">
+								{{svg "octicon-file" 14 "tw-text-light-2"}}
+								{{.}}
+							</span>
+							{{svg "octicon-link-external" 12 "tw-text-light-2"}}
+						</a>
+					{{end}}
+				</div>
+			{{else}}
+				<div class="text-grey tw-text-13">올라갈 파일이 없습니다.</div>
+			{{end}}
+		</div>
+	</div>
+</div>
+{{template "base/footer" .}}

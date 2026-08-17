@@ -1,0 +1,88 @@
+{{template "base/head" .}}
+<div role="main" class="page-content">
+	<div class="ui container">
+		<div class="tw-mb-4">
+			<a href="{{.ContextUser.DashboardLink}}" class="muted">&larr; {{.ContextUser.DisplayName}} dashboard</a>
+		</div>
+
+		<h1 class="tw-mb-2">{{svg "octicon-rocket" 22 "tw-mr-2"}}Deploy requests</h1>
+		<p class="text-grey tw-mb-4">Everything {{.ContextUser.DisplayName}} has registered for deploy — what's still waiting, and what's already gone out.</p>
+
+		<h3 class="tw-flex tw-items-center tw-gap-2">
+			{{ctx.Locale.Tr "company.deploy_requests.requested"}}
+			<div class="ui label">{{len .Requested}}</div>
+		</h3>
+		<div class="ui divided list tw-mb-5">
+			{{range .Requested}}
+				<div class="item">
+					<div class="flex-text-block">
+						{{ctx.AvatarUtils.Avatar .Poster 28}}
+						<div class="flex-text-block tw-flex-1 tw-flex-wrap tw-justify-between">
+							<div>
+								<strong>{{.Title}}</strong>
+								<div class="text-grey tw-text-13">
+									<a href="{{.Repo.Link}}" class="muted">{{.Repo.Name}}</a>
+									&middot; {{.Poster.Name}} &middot; {{DateUtils.TimeSince .CreatedUnix}}
+								</div>
+							</div>
+							<div class="ui basic label">{{ctx.Locale.Tr "company.deploy_requests.pending_review"}}</div>
+						</div>
+					</div>
+					<div class="tw-mt-2 tw-flex tw-items-center tw-gap-3 tw-text-13">
+						<a href="{{$.ContextUser.DashboardLink}}/deploy-requests/{{.ID}}">{{ctx.Locale.Tr "company.deploy_requests.view_files"}}</a>
+						{{if .CanCancel}}
+							<details>
+								<summary class="tw-cursor-pointer muted">{{ctx.Locale.Tr "company.deploy_requests.cancel"}}</summary>
+								<form method="post" action="{{AppSubUrl}}/company/deploy-request/{{.ID}}/cancel" class="ui form tw-mt-2 tw-max-w-md">
+									<input type="hidden" name="org" value="{{$.Org.Name}}">
+									<div class="field">
+										<textarea name="reason" rows="2" placeholder="{{ctx.Locale.Tr "company.deploy_requests.cancel_reason_placeholder"}}" required></textarea>
+									</div>
+									<button type="submit" class="ui red tiny button">{{ctx.Locale.Tr "company.deploy_requests.cancel_confirm"}}</button>
+								</form>
+							</details>
+						{{end}}
+					</div>
+				</div>
+			{{else}}
+				<div class="item text-grey">{{ctx.Locale.Tr "company.deploy_requests.none_requested"}}</div>
+			{{end}}
+		</div>
+
+		<h3 class="tw-flex tw-items-center tw-gap-2">
+			{{ctx.Locale.Tr "company.deploy_requests.deployed"}}
+			<div class="ui label">{{len .Deployed}}</div>
+		</h3>
+		<div class="ui divided list tw-mb-5">
+			{{range .Deployed}}
+				<div class="item">
+					<div class="flex-text-block">
+						{{ctx.AvatarUtils.Avatar .Poster 28}}
+						<div class="flex-text-block tw-flex-1 tw-flex-wrap tw-justify-between">
+							<div>
+								<strong>{{.Title}}</strong>
+								<div class="text-grey tw-text-13">
+									<a href="{{.Repo.Link}}" class="muted">{{.Repo.Name}}</a>
+									&middot; {{.Poster.Name}} &middot; {{DateUtils.TimeSince .CreatedUnix}}
+								</div>
+							</div>
+							{{if .Rejected}}
+								<div class="ui basic red label">{{ctx.Locale.Tr "company.deploy_requests.rejected"}}</div>
+							{{else if .Cancelled}}
+								<div class="ui basic grey label">{{ctx.Locale.Tr "company.deploy_requests.cancelled"}}</div>
+							{{else}}
+								<div class="ui basic green label">{{ctx.Locale.Tr "company.deploy_requests.deployed_badge"}}</div>
+							{{end}}
+						</div>
+					</div>
+					<div class="tw-mt-2 tw-text-13">
+						<a href="{{$.ContextUser.DashboardLink}}/deploy-requests/{{.ID}}">{{ctx.Locale.Tr "company.deploy_requests.view_files"}}</a>
+					</div>
+				</div>
+			{{else}}
+				<div class="item text-grey">{{ctx.Locale.Tr "company.deploy_requests.none_deployed"}}</div>
+			{{end}}
+		</div>
+	</div>
+</div>
+{{template "base/footer" .}}

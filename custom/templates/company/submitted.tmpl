@@ -1,0 +1,21 @@
+{{template "base/head" .}}
+<div role="main" class="page-content">
+	<div class="ui container tw-max-w-2xl">
+		<h1 class="tw-mb-2">{{svg "octicon-check-circle" 22 "tw-mr-2"}}Submitted</h1>
+		<p class="tw-mb-4">Your deploy request for <strong>{{.Repo.Name}}</strong> was registered and is waiting for admin review.</p>
+
+		<div class="ui segment">
+			Status:
+			{{if .Issue.IsClosed}}
+				<div class="ui basic label">Closed</div>
+			{{else}}
+				<div class="ui basic label">Pending review</div>
+			{{end}}
+		</div>
+
+		<div class="tw-mt-4">
+			<a href="{{.Repo.Link}}" class="muted">&larr; {{.Repo.Name}}</a>
+		</div>
+	</div>
+</div>
+{{template "base/footer" .}}

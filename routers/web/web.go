@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"gitea.dev/company"
 	auth_model "gitea.dev/models/auth"
 	"gitea.dev/models/perm"
 	"gitea.dev/models/unit"
@@ -305,6 +306,8 @@ func Routes() *web.Router {
 	webAuth := newWebAuthMiddleware()
 	mid = append(mid, webAuth.MiddlewareHandler)
 
+	mid = append(mid, company.GateNonAdminUI) // see docs/company/ui-gate.md
+
 	if setting.API.EnableSwagger {
 		// Note: The route is here but no in API routes because it renders a web page
 		routes.Get("/api/swagger", append(mid, misc.Swagger)...) // Render V1 by default
@@ -353,6 +356,8 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 	optExploreSignIn := verifyAuthWithOptions(&common.VerifyOptions{SignInRequired: setting.Service.RequireSignInViewStrict || setting.Service.Explore.RequireSigninView})
 
 	validation.AddBindingRules()
+
+	company.RegisterRoutes(m) // see docs/company/mount-points.md
 
 	openIDSignInEnabled := func(ctx *context.Context) {
 		if !setting.Service.EnableOpenIDSignIn {
@@ -732,6 +737,12 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 			addSettingsScopedWorkflowsRoutes()
 		}, actions.MustEnableActions)
 
+		// company's per-user AI settings (model/key/reasoning effort) — a
+		// one-line addition to Gitea's own settings group rather than a
+		// separate route tree, so it inherits reqSignIn +
+		// user_setting.SettingsCtxData for free. See company/settings_ai.go.
+		m.Combo("/ai").Get(company.AISettings).Post(company.AISettingsPost)
+		m.Post("/ai/models", company.AIListModels)
 		m.Get("/organization", user_setting.Organization)
 		m.Get("/repos", user_setting.Repos)
 		m.Post("/repos/unadopted", user_setting.AdoptOrDeleteRepository)
@@ -896,6 +907,8 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 			addSettingsVariablesRoutes()
 			addSettingsScopedWorkflowsRoutes()
 		})
+
+		company.RegisterAdminRoutes(m) // see docs/company/mount-points.md
 	}, adminReq, ctxDataSet(reqctx.ContextData{"EnableOAuth2": setting.OAuth2.Enabled, "EnablePackages": setting.Packages.Enabled}))
 	// ***** END: Admin *****
 
@@ -976,6 +989,10 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 			m.Get("/dashboard/{team}", user.Dashboard)
 			m.Get("/dashboard/-/heatmap", user.DashboardHeatmap)
 			m.Get("/dashboard/-/heatmap/{team}", user.DashboardHeatmap)
+			m.Get("/dashboard/deploy-requests", company.DeployRequests)          // see docs/company/mount-points.md
+			m.Get("/dashboard/deploy-requests/{id}", company.DeployRequestFiles) // see docs/company/mount-points.md — nested under the same org-membership-gated group as the list above, rather than /company/deploy-request/{id}/files
+			m.Get("/repo/create", company.RepoCreateForOrg)                      // see docs/company/mount-points.md
+			m.Post("/repo/create", web.Bind[*forms.CreateRepoForm](), company.RepoCreateForOrgPost)
 			m.Get("/issues", user.Issues)
 			m.Get("/issues/{team}", user.Issues)
 			m.Get("/pulls", user.Pulls)
@@ -1428,6 +1445,15 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 	// end "/{username}/{reponame}": create or edit issues, pulls, labels, milestones
 
 	m.Group("/{username}/{reponame}", func() { // repo code (at least "code reader")
+		// company's "Deploy Request" flow — /{owner}/{repo}/deploy, its
+		// post-submit landing page — /{owner}/{repo}/deploy/submit — and its
+		// status badge — /{owner}/{repo}/deploy-status. None need branch
+		// parsing (always targets ctx.Repo.Repository's default branch) so
+		// they're not nested under the editor_action group below.
+		m.Get("/deploy", company.DeployForm)
+		m.Post("/deploy", company.DeployPost)
+		m.Get("/deploy/submit", company.Submitted)
+		m.Get("/deploy-status", company.DeployStatus)
 		m.Group("", func() {
 			m.Group("", func() {
 				// "GET" requests only need "code reader" permission, "POST" requests need "code writer" permission.
@@ -1455,6 +1481,21 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 				m.Combo("/{editor_action:_cherrypick}/{sha:([a-f0-9]{7,64})}/*").
 					Get(repo.CherryPick).
 					Post(web.Bind[*forms.CherryPickForm](), canWriteToBranch, repo.CherryPickPost)
+				// company's multi-file editor — /{owner}/{repo}/_edits/{branch}[/save],
+				// alongside the single-file _edit/_new/_upload routes above so it
+				// inherits the same branch parsing (context.RepoRefByType) and
+				// write-access gate (canWriteToBranch) rather than redoing either.
+				m.Get("/{editor_action:_edits}/*", company.Workspace)
+				m.Post("/{editor_action:_edits}/*", canWriteToBranch, company.WorkspaceSave)
+				// "Ask AI" in the same editor — a sibling action rather than a
+				// sub-path of _edits above (this router's wildcard can't have a
+				// static segment after it), same branch parsing/write gate either
+				// way. See company/workspace_ai.go.
+				m.Post("/{editor_action:_edits_ai}/*", canWriteToBranch, company.WorkspaceAI)
+				// Server-side staging for not-yet-Saved edits — same sibling
+				// pattern as _edits_ai above. See company/workspace_tmp.go.
+				m.Get("/{editor_action:_edits_tmp}/*", company.WorkspaceTmpList)
+				m.Post("/{editor_action:_edits_tmp}/*", canWriteToBranch, company.WorkspaceTmpSave)
 			}, context.RepoRefByType(git.RefTypeBranch), repo.WebGitOperationCommonData)
 			m.Group("", func() {
 				m.Post("/upload-file", repo.UploadFileToServer)

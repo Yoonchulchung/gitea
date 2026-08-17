@@ -1,0 +1,56 @@
+{{template "base/head" .}}
+<div role="main" class="page-content">
+	<div class="ui container">
+		<div class="tw-mb-4">
+			<a href="javascript:history.back()" class="muted">&larr; {{ctx.Locale.Tr "company.deploy_request_files.back"}}</a>
+		</div>
+
+		<h1 class="tw-mb-2">{{svg "octicon-file-diff" 22 "tw-mr-2"}}{{ctx.Locale.Tr "company.deploy_request_files.title" .DeptRepo.Name}}</h1>
+		<p class="text-grey tw-mb-4">{{.PullRequest.Issue.Title}}</p>
+
+		{{if .Diff.Files}}
+			{{range .Diff.Files}}
+				<div class="ui top attached header flex-text-block company-deploy-diff-file-header">
+					{{if .IsCreated}}
+						{{svg "octicon-diff-added" 16 "tw-text-green"}}
+					{{else if .IsDeleted}}
+						{{svg "octicon-diff-removed" 16 "tw-text-red"}}
+					{{else if .IsRenamed}}
+						{{svg "octicon-diff-renamed" 16}}
+					{{else}}
+						{{svg "octicon-diff-modified" 16 "tw-text-yellow"}}
+					{{end}}
+					<span class="tw-flex-1 tw-font-mono tw-text-14">
+						{{.Name}}
+						{{if .IsRenamed}}<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.deploy_request_files.renamed" .OldName}}</span>{{end}}
+					</span>
+					{{if not .IsBin}}
+						<span class="text-green tw-text-13">+{{.Addition}}</span>
+						<span class="text-red tw-text-13">-{{.Deletion}}</span>
+					{{end}}
+				</div>
+				<div class="ui attached unstackable table segment tw-mb-4 tw-p-0 tw-overflow-x-auto">
+					{{if .IsBin}}
+						<div class="tw-p-3 text-grey">{{ctx.Locale.Tr "repo.diff.bin"}}</div>
+					{{else if .IsIncomplete}}
+						<div class="tw-p-3 text-grey">{{ctx.Locale.Tr "repo.diff.file_suppressed"}}</div>
+					{{else}}
+						{{/* Reusing Gitea's own diff-line renderer (used verbatim by the
+						     native PR page) rather than hand-rolling one — same
+						     DiffFile/DiffSection/DiffLine data either way. It only reads
+						     .root.SignedUserID/.PageIsPullFiles (both left unset here, so
+						     inline-comment buttons never render — this page has no
+						     comment thread to attach them to) and .root.DiffBlobExcerptData
+						     (also unset, which just hides the "expand context" arrows). */}}
+						<table class="chroma tw-w-full">
+							{{template "repo/diff/section_unified" dict "file" . "root" $}}
+						</table>
+					{{end}}
+				</div>
+			{{end}}
+		{{else}}
+			<div class="ui placeholder segment text-grey">{{ctx.Locale.Tr "company.deploy_request_files.no_files"}}</div>
+		{{end}}
+	</div>
+</div>
+{{template "base/footer" .}}

@@ -1,0 +1,12 @@
+<!--
+	Override of templates/user/dashboard/guide.tmpl. Removes the "Explore
+	repositories" / "Explore users" links and their explanatory sentence —
+	both point at native Gitea browsing our whitelist gate already blocks
+	for non-admins (company/gate.go), so showing them here is a dead end.
+	Keep this in sync with the upstream file; diff it on every Gitea
+	upgrade — see docs/company/architecture.md on custom/templates drift.
+-->
+<div class="tw-text-center tw-p-8">
+	{{svg "octicon-package" 24 "tw-text-placeholder-text"}}
+	<h3 class="tw-my-4">{{ctx.Locale.Tr "home.guide_title"}}</h3>
+</div>

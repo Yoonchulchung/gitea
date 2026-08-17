@@ -1,0 +1,31 @@
+<!--
+	Override of templates/repo/code/recently_pushed_new_branches.tmpl.
+	Non-admins never see "new pull request" (company/gate.go blocks
+	/compare and /pulls for them), so the "branch pushed N ago — Compare
+	changes" banner this partial renders would just be a dead end for them.
+	Admin-only, same pattern as custom/templates/repo/branch_dropdown.tmpl:
+	invoked with an explicit dict as ".", so use the global `ctx` template
+	func rather than a field on "." — see docs/company/repo-ui.md.
+	Keep this in sync with the upstream file; diff it on every Gitea
+	upgrade — see docs/company/architecture.md on custom/templates drift.
+-->
+{{/* Template Attributes:
+* RecentBranchesPromptData
+*/}}
+{{if and ctx.Doer ctx.Doer.IsAdmin}}
+{{$data := .RecentBranchesPromptData}}
+{{if $data}}
+	{{range $recentBranch := $data.RecentlyPushedNewBranches}}
+	<div class="ui positive message flex-text-block">
+		<div class="tw-flex-1">
+			{{$timeSince := DateUtils.TimeSince $recentBranch.PushedTime}}
+			{{$branchLink := HTMLFormat `<a href="%s">%s</a>` $recentBranch.BranchLink .BranchDisplayName}}
+			{{ctx.Locale.Tr "repo.pulls.recently_pushed_new_branches" $branchLink $timeSince}}
+		</div>
+		<a role="button" class="ui compact green button" href="{{QueryBuild $recentBranch.BranchCompareURL "expand" 1}}">
+			{{ctx.Locale.Tr "repo.pulls.compare_changes"}}
+		</a>
+	</div>
+	{{end}}
+{{end}}
+{{end}}

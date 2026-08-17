@@ -1,0 +1,197 @@
+<!--
+	Override of templates/repo/header.tmpl. Changes from upstream:
+	  1. Pull Requests / Actions / Releases / Activity tabs only render for
+	     site admins (`.IsAdmin`, routers/common/auth.go:32) — the units
+	     stay enabled (needed internally), only the tab is hidden for
+	     everyone else. The routes are also blocked by the whitelist gate
+	     (company/gate.go) — this is the visual half of that decision.
+	  2. A "Register Deploy" button is added next to Watch/Star/Fork,
+	     linking into company/deploy.go.
+	See docs/company/repo-ui.md for the full reasoning.
+	Keep this in sync with the upstream file; diff it on every Gitea
+	upgrade — see docs/company/architecture.md on custom/templates drift.
+-->
+<div class="secondary-nav">
+	{{with .Repository}}
+	<div class="ui container">
+		<div class="repo-header flex-left-right">
+			{{/* left part */}}
+			<div class="flex-text-block">
+				{{template "repo/icon" .}}
+				<div class="flex-text-block tw-flex-wrap tw-text-18">
+					<a class="muted tw-font-normal" href="{{.Owner.HomeLink}}">{{.Owner.Name}}</a>/<a class="muted" href="{{$.RepoLink}}">{{.Name}}</a>
+				</div>
+				<div class="flex-text-block tw-flex-wrap">
+					{{if .IsArchived}}
+						<span class="ui basic label not-mobile">{{ctx.Locale.Tr "repo.desc.archived"}}</span>
+						<div class="repo-icon only-mobile" data-tooltip-content="{{ctx.Locale.Tr "repo.desc.archived"}}">{{svg "octicon-archive" 18}}</div>
+					{{end}}
+					{{if .IsPrivate}}
+						<span class="ui basic label not-mobile">{{ctx.Locale.Tr "repo.desc.private"}}</span>
+						<div class="repo-icon only-mobile" data-tooltip-content="{{ctx.Locale.Tr "repo.desc.private"}}">{{svg "octicon-lock" 18}}</div>
+					{{else}}
+						{{if .Owner.Visibility.IsPrivate}}
+							<span class="ui basic label not-mobile">{{ctx.Locale.Tr "repo.desc.internal"}}</span>
+							<div class="repo-icon only-mobile" data-tooltip-content="{{ctx.Locale.Tr "repo.desc.internal"}}">{{svg "octicon-shield-lock" 18}}</div>
+						{{end}}
+					{{end}}
+					{{if $.Permission.HasAnyUnitPublicAccess}}
+						<span class="ui basic orange label">{{ctx.Locale.Tr "repo.desc.public_access"}}</span>
+					{{end}}
+					{{if .IsTemplate}}
+						<span class="ui basic label not-mobile">{{ctx.Locale.Tr "repo.desc.template"}}</span>
+						<div class="repo-icon only-mobile" data-tooltip-content="{{ctx.Locale.Tr "repo.desc.template"}}">{{svg "octicon-repo-template" 18}}</div>
+					{{end}}
+					{{if eq .ObjectFormatName "sha256"}}
+						<span class="ui basic label">{{ctx.Locale.Tr "repo.desc.sha256"}}</span>
+					{{end}}
+				</div>
+			</div>
+			{{if not (or .IsBeingCreated .IsBroken)}}
+				{{/* right part */}}
+				<div class="flex-text-block tw-flex-wrap">
+					{{if $.CanUserAcceptOrRejectTransfer}}
+						<button type="button" class="ui compact small basic primary button link-action" data-url="{{$.RepoLink}}/action/accept_transfer"
+							data-tooltip-content="{{ctx.Locale.Tr "repo.transfer.accept_desc" $.RepoTransfer.Recipient.GetDisplayName}}"
+						>{{ctx.Locale.Tr "repo.transfer.accept"}}</button>
+						<button type="button" class="ui compact small basic red button link-action" data-url="{{$.RepoLink}}/action/reject_transfer"
+							data-tooltip-content="{{ctx.Locale.Tr "repo.transfer.reject_desc" $.RepoTransfer.Recipient.GetDisplayName}}"
+						>{{ctx.Locale.Tr "repo.transfer.reject"}}</button>
+					{{else if $.RepoTransfer}}
+						<div data-tooltip-content="{{ctx.Locale.Tr "repo.transfer.is_transferring_prompt" $.RepoTransfer.Recipient.GetDisplayName}}">
+							<button class="ui compact small basic red button" disabled>{{ctx.Locale.Tr "repo.transfer.is_transferring"}}</button>
+						</div>
+					{{end}}
+					{{if $.IsAdmin}}
+					{{if $.EnableFeed}}
+					{{/* An extra div-element is not necessary here, as this button does not secretly contain two buttons. */}}
+					<a class="ui compact small basic button" href="{{$.RepoLink}}.rss" data-tooltip-content="{{ctx.Locale.Tr "rss_feed"}}">
+						{{svg "octicon-rss" 16}}
+					</a>
+					{{end}}
+					{{template "repo/header/watch" $}}
+					{{if not $.DisableStars}}
+					{{template "repo/header/star" $}}
+					{{end}}
+					{{if and (not .IsEmpty) ($.Permission.CanRead ctx.Consts.RepoUnitTypeCode)}}
+						{{template "repo/header/fork" $}}
+					{{end}}
+					{{end}}
+					{{if and (not .IsEmpty) (not $.IsAdmin) ($.Permission.CanRead ctx.Consts.RepoUnitTypeCode)}}
+						<a class="ui compact small basic primary button" href="{{$.RepoLink}}/deploy">
+							{{svg "octicon-rocket" 16}} Deploy Request
+						</a>
+					{{end}}
+				</div>
+			{{end}}
+		</div>
+
+		{{/* next line, secondary info */}}
+		{{if $.PullMirror}}
+			<div class="secondary-info">
+				{{ctx.Locale.Tr "repo.mirror_from"}}
+				<a target="_blank" href="{{$.PullMirror.RemoteAddress}}">{{$.PullMirror.RemoteAddress}}</a>
+				{{if $.PullMirror.UpdatedUnix}}{{ctx.Locale.Tr "repo.mirror_sync"}} {{DateUtils.TimeSince $.PullMirror.UpdatedUnix}}{{end}}
+			</div>
+		{{end}}
+		{{if .IsFork}}<div class="secondary-info">{{ctx.Locale.Tr "repo.forked_from"}} <a href="{{.BaseRepo.Link}}">{{.BaseRepo.FullName}}</a></div>{{end}}
+		{{if .IsGenerated}}<div class="secondary-info">{{ctx.Locale.Tr "repo.generated_from"}} <a href="{{(.TemplateRepo ctx).Link}}">{{(.TemplateRepo ctx).FullName}}</a></div>{{end}}
+	</div>
+	{{end}}
+	{{if .IsSigned}}{{template "repo/watch_options_modal"}}{{end}}
+
+	{{if .IsAdmin}}
+	{{/* non-admins only ever have the Code tab left — a one-item tab bar is
+	     noise, and the repo root already shows Code by default */}}
+	<div class="ui container">
+		<overflow-menu class="ui secondary pointing menu">
+			{{if not (or .Repository.IsBeingCreated .Repository.IsBroken)}}
+				<div class="overflow-menu-items">
+					{{if .Permission.CanRead ctx.Consts.RepoUnitTypeCode}}
+					<a class="{{if .PageIsViewCode}}active {{end}}item" href="{{.RepoLink}}{{if and (ne .BranchName .Repository.DefaultBranch) (not $.PageIsWiki)}}/src/{{.RefTypeNameSubURL}}{{end}}">
+						{{svg "octicon-code"}} {{ctx.Locale.Tr "repo.code"}}
+					</a>
+					{{end}}
+
+					{{if .Permission.CanRead ctx.Consts.RepoUnitTypeExternalTracker}}
+						<a class="{{if .PageIsIssueList}}active {{end}}item" href="{{.RepoExternalIssuesLink}}" target="_blank">
+							{{svg "octicon-link-external"}} {{ctx.Locale.Tr "repo.issues"}}
+						</a>
+					{{end}}
+
+					{{if .IsAdmin}}
+						{{if and .Repository.CanEnablePulls (.Permission.CanRead ctx.Consts.RepoUnitTypePullRequests)}}
+							{{/* department-wide (org-level) pull list, except for a
+							     user-owned repo like the central deploy repo — there's
+							     no "/org/<user>/pulls" to fall back on there, so use
+							     this repo's own list instead. See docs/company/repo-ui.md. */}}
+							<a class="{{if .PageIsPullList}}active {{end}}item" href="{{if .Repository.Owner.IsOrganization}}{{AppSubUrl}}/org/{{.Repository.OwnerName}}/pulls{{else}}{{.RepoLink}}/pulls{{end}}">
+								{{svg "octicon-git-pull-request"}} {{ctx.Locale.Tr "repo.pulls"}}
+								{{if .Repository.NumOpenPulls}}
+									<span class="ui small label">{{CountFmt .Repository.NumOpenPulls}}</span>
+								{{end}}
+							</a>
+						{{end}}
+
+						{{if and .EnableActions (.Permission.CanRead ctx.Consts.RepoUnitTypeActions) (not .IsEmptyRepo)}}
+							<a class="{{if .PageIsActions}}active {{end}}item" href="{{.RepoLink}}/actions">
+								{{svg "octicon-play"}} {{ctx.Locale.Tr "actions.actions"}}
+								{{if .Repository.NumOpenActionRuns}}
+									<span class="ui small label">{{CountFmt .Repository.NumOpenActionRuns}}</span>
+								{{end}}
+							</a>
+						{{end}}
+					{{end}}
+
+					{{if .Permission.CanRead ctx.Consts.RepoUnitTypeExternalWiki}}
+						<a class="item" href="{{(.Repository.MustGetUnit ctx ctx.Consts.RepoUnitTypeExternalWiki).ExternalWikiConfig.ExternalWikiURL}}" target="_blank">
+							{{svg "octicon-link-external"}} {{ctx.Locale.Tr "repo.wiki"}}
+						</a>
+					{{end}}
+
+					{{if .IsAdmin}}
+						{{if and (.Permission.CanRead ctx.Consts.RepoUnitTypeReleases) (not .IsEmptyRepo)}}
+						<a class="{{if or .PageIsReleaseList .PageIsTagList}}active {{end}}item" href="{{.RepoLink}}/releases">
+							{{svg "octicon-tag"}} {{ctx.Locale.Tr "repo.releases"}}
+							{{if .NumReleases}}
+								<span class="ui small label">{{CountFmt .NumReleases}}</span>
+							{{end}}
+						</a>
+						{{end}}
+
+						{{if and (.Permission.CanReadAny ctx.Consts.RepoUnitTypePullRequests ctx.Consts.RepoUnitTypeIssues ctx.Consts.RepoUnitTypeReleases ctx.Consts.RepoUnitTypeCode) (not .IsEmptyRepo)}}
+							<a class="{{if .PageIsActivity}}active {{end}}item" href="{{.RepoLink}}/activity">
+								{{svg "octicon-pulse"}} {{ctx.Locale.Tr "repo.activity"}}
+							</a>
+						{{end}}
+					{{end}}
+
+					{{template "custom/extra_tabs" .}}
+
+					{{if .Permission.IsAdmin}}
+						<span class="item-flex-space"></span>
+						<a class="{{if .PageIsRepoSettings}}active {{end}} item" href="{{.RepoLink}}/settings">
+							{{svg "octicon-tools"}} {{ctx.Locale.Tr "repo.settings"}}
+						</a>
+					{{end}}
+				</div>
+			{{else}}
+				<div class="overflow-menu-items">
+					{{if(and .Repository.IsBeingCreated (.Permission.CanRead ctx.Consts.RepoUnitTypeCode))}}
+					<a class="{{if not .PageIsRepoSettings}}active {{end}}item" href="{{.RepoLink}}">
+						{{svg "octicon-clock"}} {{ctx.Locale.Tr "repo.migration_status"}}
+					</a>
+					{{end}}
+
+					{{if .Permission.IsAdmin}}
+					<a class="{{if .PageIsRepoSettings}}active {{end}} item" href="{{.RepoLink}}/settings">
+						{{svg "octicon-tools"}} {{ctx.Locale.Tr "repo.settings"}}
+					</a>
+					{{end}}
+				</div>
+			{{end}}
+		</overflow-menu>
+	</div>
+	<div class="ui tabs divider"></div>
+	{{end}}
+</div>

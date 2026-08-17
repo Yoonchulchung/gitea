@@ -1,0 +1,151 @@
+<!--
+	Override of templates/repo/empty.tmpl. Only change: the
+	.CanWriteCode branch (the "Quick Guide" with raw git init/commit/push
+	commands) is replaced for non-admins with the same "파일 업로드"/
+	"새 파일 만들기" buttons used on a populated repo's code page
+	(custom/templates/repo/view_content.tmpl) — this is the same page, just
+	for a repo that has no commits yet. IsArchived/IsBroken/no-branch/
+	no-write-access states are untouched; none of them show git commands.
+	See docs/company/repo-ui.md.
+	Keep this in sync with the upstream file; diff it on every Gitea
+	upgrade — see docs/company/architecture.md on custom/templates drift.
+-->
+{{template "base/head" .}}
+<div role="main" aria-label="{{.Title}}" class="page-content repository quickstart">
+	{{template "repo/header" .}}
+	<div class="ui container">
+		<div class="ui grid">
+			<div class="sixteen wide column content">
+				{{template "base/alert" .}}
+				{{if .Repository.IsArchived}}
+					<div class="ui warning message tw-text-center">
+						{{if .Repository.ArchivedUnix.IsZero}}
+							{{ctx.Locale.Tr "repo.archive.title"}}
+						{{else}}
+							{{ctx.Locale.Tr "repo.archive.title_date" (DateUtils.AbsoluteLong .Repository.ArchivedUnix)}}
+						{{end}}
+					</div>
+				{{end}}
+
+				{{if .Repository.IsBroken}}
+					<div class="ui segment center">{{ctx.Locale.Tr "repo.broken_message"}}</div>
+				{{else if .RepoHasContentsWithoutBranch}}
+					<div class="ui segment center">{{ctx.Locale.Tr "repo.no_branch"}}</div>
+				{{else if not .CanWriteCode}}
+					<div class="ui segment center">{{ctx.Locale.Tr "repo.empty_message"}}</div>
+				{{else if .IsAdmin}}
+					<h4 class="ui top attached header">{{ctx.Locale.Tr "repo.quick_guide"}}</h4>
+					<div class="ui attached segment empty-repo-guide flex-relaxed-list">
+						<div class="item">
+							<h3>{{ctx.Locale.Tr "repo.clone_this_repo"}} <small>{{ctx.Locale.Tr "repo.clone_helper" "http://git-scm.com/book/en/v2/Git-Basics-Getting-a-Git-Repository"}}</small></h3>
+
+							<div class="repo-button-row">
+								{{if and .CanWriteCode (not .Repository.IsArchived)}}
+									<a class="ui small button" href="{{.RepoLink}}/_new/{{.BranchName | PathEscapeSegments}}/">
+										{{ctx.Locale.Tr "repo.editor.new_file"}}
+									</a>
+									{{if .RepositoryUploadEnabled}}
+									<a class="ui small button" href="{{.RepoLink}}/_upload/{{.BranchName | PathEscapeSegments}}/">
+										{{ctx.Locale.Tr "repo.editor.upload_file"}}
+									</a>
+									{{end}}
+								{{end}}
+								{{template "repo/clone_buttons" dict "CloneButtonOriginLink" $.CloneButtonOriginLink}}
+							</div>
+						</div>
+
+						{{$cloneLink := $.CloneButtonOriginLink}}
+						{{$showGitClientCommands := and (or $cloneLink.SupportHTTPS $cloneLink.SupportSSH) (not .Repository.IsArchived)}}
+						{{/* TODO: when both HTTPS and SSH are disabled, the UI is not that good */}}
+						{{if $showGitClientCommands}}
+							<div class="divider"></div>
+
+							<div class="item">
+								<h3>{{ctx.Locale.Tr "repo.create_new_repo_command"}}</h3>
+								<div class="markup">
+									{{$gitRemoteName := $.SystemConfig.Repository.GitGuideRemoteName.Value ctx}}
+									<pre><code>touch README.md
+git init{{if ne .Repository.ObjectFormatName "sha1"}} --object-format={{.Repository.ObjectFormatName}}{{end}}{{/* for sha256 repo, it needs to set "object-format" explicitly*/}}
+{{if ne .Repository.DefaultBranch "master"}}git checkout -b {{.Repository.DefaultBranch}}{{end}}
+git add README.md
+git commit -m "first commit"
+git remote add {{$gitRemoteName}} <span class="js-clone-url">{{Iif $cloneLink.SupportHTTPS $cloneLink.HTTPS $cloneLink.SSH}}</span>
+git push -u {{$gitRemoteName}} {{.Repository.DefaultBranch}}</code></pre>
+								</div>
+							</div>
+							<div class="item">
+								<h3>{{ctx.Locale.Tr "repo.push_exist_repo"}}</h3>
+								<div class="markup">
+									<pre><code>git remote add {{$gitRemoteName}} <span class="js-clone-url">{{Iif $cloneLink.SupportHTTPS $cloneLink.HTTPS $cloneLink.SSH}}</span>
+git push -u {{$gitRemoteName}} {{.Repository.DefaultBranch}}</code></pre>
+								</div>
+							</div>
+						{{else}}
+							<div class="item">HTTPS and SSH clones are disabled, you can only modify the repository via Gitea's web UI.</div>
+						{{end}}
+					</div>
+				{{else}}
+					{{/* Gitea's own native new-file/upload-file editor — same links the
+					     admin branch above uses, not company/deploy. See conversation
+					     in docs/company/repo-ui.md.
+					     The drop zone below can't carry the actual dropped files across
+					     a page navigation (no browser API for that), so both a drop and
+					     a click just take the user to the native upload page — which has
+					     its own working drag-and-drop/click-to-browse dropzone
+					     (templates/repo/upload.tmpl) to actually finish there. */}}
+					{{$uploadLink := printf "%s/_upload/%s/" .RepoLink (PathEscapeSegments .BranchName)}}
+					<div class="ui container tw-py-8 tw-text-center">
+						{{if .RepositoryUploadEnabled}}
+						<div id="company-empty-dropzone" class="company-empty-dropzone" data-href="{{$uploadLink}}" role="button" tabindex="0">
+							{{svg "octicon-upload" 28}}
+							<p>{{ctx.Locale.Tr "dropzone.default_message"}}</p>
+						</div>
+						{{end}}
+						<div class="flex-text-block tw-justify-center">
+							<a class="ui primary button" href="{{.RepoLink}}/_new/{{.BranchName | PathEscapeSegments}}/">
+								{{svg "octicon-file-added" 16 "tw-mr-1"}}{{ctx.Locale.Tr "repo.editor.new_file"}}
+							</a>
+							{{if .RepositoryUploadEnabled}}
+							<a class="ui basic button" href="{{$uploadLink}}">
+								{{svg "octicon-upload" 16 "tw-mr-1"}}{{ctx.Locale.Tr "repo.editor.upload_file"}}
+							</a>
+							{{end}}
+						</div>
+					</div>
+					{{if .RepositoryUploadEnabled}}
+					<style>
+					.company-empty-dropzone {
+						border: 2px dashed var(--color-secondary);
+						border-radius: 8px;
+						padding: 2rem 1rem;
+						margin-bottom: 1.5rem;
+						cursor: pointer;
+						transition: border-color .15s, background-color .15s;
+					}
+					.company-empty-dropzone.is-dragover {
+						border-color: var(--color-primary);
+						background: var(--color-primary-light-7, rgba(0,0,0,.03));
+					}
+					</style>
+					<script nonce="{{ctx.CspScriptNonce}}">
+					(function () {
+						var zone = document.getElementById('company-empty-dropzone');
+						var go = function () { window.location.href = zone.dataset.href; };
+						zone.addEventListener('click', go);
+						zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') go(); });
+						['dragenter', 'dragover'].forEach(function (evt) {
+							zone.addEventListener(evt, function (e) { e.preventDefault(); zone.classList.add('is-dragover'); });
+						});
+						['dragleave', 'drop'].forEach(function (evt) {
+							zone.addEventListener(evt, function (e) { e.preventDefault(); zone.classList.remove('is-dragover'); });
+						});
+						zone.addEventListener('drop', go);
+					})();
+					</script>
+					{{end}}
+				{{end}}
+			</div>
+		</div>
+	</div>
+</div>
+{{template "base/footer" .}}

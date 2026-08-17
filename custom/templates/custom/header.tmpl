@@ -1,0 +1,60 @@
+<!--
+	Gitea's own extension point (templates/custom/header.tmpl is empty by
+	default, included from templates/base/head.tmpl) — not a core file
+	override, so nothing to diff against upstream here.
+
+	Hides the repo-list filter tabs (All/Sources/Forks/Mirrors/Collaborative,
+	web_src/js/components/DashboardRepoList.vue) for non-admins via CSS
+	rather than editing the Vue component: no frontend rebuild needed for
+	this or future tweaks, and "All" is already the functional default
+	(reposFilter defaults to 'all' with no query param) — this just removes
+	the ability to switch away from it. See docs/company/repo-ui.md.
+-->
+{{if not .IsAdmin}}
+<style>
+.repos-filter { display: none !important; }
+/* .repos-filter used to supply the gap below the search box; restore it
+   now that the tab bar itself is hidden. padding, not margin — .repos-search
+   is a Fomantic "attached" segment flush against the repo list segment
+   below it, and a margin would crack that seam open rather than just add
+   breathing room. Scoped under #dashboard-repo-list (the Vue mount point,
+   templates/user/dashboard/repolist.tmpl) for specificity, not just
+   !important: DashboardRepoList.vue's own scoped style ships
+   `.repos-search[data-v-xxx]{padding-bottom:0!important}`, which already
+   beats a plain `.repos-search{...!important}` on specificity (class+attr
+   > class) regardless of cascade order — only an ID-anchored selector
+   reliably outranks it. */
+#dashboard-repo-list .repos-search { padding-bottom: 2em !important; }
+/* archived/private filter dropdown next to the search box — hiding it
+   breaks Fomantic's "joined action-input" right-side rounding (it expects
+   the trailing button to supply that corner), so restore it on the input */
+.repos-search .ui.dropdown.icon.button { display: none !important; }
+.repos-search .ui.action.input > input {
+	border-top-right-radius: .28571429rem !important;
+	border-bottom-right-radius: .28571429rem !important;
+	border-right-color: var(--color-input-border) !important;
+}
+/* advanced repo-create fields (custom/templates/repo/create.tmpl) — kept in
+   the DOM (repo-new.ts does non-null querySelector lookups on them), only
+   hidden visually. See docs/company/repo-ui.md. */
+.company-hide-nonadmin { display: none !important; }
+</style>
+{{end}}
+<style>
+/* Deploy Request status badge — custom/templates/repo/view_content.tmpl,
+   web_src/js/features/company-deploy-status.ts. Shown for everyone, not
+   just non-admins, so this block is unconditional (no admin-only guard). */
+.company-deploy-status-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: .2rem .6rem;
+	border-radius: 1rem;
+	font-size: .8rem;
+	font-weight: 600;
+	white-space: nowrap;
+}
+.company-deploy-status-badge.pending { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.company-deploy-status-badge.approved { background: var(--color-success-bg); color: var(--color-success-text); }
+.company-deploy-status-badge.rejected { background: var(--color-error-bg); color: var(--color-error-text); }
+.company-deploy-status-badge.cancelled { background: var(--color-secondary); color: var(--color-text); }
+</style>
