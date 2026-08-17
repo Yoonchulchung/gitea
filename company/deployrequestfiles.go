@@ -79,29 +79,68 @@ func DeployRequestFiles(ctx *context.Context) {
 		return
 	}
 
+	// The normal path: the branch still exists (this request is still
+	// open), so resolve both sides by ref the way any other compare would.
 	baseRef := git.RefNameFromBranch(pr.BaseBranch)
 	headRef := git.RefNameFromBranch(pr.HeadBranch)
-	ci, err := git_service.GetCompareInfo(ctx, pr.BaseRepo, pr.HeadRepo, headGitRepo, baseRef, headRef, false, true)
-	if err != nil {
-		ctx.ServerError("GetCompareInfo", err)
-		return
+	var beforeCommitID, afterCommitID string
+	if ci, err := git_service.GetCompareInfo(ctx, pr.BaseRepo, pr.HeadRepo, headGitRepo, baseRef, headRef, false, true); err == nil {
+		beforeCommitID, afterCommitID = ci.CompareBase, ci.HeadCommitID
+	} else {
+		// Once this PR is closed, deployBranchCleanupNotifier
+		// (company/deploy_notifier.go) has already deleted its branch — this
+		// is the expected, common case for anything not still pending, not
+		// an error to surface. Fall back to what it recorded right before
+		// deleting: pr.MergeBase is already a durable DB column (no ref
+		// needed), and loadDeploySnapshot recovers the head side the same
+		// way. If even the commit objects themselves are gone (pruned),
+		// this still fails below — handled as "no longer available", not a
+		// 500.
+		snapshotID, ok := loadDeploySnapshot(pr.ID)
+		if !ok {
+			ctx.ServerError("GetCompareInfo", err)
+			return
+		}
+		beforeCommitID, afterCommitID = pr.MergeBase, snapshotID
 	}
 
-	diff, err := gitdiff.GetDiffForRender(ctx, pr.HeadRepo.Link(), headGitRepo, &gitdiff.DiffOptions{
-		BeforeCommitID:     ci.CompareBase,
-		AfterCommitID:      ci.HeadCommitID,
+	diff, diffErr := gitdiff.GetDiffForRender(ctx, pr.HeadRepo.Link(), headGitRepo, &gitdiff.DiffOptions{
+		BeforeCommitID:     beforeCommitID,
+		AfterCommitID:      afterCommitID,
 		MaxLines:           setting.Git.MaxGitDiffLines,
 		MaxLineCharacters:  setting.Git.MaxGitDiffLineCharacters,
 		MaxFiles:           setting.Git.MaxGitDiffFiles,
 		WhitespaceBehavior: nil,
 	})
-	if err != nil {
-		ctx.ServerError("GetDiffForRender", err)
-		return
-	}
+	// A failure here (commit objects themselves pruned, not just the ref)
+	// still renders the page — just without the diff — rather than a 500,
+	// since the record (status, comments, who/when) is still worth showing
+	// even without file content.
+	filesUnavailable := diffErr != nil
 
 	if err := pr.LoadIssue(ctx); err != nil {
 		ctx.ServerError("LoadIssue", err)
+		return
+	}
+
+	// Whatever the admin (or the requester, cancelling) wrote alongside
+	// closing this — Gitea's native PR page lets a status change and a
+	// comment land together in one "Close with comment" submission, which
+	// is the normal way a rejection reason gets recorded; nothing marks
+	// which comment specifically "was" the reason, so this shows the whole
+	// conversation rather than guessing at one. CancelDeployRequest's own
+	// "Cancelled: ..." comment (company/deployrequests.go) shows up here
+	// too, which is correct — it's exactly this kind of context.
+	comments, err := issues_model.FindComments(ctx, &issues_model.FindCommentsOptions{
+		IssueID: pr.Issue.ID,
+		Type:    issues_model.CommentTypeComment,
+	})
+	if err != nil {
+		ctx.ServerError("FindComments", err)
+		return
+	}
+	if err := comments.LoadPosters(ctx); err != nil {
+		ctx.ServerError("LoadPosters", err)
 		return
 	}
 
@@ -109,17 +148,28 @@ func DeployRequestFiles(ctx *context.Context) {
 	// departments' files never collide in the central repo — redundant
 	// once the viewer already knows which department this request is
 	// for, so strip it back off for display.
-	prefix := deployPathPrefix(ownerName, repoName) + "/"
-	for _, f := range diff.Files {
-		f.Name = strings.TrimPrefix(f.Name, prefix)
-		if f.OldName != "" {
-			f.OldName = strings.TrimPrefix(f.OldName, prefix)
+	if !filesUnavailable {
+		prefix := deployPathPrefix(ownerName, repoName) + "/"
+		for _, f := range diff.Files {
+			f.Name = strings.TrimPrefix(f.Name, prefix)
+			if f.OldName != "" {
+				f.OldName = strings.TrimPrefix(f.OldName, prefix)
+			}
 		}
+	}
+
+	status, err := deployStatusFor(ctx, pr)
+	if err != nil {
+		ctx.ServerError("deployStatusFor", err)
+		return
 	}
 
 	ctx.Data["Title"] = "Deploy Request Files"
 	ctx.Data["PullRequest"] = pr
 	ctx.Data["DeptRepo"] = deptRepo
 	ctx.Data["Diff"] = diff
+	ctx.Data["FilesUnavailable"] = filesUnavailable
+	ctx.Data["Comments"] = comments
+	ctx.Data["DeployRequestStatus"] = status
 	ctx.HTML(http.StatusOK, tplDeployRequestFiles)
 }

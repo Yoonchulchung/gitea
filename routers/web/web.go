@@ -1679,7 +1679,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 	m.Group("/{username}/{reponame}", func() {
 		m.Get("/{type:pulls}", repo.Issues)
 		m.Group("/{type:pulls}/{index}", func() {
-			m.Get("", repo.SetEditorconfigIfExists, repo.SetWhitespaceBehavior, repo.GetPullDiffStats, repo.ViewIssue)
+			m.Get("", repo.SetEditorconfigIfExists, repo.SetWhitespaceBehavior, repo.GetPullDiffStats, company.SetDeployRequestAIReviewData, repo.ViewIssue) // see docs/company/mount-points.md
 			m.Get(".diff", repo.DownloadPullDiff)
 			m.Get(".patch", repo.DownloadPullPatch)
 			m.Get("/merge_box", repo.ViewPullMergeBox)

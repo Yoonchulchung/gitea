@@ -23,7 +23,15 @@ const workspaceAIMaxTurns = 12
 
 const tplWorkspaceAISystemPrompt = `You are a coding assistant helping a non-technical employee edit files in their department's internal Gitea repository, on branch %q. They are not fluent in git/programming jargon.
 
-Use list_files and read_file to look around before making changes — don't guess at a file's content. write_file replaces a file's entire content with whatever you pass — there is no append/patch operation, so if the file already has content the employee wants to keep, you must read it first (read_file, or their own open tab shown below) and pass the FULL result — old content plus the new part — not just the new part by itself. Only skip reading first and write the literal new content alone when the employee clearly means to replace/overwrite/clear the file (e.g. "지워줘", "덮어써줘", "새로 써줘") or the file doesn't exist yet. A plain "X를 써줘"/"write X to the file" on a file that already has something in it almost always means add X to what's already there, not erase it — when in doubt, keep the existing content and add to it rather than guess the other way. write_file only stages a proposal, it does not save or commit anything, so don't warn the user about that.
+Use list_files and read_file to look around before making changes — don't guess at a file's content.
+
+write_file replaces a file's entire content with whatever you pass — there is no append/patch operation, so if the file already has content the employee wants to keep, you must read it first (read_file, or their own open tab shown below) and pass the FULL result — old content plus the new part — not just the new part by itself. Only skip reading first and write the literal new content alone when the employee clearly means to replace/overwrite/clear the file's CONTENT while keeping the file itself (e.g. "내용 지워줘", "내용을 비워줘", "덮어써줘", "새로 써줘") or the file doesn't exist yet. A plain "X를 써줘"/"write X to the file" on a file that already has something in it almost always means add X to what's already there, not erase it — when in doubt, keep the existing content and add to it rather than guess the other way.
+
+delete_file removes a file entirely — use this, not write_file with empty content, whenever the employee means the file itself should go away (e.g. "이 파일 지워줘"/"삭제해줘" naming a file, "필요없는 파일이니 없애줘"). This is the one place "지워줘" is genuinely ambiguous in Korean: "내용을 지워줘" (clear its content) means write_file with an empty/new body and keep the file; "파일을 지워줘"/"이 파일 삭제해줘" (delete the file) means delete_file. When it's unclear which one they mean, ask rather than guessing — deleting the wrong thing is harder to notice than an unwanted edit.
+
+rename_file changes a file's path without touching its content — use this instead of delete_file followed by write_file whenever the content itself isn't changing, so the change shows up as one rename rather than an unrelated deletion plus an unrelated new file. If the employee wants both a new name AND different content, rename_file first, then write_file the file at its new path.
+
+write_file/delete_file/rename_file all only stage a proposal — none of them save, commit, or otherwise touch anything by themselves, so don't warn the user about that.
 
 When you're done, reply with a short, plain-language summary of what you changed and why — no jargon, as if explaining to a colleague who has never used git. Reply in whatever language the employee's own message was written in (Korean, English, German, whatever) — match them, don't default to Korean.`
 
@@ -155,8 +163,10 @@ func WorkspaceAI(ctx *context.Context) {
 	messages = append(messages, aiChatMessage{Role: "user", Content: req.Instruction})
 
 	edits := map[string]*workspaceAIEdit{} // keyed by path, last write_file wins
+	deletes := map[string]bool{}           // keyed by path
+	renames := map[string]string{}         // from path -> to path
 
-	mcpServer := newWorkspaceMCPServer(gitRepo, branch, edits, openFiles)
+	mcpServer := newWorkspaceMCPServer(gitRepo, branch, edits, deletes, renames, openFiles)
 	mcpSession, err := connectMCPSession(ctx, mcpServer)
 	if err != nil {
 		writeStreamEvent(ctx.Resp, map[string]any{"type": "error", "message": err.Error()})
@@ -199,9 +209,21 @@ func WorkspaceAI(ctx *context.Context) {
 				resultText = "error: " + err.Error() // protocol-level failure (bad tool name, transport) — fed back to the model, not a request-ending failure
 			} else {
 				resultText = mcpResultToText(result)
-				if !result.IsError && call.Function.Name == "write_file" {
-					if e, ok := edits[fmt.Sprint(args["path"])]; ok {
-						writeStreamEvent(ctx.Resp, map[string]any{"type": "edit", "path": e.Path, "content": e.Content})
+				if !result.IsError {
+					switch call.Function.Name {
+					case "write_file":
+						if e, ok := edits[fmt.Sprint(args["path"])]; ok {
+							writeStreamEvent(ctx.Resp, map[string]any{"type": "edit", "path": e.Path, "content": e.Content})
+						}
+					case "delete_file":
+						if path := fmt.Sprint(args["path"]); deletes[path] {
+							writeStreamEvent(ctx.Resp, map[string]any{"type": "delete", "path": path})
+						}
+					case "rename_file":
+						from := fmt.Sprint(args["from_path"])
+						if to, ok := renames[from]; ok {
+							writeStreamEvent(ctx.Resp, map[string]any{"type": "rename", "from": from, "to": to})
+						}
 					}
 				}
 			}

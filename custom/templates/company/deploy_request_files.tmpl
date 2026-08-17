@@ -6,9 +6,16 @@
 		</div>
 
 		<h1 class="tw-mb-2">{{svg "octicon-file-diff" 22 "tw-mr-2"}}{{ctx.Locale.Tr "company.deploy_request_files.title" .DeptRepo.Name}}</h1>
-		<p class="text-grey tw-mb-4">{{.PullRequest.Issue.Title}}</p>
+		<p class="text-grey tw-mb-2">{{.PullRequest.Issue.Title}}</p>
+		{{if .DeployRequestStatus}}
+			<div class="ui {{if eq .DeployRequestStatus.Status "approved"}}green{{else if eq .DeployRequestStatus.Status "rejected"}}red{{else if eq .DeployRequestStatus.Status "cancelled"}}grey{{else}}yellow{{end}} label tw-mb-4">
+				{{ctx.Locale.Tr (printf "company.deploy_status.%s" .DeployRequestStatus.Status)}} - {{DateUtils.AbsoluteShort .DeployRequestStatus.Date}}
+			</div>
+		{{end}}
 
-		{{if .Diff.Files}}
+		{{if .FilesUnavailable}}
+			<div class="ui placeholder segment text-grey tw-mb-4">{{ctx.Locale.Tr "company.deploy_request_files.unavailable"}}</div>
+		{{else if .Diff.Files}}
 			{{range .Diff.Files}}
 				<div class="ui top attached header flex-text-block company-deploy-diff-file-header">
 					{{if .IsCreated}}
@@ -50,6 +57,32 @@
 			{{end}}
 		{{else}}
 			<div class="ui placeholder segment text-grey">{{ctx.Locale.Tr "company.deploy_request_files.no_files"}}</div>
+		{{end}}
+
+		{{if .Comments}}
+			{{/* Whatever anyone wrote alongside a status change — most often an
+			     admin's own reason for rejecting this, typed into Gitea's native
+			     "close with comment" box, but also a requester's own cancel
+			     reason (CancelDeployRequest's "Cancelled: ..." comment) or
+			     anything else left on the underlying PR. Shown here, not just on
+			     the native (and largely inaccessible — see docs/company/architecture.md)
+			     central-deploy PR page, so the requester and anyone in their
+			     department can actually see why. */}}
+			<h3 class="tw-mt-5 tw-mb-2">{{ctx.Locale.Tr "company.deploy_request_files.comments_heading"}}</h3>
+			<div class="ui comments">
+				{{range .Comments}}
+					<div class="comment tw-mb-3">
+						<a class="avatar">{{ctx.AvatarUtils.Avatar .Poster 32}}</a>
+						<div class="content">
+							<div class="tw-flex tw-items-center tw-gap-2">
+								<span class="tw-font-semibold">{{.Poster.Name}}</span>
+								<span class="text-grey tw-text-13">{{DateUtils.TimeSince .CreatedUnix}}</span>
+							</div>
+							<div class="text tw-whitespace-pre-wrap">{{.Content}}</div>
+						</div>
+					</div>
+				{{end}}
+			</div>
 		{{end}}
 	</div>
 </div>

@@ -49,6 +49,44 @@ func wasCancelledByRequester(ctx *context.Context, issueID int64) (bool, error) 
 	return false, nil
 }
 
+// cancelOpenDeployRequests auto-withdraws every still-open deploy-request
+// PR for (deptOwner, deptName) — called by DeployPost (company/deploy.go)
+// right before it opens a new one. A department repo's deploy request is
+// always a full snapshot of its default branch (see
+// snapshotFilesUnderPrefix), never a diff against the previous request, so
+// an older pending one can never be "still relevant" once a newer one
+// exists — it would only leave the admin reviewing stale content, or
+// mistakenly merging it after the newer, more current request. doer is
+// whoever just submitted the new request; the comment/close is attributed
+// to them the same way a manual CancelDeployRequest would be, since this
+// is functionally the same action, just triggered automatically instead
+// of by an explicit "Cancel" click.
+func cancelOpenDeployRequests(ctx *context.Context, central *repo_model.Repository, deptOwner, deptName string, doer *user_model.User) error {
+	var prs []*issues_model.PullRequest
+	if err := db.GetEngine(ctx).
+		Join("INNER", "issue", "issue.id = pull_request.issue_id").
+		Where("pull_request.base_repo_id = ?", central.ID).
+		And("pull_request.head_repo_id = ?", central.ID).
+		And("pull_request.head_branch LIKE ?", deployBranchPrefix(deptOwner, deptName)+"%").
+		And("issue.is_closed = ?", false).
+		Find(&prs); err != nil {
+		return fmt.Errorf("list open deploy requests: %w", err)
+	}
+	for _, pr := range prs {
+		if err := pr.LoadIssue(ctx); err != nil {
+			return fmt.Errorf("LoadIssue: %w", err)
+		}
+		reason := cancelCommentPrefix + "superseded by a newer Deploy Request from the same repo"
+		if _, err := issue_service.CreateIssueComment(ctx, doer, central, pr.Issue, reason, nil); err != nil {
+			return fmt.Errorf("CreateIssueComment: %w", err)
+		}
+		if err := issue_service.CloseIssue(ctx, pr.Issue, doer, ""); err != nil {
+			return fmt.Errorf("CloseIssue: %w", err)
+		}
+	}
+	return nil
+}
+
 // deployRequestView is one PR translated into plain language — no PR
 // number, no branch names, no diff link. Just "who asked for what, and
 // where it stands" — see docs/company/architecture.md on why the admin's

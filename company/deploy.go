@@ -37,16 +37,29 @@ const (
 	tplSubmitted  templates.TplName = "company/submitted"
 )
 
+// centralDeployOwnerName parses [company] CENTRAL_DEPLOY_REPO — split out
+// from centralDeployRepo below purely so callers that only have a plain
+// stdlib context.Context (company/deploy_notifier.go's notify.Notifier
+// hook, which runs outside any HTTP request) can still resolve the repo
+// without needing our web-request-scoped *context.Context.
+func centralDeployOwnerName() (owner, name string, err error) {
+	ownerRepo := setting.CfgProvider.Section("company").Key("CENTRAL_DEPLOY_REPO").String()
+	owner, name, ok := strings.Cut(ownerRepo, "/")
+	if !ok || owner == "" || name == "" {
+		return "", "", fmt.Errorf("[company] CENTRAL_DEPLOY_REPO must be set to an \"owner/name\" repo path")
+	}
+	return owner, name, nil
+}
+
 // centralDeployRepo loads the one company-wide deployment target
 // configured in app.ini's [company] section. One repo for the whole
 // company, not per-department, so this is a single static config value
 // rather than a new admin settings page/DB table — see the "Deploy
 // Request" design note in docs/company/architecture.md.
 func centralDeployRepo(ctx *context.Context) (*repo_model.Repository, error) {
-	ownerRepo := setting.CfgProvider.Section("company").Key("CENTRAL_DEPLOY_REPO").String()
-	owner, name, ok := strings.Cut(ownerRepo, "/")
-	if !ok || owner == "" || name == "" {
-		return nil, fmt.Errorf("[company] CENTRAL_DEPLOY_REPO must be set to an \"owner/name\" repo path")
+	owner, name, err := centralDeployOwnerName()
+	if err != nil {
+		return nil, err
 	}
 	return repo_model.GetRepositoryByOwnerAndName(ctx, owner, name)
 }
@@ -163,6 +176,40 @@ func DeployForm(ctx *context.Context) {
 			return
 		}
 		ctx.Data["DeployRequestStatus"] = status
+
+		// Only fetched when there's actually something to explain — most
+		// often an admin's own reason for rejecting this, typed into
+		// Gitea's native "close with comment" box on the PR (see the same
+		// comment-loading logic, and why it shows every comment rather than
+		// guessing which one "is" the reason, in DeployRequestFiles,
+		// company/deployrequestfiles.go).
+		if status.Status == "rejected" {
+			comments, err := issues_model.FindComments(ctx, &issues_model.FindCommentsOptions{
+				IssueID: pr.Issue.ID,
+				Type:    issues_model.CommentTypeComment,
+			})
+			if err != nil {
+				ctx.ServerError("FindComments", err)
+				return
+			}
+			if err := comments.LoadPosters(ctx); err != nil {
+				ctx.ServerError("LoadPosters", err)
+				return
+			}
+			// The automatic AI review (posted on every submission,
+			// regardless of outcome — postAIReviewComment) isn't a
+			// rejection reason and would be misleading under a "why was
+			// this rejected" heading specifically; DeployRequestFiles'
+			// own general Comments section (company/deployrequestfiles.go)
+			// still shows it, since that one isn't making that claim.
+			reasons := make([]*issues_model.Comment, 0, len(comments))
+			for _, c := range comments {
+				if !strings.HasPrefix(c.Content, aiReviewCommentMarker) {
+					reasons = append(reasons, c)
+				}
+			}
+			ctx.Data["RejectionComments"] = reasons
+		}
 	}
 	ctx.Data["Title"] = string(ctx.Locale.Tr("company.deploy.title"))
 	ctx.Data["Repo"] = ctx.Repo.Repository
@@ -372,11 +419,12 @@ func DeployPost(ctx *context.Context) {
 	}
 	deptRepo := ctx.Repo.Repository
 
-	message := strings.TrimSpace(ctx.Req.FormValue("message"))
-	if message == "" {
-		ctx.HTTPError(http.StatusBadRequest, "message required")
+	title := strings.TrimSpace(ctx.Req.FormValue("title"))
+	if title == "" {
+		ctx.HTTPError(http.StatusBadRequest, "title required")
 		return
 	}
+	body := strings.TrimSpace(ctx.Req.FormValue("message")) // optional — see the form field's own label/placeholder for why it's still called "message"
 
 	central, err := centralDeployRepo(ctx)
 	if err != nil {
@@ -403,36 +451,198 @@ func DeployPost(ctx *context.Context) {
 	if _, err := files_service.ChangeRepoFiles(ctx, central, centralOwner, &files_service.ChangeRepoFilesOptions{
 		OldBranch: central.DefaultBranch,
 		NewBranch: newBranch,
-		Message:   message,
+		Message:   title,
 		Files:     files,
 	}); err != nil {
 		ctx.ServerError("ChangeRepoFiles", err)
 		return
 	}
 
-	content := fmt.Sprintf("Requested by @%s (%s).\n\n%s", ctx.Doer.Name, deptRepo.FullName(), message)
-	pullIssue, err := openPullRequest(ctx, central, central, newBranch, message, content, centralOwner)
+	// This snapshot is always the department repo's full current state, so
+	// any deploy request still pending review is now stale the moment this
+	// one lands — auto-withdraw it rather than leave the admin with two
+	// open requests for the same repo, one of which is guaranteed to be
+	// out of date. Done only after the snapshot above succeeds, so a
+	// failed submission never cancels the still-good previous request.
+	if err := cancelOpenDeployRequests(ctx, central, deptRepo.OwnerName, deptRepo.Name, ctx.Doer); err != nil {
+		ctx.ServerError("cancelOpenDeployRequests", err)
+		return
+	}
+
+	content := fmt.Sprintf("Requested by @%s (%s).", ctx.Doer.Name, deptRepo.FullName())
+	if body != "" {
+		content += "\n\n" + body
+	}
+	pullIssue, err := openPullRequest(ctx, central, central, newBranch, title, content, centralOwner)
 	if err != nil {
 		ctx.ServerError("openPullRequest", err)
 		return
 	}
 
+	// Best-effort, same reasoning as the AI review comment below — see
+	// applyDeployLabels (company/labels.go).
+	applyDeployLabels(ctx, central, deptRepo, pullIssue, centralOwner)
+
+	// title (required) + body (optional) as the AI review's own context —
+	// deliberately not `content` above, which also carries "Requested by
+	// @x (dept/repo)" boilerplate generateAIReview's caller already gets
+	// as a separate deptRepoFullName argument.
+	reviewContext := title
+	if body != "" {
+		reviewContext += "\n\n" + body
+	}
 	// Best-effort: an admin still reviews and approves every Deploy
 	// Request regardless, so a slow/failing/unconfigured AI review must
 	// never block or fail the actual submission — see postAIReviewComment.
-	postAIReviewComment(ctx, central, centralOwner, pullIssue, newBranch, deptRepo, message)
+	postAIReviewComment(ctx, central, centralOwner, pullIssue, newBranch, deptRepo, reviewContext)
 
 	ctx.Redirect(deptRepo.Link() + "/deploy/submit")
 }
 
-// aiReviewDiffMaxChars caps how much raw diff text gets sent to the AI
-// tool per review — a very large deploy (a full initial import, say) could
-// otherwise blow well past the model's context window; a truncated diff
-// still gives a useful review of what it does show, flagged as partial in
-// the prompt itself.
-const aiReviewDiffMaxChars = 40000
+// aiReviewSystemPrompt was flattened before — everything from "hardcoded
+// secret" to "weird filename" landed as equally-weighted bullets, so a
+// genuine security finding could sit buried between cosmetic ones where a
+// skim would miss it. The user's own test case surfaced this directly: a
+// file reading /lib/ac and writing its content into the repo's own
+// ./deploy output (an exfiltration-via-deployment-artifact pattern, not
+// just a print) got one hedged bullet ("확인 필요") among six, no more
+// prominent than a stray test file. This version forces the security
+// category to lead as its own section, states findings as fact rather
+// than a question, and explicitly names two easy-to-rationalize-away
+// shapes: a read paired with any kind of write/output (including landing
+// in what gets deployed, not just stdout), and a general-purpose
+// recursive/bulk file-reader function — a risk by capability even if
+// unparameterized, unvalidated, or not currently called from anywhere.
+const aiReviewSystemPrompt = `You are reviewing a pull request for an internal deploy pipeline: a department's files being brought into a shared repo an admin will approve before it ships. Reply in Korean.
 
-const aiReviewSystemPrompt = `You are reviewing a pull request for an internal deploy pipeline: a department's files being brought into a shared repo an admin will approve before it ships. Reply in Korean, briefly (a few sentences to a short bullet list) — call out anything that looks like a real problem (secrets/credentials committed, obviously broken code, anything odd for what the request claims to be), or say plainly that nothing stood out. This is advisory context for the human reviewer, not a blocker — don't refuse to review, and don't recommend it, just report what you see.`
+Actively look for these — they are the actual point of this review, not one item among many:
+- Code that reads a file (or anything else — env vars, other processes' data) from somewhere OUTSIDE what the stated purpose plainly needs, and then exposes that content anywhere: prints it, logs it, sends it over the network, or writes it into a file — including a file that becomes part of what gets deployed/shipped. That last form is easy to miss: copying an external file's content into an output path inside the repo (a "deploy" folder, a build artifact, anything that ships) is exfiltration through a completely legitimate-looking channel, not merely a print statement to flag as a curiosity. Covers absolute paths, paths outside the project (../, /etc, /lib, home directories, other users' data), paths assembled from unvalidated input, and reads of config/credential-shaped files. This is the single most important pattern to catch — a read-then-expose pair can leak arbitrary data the deploy process can reach, even when the target path looks made-up, harmless, or like test filler.
+- A general-purpose function that recursively walks a directory tree (or otherwise loops over many files/paths) and reads/prints/returns their contents — flag this even if it's unparameterized, called with a default like "." rather than something obviously sensitive, or not invoked anywhere in this diff at all. The risk is the capability sitting in shipped code: it can be called with any path later, by this code or by someone editing it next. "Not called from main" is not a reason to skip it.
+- Hardcoded secrets, credentials, API keys, tokens, or connection strings.
+- Network calls to hosts that have no obvious reason to be there, especially ones sending data out.
+- Code that does something materially different from what the request's title/description claims.
+- Obviously broken or incomplete code.
+
+Structure your reply exactly like this:
+1. If you found ANY item from the list above: start with a "🔴 보안 확인 필요" section. For each finding, name the exact file, and explain the actual mechanism in a full sentence or two — not "확인이 필요합니다", but what the code concretely does and what an attacker or accident could get out of it (e.g. "a.py의 read_and_deploy_ac_file()이 /lib/ac 파일을 읽어 ./deploy/ac로 그대로 복사합니다 — 이 프로세스가 접근 가능한 시스템 파일 내용이 배포 결과물을 통해 그대로 유출됩니다"). Never soften this into a question when the code's behavior is unambiguous — if it reads and exposes something, or ships a general-purpose file-dumping capability, say so as a fact, not a thing to "check."
+2. Everything else (typos, unclear commit message, stray test files, naming oddities) goes in a separate section after, and can stay brief — a short bullet list is fine there.
+3. If nothing from the security list applies and nothing else stood out either, say so plainly in one line — don't manufacture concerns to fill space.
+
+This is advisory context for the human reviewer, not a blocker — don't refuse to review and don't recommend rejecting it, just make sure a reviewer skimming quickly still can't miss a real finding.`
+
+// aiReviewChunkMaxChars caps one chunk's diff size — small enough that a
+// review actually reads it closely instead of skimming a wall of text, big
+// enough that a typical single file's diff doesn't get split further
+// (splitDiffIntoChunks only ever splits at file boundaries, never mid-file).
+// Replaces the old flat aiReviewDiffMaxChars truncation: a large diff used
+// to just lose everything past the cutoff with no comment on what was
+// skipped; now it's reviewed in full, one chunk at a time.
+const aiReviewChunkMaxChars = 20000
+
+// aiReviewMaxChunks caps how many separate review comments one Deploy
+// Request can generate — an extreme diff (a full initial import) chunked
+// without a ceiling would mean dozens of AI calls and dozens of comments,
+// which stops being a helpful review and starts being noise the admin has
+// to scroll past. Whatever doesn't fit gets one final note saying so
+// (appended in generateAIReviews below), rather than silently reviewing
+// only the first few chunks with no explanation of what got skipped.
+const aiReviewMaxChunks = 8
+
+// splitDiffIntoChunks breaks a full git diff into pieces that never cut a
+// single file's diff in half, each capped at maxChars — packs whole
+// per-file sections greedily until the next one would overflow the current
+// chunk, then starts a new one. A single file's diff bigger than maxChars
+// on its own becomes its own oversized chunk: there's no good place to
+// split a diff hunk without losing context a review needs, so it's left
+// over-budget rather than cut arbitrarily.
+func splitDiffIntoChunks(diff string, maxChars int) []string {
+	if diff == "" {
+		return nil
+	}
+	// git diff output is a sequence of "diff --git a/X b/Y" sections;
+	// splitting on the delimiter below (and restoring what it ate, for
+	// every section but the first, which already keeps its own header)
+	// never separates a file's diff from the header naming it.
+	sections := strings.Split(diff, "\ndiff --git ")
+	for i := 1; i < len(sections); i++ {
+		sections[i] = "diff --git " + sections[i]
+	}
+
+	chunks := make([]string, 0, len(sections))
+	var current strings.Builder
+	flush := func() {
+		if current.Len() > 0 {
+			chunks = append(chunks, current.String())
+			current.Reset()
+		}
+	}
+	for _, section := range sections {
+		if section == "" {
+			continue
+		}
+		if current.Len() > 0 && current.Len()+len(section) > maxChars {
+			flush()
+		}
+		current.WriteString(section)
+	}
+	flush()
+	return chunks
+}
+
+// generateAIReviews runs the AI review prompt against headBranch's diff on
+// central, one chunk at a time (splitDiffIntoChunks), and returns one
+// review string per chunk actually reviewed — the part postAIReviewComment
+// (automatic, on every submission) and TriggerDeployRequestAIReview
+// (on-demand, an admin's own button click, company/pull_ai_review.go) both
+// need, differing only in whose AI settings run the request and what
+// happens with the results. Each returned string becomes its own separate
+// PR comment (never concatenated into one) — a big diff reviewed as five
+// chunks means five comments, not one comment five times as long, so each
+// stays readable and the model actually looks closely at its own slice
+// instead of skimming a huge combined prompt.
+//
+// Stops and returns what succeeded so far, plus the error, the moment any
+// one chunk's request fails — a transient failure on chunk 3 of 5 still
+// means chunks 1-2's real findings are worth keeping and posting.
+func generateAIReviews(ctx *context.Context, aiUserID int64, central *repo_model.Repository, headBranch, deptRepoFullName, message string) ([]string, error) {
+	gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, central)
+	if err != nil {
+		return nil, fmt.Errorf("open central repo: %w", err)
+	}
+	var diffBuf bytes.Buffer
+	if err := gitRepo.GetDiff(ctx, central.DefaultBranch+"..."+headBranch, &diffBuf); err != nil {
+		return nil, fmt.Errorf("get diff: %w", err)
+	}
+
+	chunks := splitDiffIntoChunks(diffBuf.String(), aiReviewChunkMaxChars)
+	omitted := 0
+	if len(chunks) > aiReviewMaxChunks {
+		omitted = len(chunks) - aiReviewMaxChunks
+		chunks = chunks[:aiReviewMaxChunks]
+	}
+
+	reviews := make([]string, 0, len(chunks)+1)
+	for i, chunk := range chunks {
+		userPrompt := fmt.Sprintf("Department repo: %s\nRequest message: %s\n\n", deptRepoFullName, message)
+		if len(chunks) > 1 {
+			userPrompt += fmt.Sprintf("This is part %d of %d of the full diff for this request — only the file(s) below, reviewed on their own; other parts cover the rest:\n", i+1, len(chunks))
+		}
+		userPrompt += "Diff:\n" + chunk
+
+		review, err := aiChat(ctx, aiUserID, aiReviewSystemPrompt, userPrompt)
+		if err != nil {
+			return reviews, err
+		}
+		if len(chunks) > 1 {
+			review = fmt.Sprintf("**(파트 %d/%d)**\n\n%s", i+1, len(chunks), review)
+		}
+		reviews = append(reviews, review)
+	}
+	if omitted > 0 {
+		reviews = append(reviews, fmt.Sprintf("⚠️ 변경 사항이 많아 %d개 부분 중 처음 %d개만 자동 리뷰했습니다. 나머지 %d개 부분은 직접 확인해주세요.", len(chunks)+omitted, len(chunks), omitted))
+	}
+	return reviews, nil
+}
 
 // postAIReviewComment posts an AI-generated review as a plain comment on
 // the deploy-request PR, authored as centralOwner (the admin who owns the
@@ -442,37 +652,29 @@ const aiReviewSystemPrompt = `You are reviewing a pull request for an internal d
 // anything else here is logged and swallowed, never surfaced to the
 // employee submitting the request — the admin still reviews and approves
 // every deploy request themselves regardless of what (if anything) the AI
-// said.
+// said. An admin can also trigger a fresh one on demand, run as their own
+// AI settings instead of centralOwner's — see
+// company/pull_ai_review.go's TriggerDeployRequestAIReview.
+// aiReviewCommentMarker prefixes every AI review comment this package ever
+// posts (both the automatic one below and TriggerDeployRequestAIReview's
+// on-demand one, company/pull_ai_review.go) — a stable way to tell "an AI
+// review" apart from something a person actually typed, used by DeployForm
+// to keep the automatic pre-review (posted on every submission regardless
+// of outcome) out of its "why was this rejected" section.
+const aiReviewCommentMarker = "🤖 **AI Review**"
+
 func postAIReviewComment(ctx *context.Context, central *repo_model.Repository, centralOwner *user_model.User, pullIssue *issues_model.Issue, headBranch string, deptRepo *repo_model.Repository, message string) {
 	if !AIConfiguredFor(ctx, centralOwner.ID) {
 		return
 	}
-
-	gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, central)
+	reviews, err := generateAIReviews(ctx, centralOwner.ID, central, headBranch, deptRepo.FullName(), message)
 	if err != nil {
-		log.Error("company: AI review: open central repo: %v", err)
-		return
+		log.Error("company: AI review: %v", err) // still post whatever chunks succeeded before the error, below
 	}
-	var diffBuf bytes.Buffer
-	if err := gitRepo.GetDiff(ctx, central.DefaultBranch+"..."+headBranch, &diffBuf); err != nil {
-		log.Error("company: AI review: get diff: %v", err)
-		return
-	}
-	diffText := diffBuf.String()
-	truncated := len(diffText) > aiReviewDiffMaxChars
-	diffText = truncate(diffText, aiReviewDiffMaxChars)
-
-	userPrompt := fmt.Sprintf("Department repo: %s\nRequest message: %s\n\nDiff%s:\n%s",
-		deptRepo.FullName(), message, map[bool]string{true: " (truncated)"}[truncated], diffText)
-
-	review, err := aiChat(ctx, centralOwner.ID, aiReviewSystemPrompt, userPrompt)
-	if err != nil {
-		log.Error("company: AI review: %v", err)
-		return
-	}
-
-	if _, err := issue_service.CreateIssueComment(ctx, centralOwner, central, pullIssue, "🤖 **AI Review**\n\n"+review, nil); err != nil {
-		log.Error("company: AI review: post comment: %v", err)
+	for _, review := range reviews {
+		if _, err := issue_service.CreateIssueComment(ctx, centralOwner, central, pullIssue, aiReviewCommentMarker+"\n\n"+review, nil); err != nil {
+			log.Error("company: AI review: post comment: %v", err)
+		}
 	}
 }
 

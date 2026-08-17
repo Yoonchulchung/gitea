@@ -191,7 +191,10 @@ function clearLegacyDrafts(): void {
   }
 }
 
-type PendingWrite = {content: string, createdAt: number, baseSha?: string};
+// removed (server-sourced only — see stageTmpDelete/recoverPendingEdits)
+// marks this path as a pending file deletion rather than staged content;
+// content/baseSha are meaningless when it's set.
+type PendingWrite = {content: string, createdAt: number, baseSha?: string, removed?: boolean};
 
 function pendingKeyPrefix(repoLink: string, branch: string): string {
   return `${PENDING_PREFIX}${repoLink}:${branch}:`;
@@ -487,12 +490,14 @@ export function initCompanyWorkspace() {
         openTabs.delete(path);
         if (tab.serverPath) {
           pendingDeletes.add(tab.serverPath);
+          stageTmpDelete(tab.serverPath);
           hadServerPath = true;
         }
       } else {
         // Never opened this session — its tree path is its real server
         // path (an unopened, unsaved file has no tree row to begin with).
         pendingDeletes.add(path);
+        stageTmpDelete(path);
         hadServerPath = true;
       }
       removeFilePath(treeRoot, path);
@@ -683,6 +688,23 @@ export function initCompanyWorkspace() {
       }
     }
 
+    // Stages path as a pending file deletion server-side (workspaceTmpEntry.Removed,
+    // company/workspace_tmp.go) — without this, pendingDeletes only ever
+    // lived in this tab's own memory, and a refresh before clicking Save
+    // silently undid the delete. Called from every path that adds to
+    // pendingDeletes below, not just deleteFile's own tab-was-open branch —
+    // an AI-proposed delete_file (applyAIDelete) needs the exact same
+    // protection, and unlike a person clicking the confirm-gated hover-X
+    // button, nothing about the AI flow makes an immediate Save likely to
+    // follow before the person might reload.
+    async function stageTmpDelete(path: string): Promise<void> {
+      try {
+        await POST(tmpUrl, {data: {path, removed: true, createdAt: Date.now()}});
+      } catch {
+        // best-effort — worst case a refresh before Save loses the pending delete, same risk as before this existed
+      }
+    }
+
     // Runs once, right after the page loads (never mid-session — the
     // whole reason the old always-on-open draft-restore caused real
     // trouble): recovers whatever wasn't Saved last time, reconciling the
@@ -698,8 +720,8 @@ export function initCompanyWorkspace() {
       try {
         const resp = await GET(tmpUrl);
         if (resp.ok) {
-          const {entries} = await resp.json() as {entries: {path: string, content: string, createdAt: number, baseSha?: string}[]};
-          for (const e of entries) merged.set(e.path, {content: e.content, createdAt: e.createdAt, baseSha: e.baseSha});
+          const {entries} = await resp.json() as {entries: {path: string, content: string, createdAt: number, baseSha?: string, removed?: boolean}[]};
+          for (const e of entries) merged.set(e.path, {content: e.content, createdAt: e.createdAt, baseSha: e.baseSha, removed: e.removed});
         }
       } catch {
         // server list failed — still worth checking localStorage below rather than giving up entirely
@@ -716,10 +738,21 @@ export function initCompanyWorkspace() {
       }
 
       if (!merged.size) return;
-      setStatus(i18n.statusRecovering.replace('%d', String(merged.size)));
+      setStatus(i18n.statusRecovering.replace('%s', String(merged.size))); // "%s" not "%d" — see the comment on the same pattern in company-ai-chat.ts
       let firstConflictPath: string | null = null;
       for (const [path, entry] of merged) {
         try {
+          if (entry.removed) {
+            // A pending deletion, not staged content — same tree/pendingDeletes
+            // bookkeeping deleteFile/applyAIDelete do, minus re-staging (this
+            // entry IS that staging, already on disk) and minus the confirm
+            // dialog (already confirmed once, before the refresh that brought
+            // us here). Nothing to open, so this path skips the rest of the
+            // loop body entirely.
+            pendingDeletes.add(path);
+            removeFilePath(treeRoot, path);
+            continue;
+          }
           // cache: 'no-store' — see the comment on this same call in openExistingFile above.
           const resp = await GET(`${repoLink}/raw/branch/${encodeURIComponent(branch)}/${encodePath(path)}`, {cache: 'no-store'});
           const serverContent = resp.ok ? await resp.text() : ''; // not on the branch yet — recovering a file that was never saved at all
@@ -755,24 +788,25 @@ export function initCompanyWorkspace() {
       }
     }
 
-    // Drag-and-drop move (files only — dragging a whole folder isn't
-    // supported yet). Moving only ever changes tab.path; tab.serverPath
-    // stays wherever the content actually lives until a save actually
-    // renames it there — see the OpenTab type and the save handler below.
-    // An unopened file gets opened first (fetches its real content) so it
-    // has somewhere to hold that pending rename until save.
-    async function moveFileToFolder(path: string, targetFolder: string): Promise<void> {
-      const basename = path.split('/').pop()!;
-      const newPath = targetFolder ? `${targetFolder}/${basename}` : basename;
-      if (newPath === path) return;
+    // Shared core of every path rename, however it's triggered (drag-and-drop
+    // move below, or an AI-proposed rename_file — see applyAIRename further
+    // down): retargets an open tab's own path, or opens the file first if it
+    // wasn't already — same "still needs Save" rule as any other pending
+    // change (tab.serverPath keeps the old path until a real Save actually
+    // renames it there, see the OpenTab type). Returns false (and reports
+    // its own error) on a name collision or a failed open — callers that
+    // want to do something more (activate the tab, show a status line) only
+    // do it once this comes back true.
+    async function applyPathRename(path: string, newPath: string): Promise<boolean> {
+      if (newPath === path) return true;
       if (openTabs.has(newPath)) {
         showErrorToast(i18n.errorFileExists.replace('%s', newPath));
-        return;
+        return false;
       }
 
       if (!openTabs.has(path)) {
         await openExistingFile(path);
-        if (!openTabs.has(path)) return; // failed to load — openExistingFile already reported it
+        if (!openTabs.has(path)) return false; // failed to load — openExistingFile already reported it
       }
       const tab = openTabs.get(path)!;
 
@@ -790,6 +824,15 @@ export function initCompanyWorkspace() {
       // the moment it's at a path that was never actually fetched.
       const icon = iconCache.get(path);
       if (icon) iconCache.set(newPath, icon);
+      return true;
+    }
+
+    // Drag-and-drop move (files only — dragging a whole folder isn't
+    // supported yet) — same folder, new basename kept the same.
+    async function moveFileToFolder(path: string, targetFolder: string): Promise<void> {
+      const basename = path.split('/').pop()!;
+      const newPath = targetFolder ? `${targetFolder}/${basename}` : basename;
+      if (!(await applyPathRename(path, newPath))) return;
       activateTab(newPath);
       setStatus(i18n.statusMoved.replace('%s', path).replace('%s', newPath));
     }
@@ -1152,11 +1195,62 @@ export function initCompanyWorkspace() {
       openFileAndStage(path, content);
     }
 
+    // AI-proposed deletion (delete_file, company/mcp.go) — same staged/
+    // still-needs-Save state deleteFile above puts a person's own hover-X
+    // click into, minus the window.confirm(): a blocking native dialog
+    // popping up mid-stream, for something no more destructive or harder to
+    // undo before Save than any other AI-proposed change, would be a
+    // jarring, disproportionate gate here specifically. The chat's own
+    // status line (company-ai-chat.ts) already says plainly what happened.
+    function applyAIDelete(path: string): void {
+      const tab = openTabs.get(path);
+      if (tab) {
+        clearTimeout(tab.tmpSaveTimer);
+        localStorage.removeItem(pendingKey(repoLink, branch, path));
+        clearTmpEditRemote(path);
+        tab.tabEl.remove();
+        tab.pane.remove();
+        openTabs.delete(path);
+        if (tab.serverPath) {
+          pendingDeletes.add(tab.serverPath);
+          stageTmpDelete(tab.serverPath);
+        }
+      } else {
+        // Not open this session — its tree path is its real server path,
+        // same assumption deleteFile's own equivalent branch makes.
+        pendingDeletes.add(path);
+        stageTmpDelete(path);
+      }
+      removeFilePath(treeRoot, path);
+
+      if (activePath === path) {
+        const next = openTabs.keys().next().value;
+        if (next) activateTab(next);
+        else {
+          activePath = null;
+          chatHandle?.setActiveFilePath(null);
+        }
+      }
+      renderTree();
+    }
+
+    // AI-proposed rename (rename_file, company/mcp.go) — applyPathRename is
+    // the same core a person's own drag-and-drop move uses; brings the
+    // renamed file into view afterward the same way applyAIEdit brings an
+    // edited one into view, so what the AI just did is immediately visible.
+    async function applyAIRename(fromPath: string, toPath: string): Promise<void> {
+      if (!(await applyPathRename(fromPath, toPath))) return;
+      renderTree();
+      activateTab(toPath);
+    }
+
     const aiChatEl = el.querySelector<HTMLElement>('.company-workspace-ai-chat');
     if (aiChatEl) {
       chatHandle = initChatPanel(aiChatEl, {
         sendUrl: aiUrl,
         onEdit: applyAIEdit,
+        onDelete: applyAIDelete,
+        onRename: applyAIRename,
         emptyStateText: aiChatEl.getAttribute('data-ai-empty-state')!,
         // Every open tab's live content — including whatever's not saved
         // yet — not just the active one: read_file needs to see an

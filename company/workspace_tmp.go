@@ -65,6 +65,17 @@ type workspaceTmpEntry struct {
 	// refresh would silently rebase the draft onto whatever's newest and
 	// the next Save would overwrite that person's change with no conflict.
 	BaseSha string `json:"baseSha,omitempty"`
+	// Removed marks this entry as a staged FILE DELETION — the path itself
+	// is proposed to go away on the next real Save, as opposed to Cleared
+	// above (which means "nothing staged here, ignore entirely"). Added
+	// because pendingDeletes (company-workspace.ts) used to live in the
+	// browser tab's memory only: a delete queued but not yet Saved was
+	// silently undone by a refresh, a gap that went unnoticed while every
+	// delete required an explicit confirm-dialog click (naturally followed
+	// by Save soon after) but became easy to hit once the AI could queue a
+	// delete_file call mid-conversation with no such prompt in the way.
+	// Content is meaningless for a Removed entry.
+	Removed bool `json:"removed,omitempty"`
 }
 
 // workspaceTmpMaxAge is how long an orphaned tmp entry (page closed
@@ -231,8 +242,14 @@ type workspaceTmpSaveRequest struct {
 	// of writing one — an explicit "버릴까요?" discard (closeTab,
 	// company-workspace.ts) needs this too, not just a Save: otherwise the
 	// very content someone just chose to throw away would quietly come
-	// back the next time they opened this branch.
+	// back the next time they opened this branch. Not to be confused with
+	// Removed below — Deleted discards a staged edit (there's no pending
+	// change here anymore); Removed stages that the real file itself
+	// should be deleted (there IS a pending change: "delete this").
 	Deleted bool `json:"deleted,omitempty"`
+	// Removed stages path itself as a pending file deletion — see
+	// workspaceTmpEntry.Removed.
+	Removed bool `json:"removed,omitempty"`
 }
 
 // WorkspaceTmpSave is the fire-and-forget target the editor's own debounced
@@ -256,7 +273,7 @@ func WorkspaceTmpSave(ctx *context.Context) {
 		return
 	}
 	if err := saveTmpEntry(ctx.Doer.ID, ctx.Repo.Repository.ID, ctx.Repo.BranchName, workspaceTmpEntry{
-		Path: req.Path, Content: req.Content, CreatedAt: req.CreatedAt, BaseSha: req.BaseSha,
+		Path: req.Path, Content: req.Content, CreatedAt: req.CreatedAt, BaseSha: req.BaseSha, Removed: req.Removed,
 	}); err != nil {
 		ctx.ServerError("saveTmpEntry", err)
 		return

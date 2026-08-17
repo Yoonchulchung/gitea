@@ -8,15 +8,36 @@
 		<h1 class="tw-mb-2">{{svg "octicon-rocket" 22 "tw-mr-2"}}{{ctx.Locale.Tr "company.deploy.title"}} — {{.Repo.Name}}</h1>
 
 		{{if .DeployRequestStatus}}
-			<div class="ui {{if eq .DeployRequestStatus.Status "approved"}}green{{else if eq .DeployRequestStatus.Status "rejected"}}red{{else if eq .DeployRequestStatus.Status "cancelled"}}grey{{else}}yellow{{end}} label tw-mb-4">
+			<div class="ui {{if eq .DeployRequestStatus.Status "approved"}}green{{else if eq .DeployRequestStatus.Status "rejected"}}red{{else if eq .DeployRequestStatus.Status "cancelled"}}grey{{else}}yellow{{end}} label tw-mb-2">
 				{{ctx.Locale.Tr (printf "company.deploy_status.%s" .DeployRequestStatus.Status)}} - {{DateUtils.AbsoluteShort .DeployRequestStatus.Date}}
+			</div>
+		{{end}}
+
+		{{if .RejectionComments}}
+			{{/* Whatever the admin wrote when rejecting — typed alongside closing
+			     the PR natively, same source as DeployRequestFiles' own comment
+			     list (company/deployrequestfiles.go). Without this the requester
+			     only ever saw "Rejected" with no way to find out why. */}}
+			<div class="ui warning message tw-mb-4">
+				<div class="header">{{ctx.Locale.Tr "company.deploy.rejection_reason_heading"}}</div>
+				{{range .RejectionComments}}
+					<p class="tw-mt-2">
+						<strong>{{.Poster.Name}}</strong>
+						<span class="text-grey tw-text-13">{{DateUtils.TimeSince .CreatedUnix}}</span><br>
+						<span class="tw-whitespace-pre-wrap">{{.Content}}</span>
+					</p>
+				{{end}}
 			</div>
 		{{end}}
 
 		<form class="ui form tw-max-w-2xl" id="deploy-form" method="post">
 			<div class="field">
+				<label>{{ctx.Locale.Tr "company.deploy.title_field_label"}}</label>
+				<input type="text" name="title" placeholder="{{ctx.Locale.Tr "company.deploy.title_field_placeholder"}}" required>
+			</div>
+			<div class="field">
 				<label>{{ctx.Locale.Tr "company.deploy.message_label"}}</label>
-				<textarea name="message" rows="3" placeholder="{{ctx.Locale.Tr "company.deploy.message_placeholder"}}" required></textarea>
+				<textarea name="message" rows="3" placeholder="{{ctx.Locale.Tr "company.deploy.message_placeholder"}}"></textarea>
 			</div>
 			<button type="submit" id="submit-button" class="ui primary button">
 				{{svg "octicon-rocket" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.deploy.title"}}

@@ -70,7 +70,14 @@ async function updateNotificationTable() {
     const params = new URLSearchParams(window.location.search);
     params.set('div-only', 'true');
     params.set('sequence-number', String(++notificationSequenceNumber));
-    const response = await GET(`${appSubUrl}/notifications?${params.toString()}`);
+    // X-Gitea-Fetch-Action tells the server this is a background request, not
+    // a real page visit — otherwise an expired session mid-poll gets a
+    // redirect to "/user/login?redirect_to=/notifications?...", and the
+    // login page's GET handler stashes that into the redirect_to cookie,
+    // silently hijacking the *next* real login to land here instead of
+    // wherever the person actually was (see modules/web/middleware/cookie.go's
+    // RedirectLinkUserLogin).
+    const response = await GET(`${appSubUrl}/notifications?${params.toString()}`, {headers: {'X-Gitea-Fetch-Action': '1'}});
 
     if (!response.ok) {
       throw new Error('Failed to fetch notification table');
@@ -88,7 +95,8 @@ async function updateNotificationTable() {
 
 async function updateNotificationCount(): Promise<number> {
   try {
-    const response = await GET(`${appSubUrl}/notifications/new`);
+    // see the comment on the same header in updateNotificationTable above
+    const response = await GET(`${appSubUrl}/notifications/new`, {headers: {'X-Gitea-Fetch-Action': '1'}});
 
     if (!response.ok) {
       throw new Error('Failed to fetch notification count');

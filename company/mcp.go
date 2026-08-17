@@ -27,13 +27,35 @@ import (
 // that request's own gitRepo/branch/edits/openFiles — there's no shared or
 // global tool state.
 
+// fileExistsForAI reports whether path is something the model could
+// plausibly mean by name right now — checked in the same layered order
+// read_file already uses (a staged edit this turn, an open tab's live
+// state, then what's actually committed) so delete_file/rename_file below
+// can't be fooled by, say, a file the model itself just staged a write_file
+// proposal for but that was never real to begin with.
+func fileExistsForAI(ctx context.Context, gitRepo *git.Repository, branch string, edits map[string]*workspaceAIEdit, openFiles map[string]string, path string) bool {
+	if _, ok := edits[path]; ok {
+		return true
+	}
+	if _, ok := openFiles[path]; ok {
+		return true
+	}
+	commit, err := gitRepo.GetBranchCommit(ctx, branch)
+	if err != nil {
+		return false
+	}
+	_, err = commit.GetTreeEntryByPath(ctx, gitRepo, path)
+	return err == nil
+}
+
 // newWorkspaceMCPServer builds the MCP server for one WorkspaceAI request.
-// edits and openFiles are the same maps WorkspaceAI already threads through
-// its turn loop: edits accumulates write_file's proposals (never touches
-// git — see docs/company/ai-agent.md's safety boundaries), openFiles is
-// every tab currently open in the person's browser, live content included,
-// which read_file checks before falling back to git.
-func newWorkspaceMCPServer(gitRepo *git.Repository, branch string, edits map[string]*workspaceAIEdit, openFiles map[string]string) *mcp.Server {
+// edits/deletes/renames and openFiles are the same maps WorkspaceAI already
+// threads through its turn loop: edits/deletes/renames accumulate
+// write_file/delete_file/rename_file's proposals (never touch git — see
+// docs/company/ai-agent.md's safety boundaries), openFiles is every tab
+// currently open in the person's browser, live content included, which
+// read_file checks before falling back to git.
+func newWorkspaceMCPServer(gitRepo *git.Repository, branch string, edits map[string]*workspaceAIEdit, deletes map[string]bool, renames, openFiles map[string]string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "company-workspace", Version: "1.0.0"}, nil)
 
 	server.AddTool(&mcp.Tool{
@@ -129,6 +151,64 @@ func newWorkspaceMCPServer(gitRepo *git.Repository, branch string, edits map[str
 		}
 		edits[args.Path] = &args
 		return textResult("ok, staged as a proposed edit"), nil
+	})
+
+	server.AddTool(&mcp.Tool{
+		Name:        "delete_file",
+		Description: "Propose deleting a file. This does not delete anything by itself — it only stages a proposed deletion for the human to review (they still have to click Save for it to actually happen, and can undo it before then).",
+		InputSchema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"path": map[string]any{"type": "string"}},
+			"required":   []string{"path"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult(err), nil
+		}
+		if !fileExistsForAI(ctx, gitRepo, branch, edits, openFiles, args.Path) {
+			return errorResult(fmt.Errorf("no such file: %s", args.Path)), nil
+		}
+		delete(edits, args.Path) // a staged edit for a path that's now being deleted is moot
+		deletes[args.Path] = true
+		return textResult("ok, staged as a proposed deletion"), nil
+	})
+
+	server.AddTool(&mcp.Tool{
+		Name:        "rename_file",
+		Description: "Propose renaming or moving a file to a new path (its content is unchanged). Use this instead of delete_file+write_file when the content itself isn't changing — it stays one distinguishable change instead of an unrelated delete and an unrelated new file. This does not rename anything by itself — it only stages a proposed rename for the human to review.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"from_path": map[string]any{"type": "string"},
+				"to_path":   map[string]any{"type": "string"},
+			},
+			"required": []string{"from_path", "to_path"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args struct {
+			FromPath string `json:"from_path"`
+			ToPath   string `json:"to_path"`
+		}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult(err), nil
+		}
+		if args.FromPath == "" || args.ToPath == "" {
+			return errorResult(fmt.Errorf("from_path and to_path required")), nil
+		}
+		if args.FromPath == args.ToPath {
+			return errorResult(fmt.Errorf("from_path and to_path are the same")), nil
+		}
+		if !fileExistsForAI(ctx, gitRepo, branch, edits, openFiles, args.FromPath) {
+			return errorResult(fmt.Errorf("no such file: %s", args.FromPath)), nil
+		}
+		if fileExistsForAI(ctx, gitRepo, branch, edits, openFiles, args.ToPath) {
+			return errorResult(fmt.Errorf("%s already exists — pick a different destination or delete_file it first", args.ToPath)), nil
+		}
+		renames[args.FromPath] = args.ToPath
+		return textResult("ok, staged as a proposed rename"), nil
 	})
 
 	return server

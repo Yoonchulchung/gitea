@@ -33,7 +33,7 @@
 		data-i18n-status-deleted="{{ctx.Locale.Tr "company.workspace.status_deleted" "%s"}}"
 		data-i18n-loading="{{ctx.Locale.Tr "company.workspace.loading"}}"
 		data-i18n-error-load-file="{{ctx.Locale.Tr "company.workspace.error_load_file" "%s"}}"
-		data-i18n-status-recovering="{{ctx.Locale.Tr "company.workspace.status_recovering" "%d"}}"
+		data-i18n-status-recovering="{{ctx.Locale.Tr "company.workspace.status_recovering" "%s"}}"
 		data-i18n-error-file-exists="{{ctx.Locale.Tr "company.workspace.error_file_exists" "%s"}}"
 		data-i18n-status-moved="{{ctx.Locale.Tr "company.workspace.status_moved" "%s" "%s"}}"
 		data-i18n-new-file-placeholder="{{ctx.Locale.Tr "company.workspace.new_file_placeholder"}}"
@@ -79,18 +79,24 @@
 		</div>
 		<div class="company-workspace-ai-chat" data-ai-ready="{{.AIEnabled}}"
 			data-ai-empty-state="{{ctx.Locale.Tr "company.workspace.ai_empty_state"}}"
-			data-ai-not-configured="{{ctx.Locale.Tr "company.workspace.ai_not_configured" (printf "%s/user/settings/ai" AppSubUrl)}}"
+			data-ai-not-configured="{{ctx.Locale.Tr "company.workspace.ai_not_configured"}}"
+			data-ai-not-configured-link="{{ctx.Locale.Tr "company.workspace.ai_not_configured_link"}}"
+			data-ai-not-configured-url="{{printf "%s/user/settings/ai" AppSubUrl}}"
 			data-ai-not-configured-placeholder="{{ctx.Locale.Tr "company.workspace.ai_not_configured_placeholder"}}"
 			data-ai-stop="{{ctx.Locale.Tr "company.workspace.ai_stop"}}"
 			data-ai-request-failed="{{ctx.Locale.Tr "company.workspace.ai_request_failed"}}"
 			data-ai-read-status="{{ctx.Locale.Tr "company.workspace.ai_read_status" "%s"}}"
 			data-ai-edit-status="{{ctx.Locale.Tr "company.workspace.ai_edit_status" "%s"}}"
+			data-ai-delete-status="{{ctx.Locale.Tr "company.workspace.ai_delete_status" "%s"}}"
+			data-ai-rename-status="{{ctx.Locale.Tr "company.workspace.ai_rename_status" "%s" "%s"}}"
+			data-ai-queued="{{ctx.Locale.Tr "company.workspace.ai_queued" "%s"}}"
 		>
 			<div class="company-workspace-ai-chat-header">
 				AI
 			</div>
 			<div class="company-ai-chat-messages"></div>
 			<div class="company-ai-chat-inputbar">
+				<div class="company-ai-chat-queue tw-hidden"></div>
 				<div class="company-ai-chat-inputwrap">
 					<textarea class="company-ai-chat-input" rows="1" placeholder="{{ctx.Locale.Tr "company.workspace.ai_placeholder"}}"></textarea>
 					<div class="company-ai-chat-inputtoolbar">
@@ -414,6 +420,10 @@
 	font-size: .92rem;
 	padding: 1.5rem 1rem;
 }
+.company-ai-chat-empty a {
+	display: block;
+	margin-top: .4rem;
+}
 .company-ai-chat-message {
 	font-size: .98rem;
 	line-height: 1.6;
@@ -453,6 +463,11 @@
 	padding: .65rem .75rem .8rem;
 	border-top: 1px solid var(--color-secondary);
 	flex-shrink: 0;
+}
+.company-ai-chat-queue {
+	font-size: .8rem;
+	color: var(--color-text-light-2);
+	padding-bottom: .4rem;
 }
 /* Stacked (textarea on top, its own toolbar row below) rather than a
    single row with the send button beside the text — a single row either

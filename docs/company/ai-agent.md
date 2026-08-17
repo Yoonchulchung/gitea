@@ -69,9 +69,14 @@ merge를 돌린다(`company-conflict.ts`의 `buildConflictText`): 서로 다른 
 
 ## 안전 경계 (타협 불가)
 
-- **에이전트는 git에 직접 쓰지 않는다.** `write_file` 도구는 제안(proposal)만
-  만들고, 실제 커밋은 사람이 에디터에서 "저장" 버튼을 눌러야만 일어난다 —
-  이 시스템 전체의 원칙(`docs/company/architecture.md`)과 동일.
+- **에이전트는 git에 직접 쓰지 않는다.** `write_file`/`delete_file`/`rename_file`
+  도구 모두 제안(proposal)만 만들고, 실제 커밋은 사람이 에디터에서 "저장"
+  버튼을 눌러야만 일어난다 — 이 시스템 전체의 원칙
+  (`docs/company/architecture.md`)과 동일. 삭제/이름변경도 예외 아님 — 클릭
+  한 번으로 확정되는 파괴적 액션이 아니라, 다른 제안과 똑같이 저장 전까지는
+  되돌릴 수 있는 상태로 머문다(`company-workspace.ts`의 `applyAIDelete`/
+  `applyAIRename` — 사람이 직접 삭제할 때와 달리 `window.confirm` 없음, 스트림
+  중간에 뜨는 블로킹 팝업이 오히려 부자연스러움).
 - **에이전트는 현재 열려 있는 repo+branch 밖을 절대 못 건드린다.** 도구는
   항상 `ctx.Repo.Repository`/`ctx.Repo.BranchName`에 하드 스코프됨 — 모델이
   다른 레포 이름을 지어내도 도구 구현 자체가 그 레포를 열 방법이 없음.
@@ -86,7 +91,7 @@ merge를 돌린다(`company-conflict.ts`의 `buildConflictText`): 서로 다른 
 
 | 위치 | 목적 | 도구 | 상태 |
 |---|---|---|---|
-| 워크스페이스 에디터 우측 사이드바 (`/{owner}/{repo}/_edits/{branch}`) | 코드 생성/수정 도움 | list_files, read_file, write_file | 진행 중 |
+| 워크스페이스 에디터 우측 사이드바 (`/{owner}/{repo}/_edits/{branch}`) | 코드 생성/수정 도움 | list_files, read_file, write_file, delete_file, rename_file | 진행 중 |
 | PR 화면 좌측 사이드바 (`{owner}/{repo}/pulls/{index}`, 특히 central-deploy) | 리뷰 중인 admin이 diff에 대해 질문 | read_file(base/head), get_diff, list_changed_files (읽기 전용) | 미착수 |
 | Deploy Request 제출 시 자동 리뷰 코멘트 | 사람이 보기 전에 1차 요약/이상 징후 알림 | 없음 (diff 텍스트를 통째로 프롬프트에 넣는 단발성 호출) | 완료 |
 
@@ -107,11 +112,12 @@ merge를 돌린다(`company-conflict.ts`의 `buildConflictText`): 서로 다른 
   본인 키로 Anthropic API에 직접 연결).
 - **도구는 자체 스키마가 아니라 실제 MCP(Model Context Protocol) 서버로 정의**
   (`company/mcp.go`, `github.com/modelcontextprotocol/go-sdk`) — 이전에는
-  `aiTool` 구조체를 손으로 만들어 썼는데, 이제 list_files/read_file/write_file이
-  진짜 MCP 서버로 등록되고, 같은 프로세스 안에서 `mcp.NewInMemoryTransports`로
-  붙은 MCP 클라이언트가 이걸 호출한다 (진짜 소켓/서브프로세스 아님 — in-memory
-  전송이지만 프로토콜 자체는 표준). 요청마다 서버+세션을 새로 만들어 그
-  요청의 `edits`/`openFiles` 상태에 클로저로 묶는다. 도구 목록은 매 요청
+  `aiTool` 구조체를 손으로 만들어 썼는데, 이제 list_files/read_file/write_file/
+  delete_file/rename_file이 진짜 MCP 서버로 등록되고, 같은 프로세스 안에서
+  `mcp.NewInMemoryTransports`로 붙은 MCP 클라이언트가 이걸 호출한다 (진짜
+  소켓/서브프로세스 아님 — in-memory 전송이지만 프로토콜 자체는 표준). 요청마다
+  서버+세션을 새로 만들어 그 요청의 `edits`/`deletes`/`renames`/`openFiles`
+  상태에 클로저로 묶는다. 도구 목록은 매 요청
   `session.ListTools()`로 가져와서 provider별 스키마로 변환
   (`mcpToolsToAI`) — 더 이상 `workspaceAITools` 같은 고정 변수가 없다.
   장점: (1) 표준 프로토콜이라 나중에 외부 MCP 서버(공식 filesystem 서버 등)를
@@ -142,6 +148,16 @@ merge를 돌린다(`company-conflict.ts`의 `buildConflictText`): 서로 다른 
 - [x] 에러 상태를 채팅창 안에 표시 (실패 시 말풍선에 에러 메시지)
 - [x] 진행 중 취소 — 전송 버튼이 전송 중엔 "중단"으로 바뀌어 `AbortController`로
       중단
+- [x] 스트리밍 중 보낸 메시지는 큐잉 — `queuedInstructions` 배열, 대화창에는
+      즉시 기록되고(`submit()`) 현재 턴의 스트림이 끝나면 자동으로 다음 걸
+      실행(`runTurn`의 `finally`). 입력창 위에 "N개 메시지 전송 대기 중"
+      표시. 명시적으로 중단(Stop)을 누르면 큐도 같이 비움 — 방금 멈추라고
+      한 사람에게 대기열이 곧바로 이어서 도는 건 원치 않는 동작이라 판단
+- [x] 파일 삭제/이름변경 제안 — `delete_file`/`rename_file` MCP 도구
+      (`company/mcp.go`), write_file과 동일하게 제안만 하고 실제 반영은
+      저장 버튼을 눌러야 함. 이름변경은 delete+create가 아니라 진짜
+      rename으로 처리(`applyPathRename` 공유, 드래그 앤 드롭 이동과 같은
+      경로) — diff에서 "삭제 후 새 파일"이 아니라 하나의 변경으로 보임
 - [x] 실제 게이트웨이 없이도 전체 파이프라인(설정→키 조회→스트리밍 호출→
       에러 스트림) 동작 확인 — fake URL로 connection-refused까지 왕복시켜
       `{"type":"error",...}`가 정상적으로 클라이언트에 도착하는 것까지 검증함.
@@ -150,15 +166,32 @@ merge를 돌린다(`company-conflict.ts`의 `buildConflictText`): 서로 다른 
 - [ ] 대화 기록을 `localStorage`에 저장해서 새로고침에도 유지할지 — 미해결
       질문 참고, 사용자 확인 필요
 
-### Phase 3 — PR 리뷰 사이드바
-- [ ] 읽기 전용 도구셋: `read_file(side, path)` (base/head 어느 쪽인지),
-      `list_changed_files()`, `get_diff()` — 이미 `deployrequestfiles.go`/
-      `gitdiff.GetDiffForRender`에 있는 diff 계산 로직 재사용
-- [ ] `templates/repo/issue/view.tmpl` (또는 그 하위 partial) 커스텀 오버라이드로
-      좌측 사이드바 추가 — 네이티브 PR 화면을 깨지 않게 조심
-- [ ] 같은 스트리밍 프로토콜/프론트엔드 모듈 재사용 (Phase 2와 코드 공유)
-- [ ] 어떤 PR에서든(Deploy Request 전용 아님) 동작하게 할지, central-deploy
-      PR로 한정할지 결정 필요 — 현재는 후자로 가정하고 있음 (아래 미해결 질문)
+### Phase 3 — PR AI 코드 리뷰 (완료, 축소된 범위로)
+사용자 확인 결과: 인터랙티브 읽기 전용 채팅 사이드바(원래 계획) 대신
+**버튼 한 번으로 한 번 리뷰 코멘트를 남기는 축소된 형태**로 결정, 범위는
+central-deploy PR로 한정(아래 두 항목 모두 확정, 더 이상 미해결 아님).
+
+- [x] 네이티브 PR 화면(`/{owner}/{repo}/pulls/{index}`)에 "AI 코드 리뷰" 버튼 —
+      `templates/repo/issue/view_content.tmpl`의 `custom/` 오버라이드
+      (전체 파일 복사 + 버튼 하나 삽입, `docs/company/patches.md` 기록)
+- [x] 버튼 표시 조건(`SetDeployRequestAIReviewData`, 네이티브 라우트 체인에
+      끼워 넣은 미들웨어): central-deploy의 Deploy Request PR만, 어드민만,
+      본인 AI 설정이 이미 되어 있을 때만 — 하나라도 아니면 버튼 자체가 안 보임
+- [x] 클릭 시 `TriggerDeployRequestAIReview`(`company/pull_ai_review.go`)가
+      버튼 표시 조건을 서버에서 다시 한 번 검증(직접 URL 접근 방어) 후,
+      클릭한 사람 본인의 AI 설정으로 `generateAIReview`(기존
+      `postAIReviewComment`의 diff/프롬프트 로직을 공유 함수로 분리) 실행 →
+      "🤖 **AI Review** (requested by @user)" 코멘트로 남김
+- [x] 자동 리뷰(`postAIReviewComment`, Deploy Request 제출 시)와 달리 이건
+      사람이 명시적으로 누른 액션이므로 실패를 조용히 삼키지 않고 500 에러로
+      표시 — 가짜 API 키로 실제 Anthropic API에 요청까지 가서 401을 받고
+      그대로 에러 페이지에 뜨는 것까지 확인(코멘트는 안 남음)
+- [x] 비어드민/비-Deploy-Request PR/AI 미설정 각각에서 버튼 미노출 +
+      엔드포인트 직접 POST도 404로 막히는 것까지 검증
+
+원래 계획했던 인터랙티브 사이드바(읽기 전용 도구셋 `read_file`/`get_diff`,
+Phase 2와 스트리밍 프로토콜 공유 등)는 착수하지 않음 — 필요해지면 별도로
+다시 논의.
 
 ### Phase 4 — 다듬기
 - [ ] 로딩/에러 상태 UI 통일
@@ -193,9 +226,8 @@ merge를 돌린다(`company-conflict.ts`의 `buildConflictText`): 서로 다른 
    새로고침하면 날아감"인데, 실제로 편집이 오래 걸리는 작업이면 불편할 수
    있음 — 필요하면 `localStorage`에 저장하는 정도는 쉽게 추가 가능 (draft
    저장과 같은 패턴).
-2. **PR 사이드바를 모든 PR에 넣을지, central-deploy만?** 부서 레포에도
-   일반 PR이 있을 수 있는가? (지금 구조에서는 부서 레포는 direct commit만
-   쓰고 PR을 안 씀 — 그렇다면 PR 사이드바는 사실상 central-deploy 전용이 됨.)
+2. ~~PR 리뷰를 모든 PR에 넣을지, central-deploy만?~~ **해결(2026-08-17):
+   central-deploy의 Deploy Request PR만** — Phase 3 참고.
 3. **비용/사용량 가시성이 필요한지?** 유저별 키를 쓰므로 사용량은 각자 키
    발급처(사내 AI 툴 관리 화면)에서 보일 텐데, Gitea 안에서도 보여줄 필요가
    있는지.

@@ -42,6 +42,14 @@ export type ChatPanelOptions = {
   // Called once per {"type":"edit"} event — the workspace editor drops
   // these into open tabs; a read-only surface (PR sidebar) can omit this.
   onEdit?: (path: string, content: string) => void;
+  // Called once per {"type":"delete"} / {"type":"rename"} event — same
+  // "proposal only, still needs Save" rule as onEdit above. Omit on a
+  // read-only surface the same way.
+  onDelete?: (path: string) => void;
+  // May need to openExistingFile a not-yet-open tab first (applyPathRename,
+  // company-workspace.ts) — allowed to be async; called fire-and-forget
+  // either way, nothing here awaits it.
+  onRename?: (fromPath: string, toPath: string) => void | Promise<void>;
   // Called fresh right before every send — whatever it returns gets
   // attached to that one request as ambient context, Claude-Code-style: an
   // unqualified "이거 고쳐줘" then means the file already on screen, without
@@ -101,6 +109,13 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
   const history: ChatTurn[] = [];
   let abortController: AbortController | null = null;
   let emptyStateEl: HTMLElement | null = null;
+  // Messages sent while a previous one is still streaming — send() itself
+  // can't just start a second, overlapping request (abortController is one
+  // slot, and interleaving two streams into the same message list would
+  // scramble which reply belongs to which turn). Queued instead of
+  // rejected/dropped: each still lands in the chat immediately, in order,
+  // and runs for real the moment the current turn's stream actually ends.
+  const queuedInstructions: string[] = [];
 
   function showEmptyState(text: string): void {
     emptyStateEl = createElementFromHTML<HTMLElement>('<div class="company-ai-chat-empty"></div>');
@@ -108,8 +123,29 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
     messagesEl.append(emptyStateEl);
   }
 
+  // Separate from showEmptyState above: that one trusts its caller's HTML
+  // (opts.emptyStateText is server-controlled markup, not user input), but
+  // an <a href> can't travel through a data-* attribute as markup — Gitea's
+  // template auto-escaping strips tags rather than round-tripping them
+  // through an attribute value, so ctx.Locale.Tr's own <a> tag never
+  // survives into the DOM that way. Building the link as a real element
+  // from separate plain-text/URL attributes sidesteps that entirely.
+  function showNotConfiguredState(message: string, linkLabel: string, linkURL: string): void {
+    emptyStateEl = createElementFromHTML<HTMLElement>('<div class="company-ai-chat-empty"></div>');
+    const messageEl = document.createElement('div');
+    messageEl.textContent = message;
+    emptyStateEl.append(messageEl);
+    if (linkURL) {
+      const link = document.createElement('a');
+      link.href = linkURL;
+      link.textContent = linkLabel;
+      emptyStateEl.append(link);
+    }
+    messagesEl.append(emptyStateEl);
+  }
+
   if (el.getAttribute('data-ai-ready') !== 'true') {
-    showEmptyState(attr(el, 'data-ai-not-configured'));
+    showNotConfiguredState(attr(el, 'data-ai-not-configured'), attr(el, 'data-ai-not-configured-link'), attr(el, 'data-ai-not-configured-url'));
     inputEl.disabled = true;
     inputEl.placeholder = attr(el, 'data-ai-not-configured-placeholder');
     sendButton.disabled = true;
@@ -137,6 +173,8 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
   const requestFailedText = attr(el, 'data-ai-request-failed');
   const readStatusTemplate = attr(el, 'data-ai-read-status'); // has a literal "%s" placeholder — see the comment on handleToolEvent below
   const editStatusTemplate = attr(el, 'data-ai-edit-status');
+  const deleteStatusTemplate = attr(el, 'data-ai-delete-status');
+  const renameStatusTemplate = attr(el, 'data-ai-rename-status'); // has two "%s" placeholders — from, then to
 
   function setSending(sending: boolean): void {
     sendButton.disabled = sending && !abortController; // disabled only while genuinely unable to act; "sending" itself repurposes the button as Stop
@@ -145,15 +183,49 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
     sendButton.setAttribute('aria-label', sending ? stopLabel : sendLabel);
   }
 
-  async function send(): Promise<void> {
-    const instruction = inputEl.value.trim();
-    if (!instruction || abortController) return;
+  const queueEl = el.querySelector<HTMLElement>('.company-ai-chat-queue');
+  // has a literal "%s" placeholder — not "%d": Gitea's server-side Tr()
+  // formats with Go's fmt verbs, and %d rejects a string argument (even
+  // one only ever meant to survive untouched to be replaced here) with a
+  // visible "%!d(string=...)" error text — %s has no such restriction.
+  const queuedTemplate = attr(el, 'data-ai-queued');
 
-    addMessage('user', instruction);
-    history.push({role: 'user', content: instruction});
+  function updateQueueIndicator(): void {
+    if (!queueEl) return;
+    if (queuedInstructions.length === 0) {
+      queueEl.textContent = '';
+      queueEl.classList.add('tw-hidden');
+      return;
+    }
+    queueEl.textContent = queuedTemplate.replace('%s', String(queuedInstructions.length));
+    queueEl.classList.remove('tw-hidden');
+  }
+
+  // submit() is what the send button/Enter key actually calls — always
+  // records the message right away (addMessage/history), so the
+  // conversation reads in the order things were typed regardless of
+  // streaming state. runTurn (below) is the part that actually round-trips
+  // to the server for one instruction; submit either calls it directly or,
+  // if one's already in flight, queues this instruction to run once that
+  // one's stream ends (see runTurn's own finally block).
+  function submit(): void {
+    const instruction = inputEl.value.trim();
+    if (!instruction) return;
     inputEl.value = '';
     inputEl.style.height = 'auto';
 
+    addMessage('user', instruction);
+    history.push({role: 'user', content: instruction});
+
+    if (abortController) {
+      queuedInstructions.push(instruction);
+      updateQueueIndicator();
+      return;
+    }
+    runTurn(instruction);
+  }
+
+  async function runTurn(instruction: string): Promise<void> {
     // The model can read/write files in between chunks of its own reply —
     // one long bubble built by just appending every delta would visually
     // collapse those tool calls to the bottom, after all the text, no
@@ -221,6 +293,16 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
       abortController = null;
       setSending(false);
       inputEl.focus();
+      // Run the next queued instruction, if any — its own turn was already
+      // recorded (addMessage/history, in submit() above) the moment it was
+      // typed, so this just does the actual round trip now that there's a
+      // free slot. Not awaited: this is already inside runTurn's own
+      // finally block, and the caller that's waiting on *this* call has
+      // nothing further to do once its own turn is done regardless of
+      // whether another one keeps going after it.
+      const next = queuedInstructions.shift();
+      updateQueueIndicator();
+      if (next !== undefined) runTurn(next);
     }
   }
 
@@ -240,15 +322,35 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
         addMessage('status', editStatusTemplate.replace('%s', event.path));
         opts.onEdit?.(event.path, event.content);
         break;
+      case 'delete':
+        addMessage('status', deleteStatusTemplate.replace('%s', event.path));
+        opts.onDelete?.(event.path);
+        break;
+      case 'rename':
+        addMessage('status', renameStatusTemplate.replace('%s', event.from).replace('%s', event.to));
+        opts.onRename?.(event.from, event.to);
+        break;
     }
   }
 
   sendButton.addEventListener('click', () => {
-    if (abortController) {
+    // The button reads "Stop" while streaming, but that's only what an
+    // empty-input click means — with something typed, clicking it (same as
+    // pressing Enter) queues that message instead, exactly like Enter
+    // already does below. Only an empty-input click during streaming is
+    // unambiguously "stop."
+    if (abortController && !inputEl.value.trim()) {
+      // An explicit Stop means stop — anything queued behind this turn was
+      // only ever going to run once this one finished, so it shouldn't
+      // fire right after a stop the person just asked for. It's already
+      // in the conversation/history (submit() recorded that immediately),
+      // just never actually sent to the server.
+      queuedInstructions.length = 0;
+      updateQueueIndicator();
       abortController.abort();
       return;
     }
-    send();
+    submit();
   });
   inputEl.addEventListener('keydown', (e) => {
     // e.isComposing is true while an IME (Korean/Japanese/Chinese) is still
@@ -260,7 +362,7 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
     // IME; the next, real Enter keydown sends normally.
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
-      send();
+      submit();
     }
   });
   inputEl.addEventListener('input', () => {
