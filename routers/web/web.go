@@ -458,7 +458,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 			}
 
 			if ctx.ContextUser.IsOrganization() {
-				if ctx.Org.Organization.UnitPermission(ctx, ctx.Doer, unitType) < accessMode {
+				if ctx.Org.Organization.AnyRepoUnitPermission(ctx, ctx.Doer, unitType) < accessMode {
 					ctx.NotFound(nil)
 					return
 				}
@@ -700,6 +700,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 			m.Combo("").Get(user_setting.Applications).
 				Post(web.Bind[*forms.NewAccessTokenForm](), user_setting.ApplicationsPost)
 			m.Post("/delete", user_setting.DeleteApplication)
+			m.Post("/regenerate", user_setting.RegenerateAccessToken)
 		})
 
 		m.Combo("/keys").Get(user_setting.Keys).
