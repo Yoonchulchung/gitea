@@ -1,0 +1,54 @@
+name: build-release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # to publish the github release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: env -u CI make frontend
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build backend
+        run: make backend
+        env:
+          TAGS: bindata
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+
+      - name: Package custom overlay
+        # custom/conf (app.ini, secrets) is deliberately excluded — that
+        # stays server-local and is never shipped through the pipeline.
+        run: tar czf custom-overlay.tar.gz custom/templates custom/public
+
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: build-${{ github.run_number }}-${{ github.sha }}
+        run: gh release create "$TAG" --title "$TAG" --notes "commit ${{ github.sha }}" gitea custom-overlay.tar.gz

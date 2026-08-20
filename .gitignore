@@ -61,10 +61,11 @@ cpu.out
 /dist
 /custom/*
 !/custom/conf/app.example.ini
-# custom/templates is tracked source for this fork (company/ overrides +
-# pages), not local-only customization — only custom/conf stays ignored.
-# See docs/company/README.md.
+# custom/templates and custom/public are tracked source for this fork
+# (company/ overrides + pages, AUMOVIO branding) — not local-only
+# customization, only custom/conf stays ignored. See docs/company/README.md.
 !/custom/templates
+!/custom/public
 /data
 /indexers
 /log
