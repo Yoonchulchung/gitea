@@ -22,9 +22,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build frontend
-        run: make frontend
-        env:
-          CI: false
+        run: env -u CI make frontend
+
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
