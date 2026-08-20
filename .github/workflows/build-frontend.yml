@@ -23,6 +23,8 @@ jobs:
 
       - name: Build frontend
         run: make frontend
+        env:
+          CI: false
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
