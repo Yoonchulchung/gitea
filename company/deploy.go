@@ -122,13 +122,44 @@ func parseDeployBranchName(branch string) (owner, name string, requesterID int64
 // with a link out to the native file view instead.
 const deployFilePreviewMaxSize = 200 * 1024
 
-// deployDiffLine is one line of a deployFilePreview's rendered diff —
+// deployFilesVisibleLimit is how many files deploy.tmpl's file list shows
+// by default — a snapshot deploy can easily carry dozens of unrelated
+// files, and presenting every one of them at once made the page itself the
+// slow part of reviewing a deploy request. The rest are still rendered
+// (server-rendered HTML, just hidden), so filtering/searching them
+// client-side needs no extra request — see company-deploy-form.ts, which
+// reveals the rest on demand behind a "load remaining" button.
+const deployFilesVisibleLimit = 20
+
+// deploySplitRow is one row of a deployFilePreview's side-by-side diff —
+// GitHub/Gitea's own "split" view convention: an old-side line and a
+// new-side line shown together, each with its own real line number so a
+// reviewer can tell exactly which line moved where, not just that
+// something did. Either side can be blank (Num 0, empty Content) when a
+// line only exists on the other side — a pure add has no OldNum, a pure
+// del has no NewNum, and an uneven substitution (say 3 old lines replaced
+// by 5 new ones) leaves the shorter side blank for the extra rows.
 // Content is already syntax-highlighted (modules/highlight), same as the
-// old flat file dump was, just now attributed to a side (context/add/del)
-// instead of always being "the whole file."
-type deployDiffLine struct {
-	Type    string // "context", "add", or "del"
-	Content template.HTML
+// old flat unified dump was.
+type deploySplitRow struct {
+	OldNum     int
+	OldType    string // "context", "del", or "" (blank filler)
+	OldContent template.HTML
+	NewNum     int
+	NewType    string // "context", "add", or "" (blank filler)
+	NewContent template.HTML
+}
+
+// deployDiffSegment groups consecutive deploySplitRows for rendering —
+// either a normal segment shown as-is, or a run of pure-context rows (no
+// actual change on either side) far enough from the nearest change that
+// `git diff` itself wouldn't show it by default either. Collapsed segments
+// still carry their real Rows (deploy.tmpl renders them, just hidden) so
+// expanding one is a pure client-side reveal — see company-deploy-form.ts —
+// not a second request.
+type deployDiffSegment struct {
+	Collapsed bool
+	Rows      []deploySplitRow
 }
 
 // deployFilePreview is one row of DeployForm's file list — a real diff
@@ -136,14 +167,20 @@ type deployDiffLine struct {
 // deployPathPrefix on the central repo's default branch), same idea as a
 // pull request's Files Changed tab, not just a flat dump of the new
 // content. IsNew/IsRemoved cover the two cases where there's only one
-// side to show.
+// side to show — deploy.tmpl renders those as a single full-width column
+// (Rows' NewContent/OldContent respectively) rather than the split view,
+// since the other side is always entirely blank for them anyway.
 type deployFilePreview struct {
 	Path      string
 	IsBinary  bool
 	TooLarge  bool
 	IsNew     bool
 	IsRemoved bool
-	Lines     []deployDiffLine
+	Rows      []deploySplitRow
+	Segments  []deployDiffSegment // Rows grouped for collapsing — only meaningful (and only used by deploy.tmpl) when neither IsNew nor IsRemoved
+	Adds      int                 // count of Rows with a NewType "add" — the file list's own +N (deploy.tmpl's toolbar/diffstat)
+	Dels      int                 // count of Rows with an OldType "del"
+	TypeClass string              // "A"/"M"/"D" — IsNew/IsRemoved flattened into one value the template and its filter buttons can key off of directly
 }
 
 // DeployForm renders the "Deploy Request" message form for the repo in
@@ -169,6 +206,12 @@ func DeployForm(ctx *context.Context) {
 		ctx.ServerError("latestDeployRequest", err)
 		return
 	}
+	// Both computed here rather than with a chain of {{eq .Status "..."}} in
+	// the template — deploy.tmpl uses DeployStatusIcon for both the header
+	// badge and the bigger status box's icon bubble, and the resubmit
+	// section's own heading ("Revise & resubmit" vs "Submit a deploy
+	// request") the same way.
+	formHeadingKey := "company.deploy.new_heading"
 	if pr != nil {
 		status, err := deployStatusFor(ctx, pr)
 		if err != nil {
@@ -176,41 +219,70 @@ func DeployForm(ctx *context.Context) {
 			return
 		}
 		ctx.Data["DeployRequestStatus"] = status
+		switch status.Status {
+		case "approved":
+			ctx.Data["DeployStatusIcon"] = "octicon-check"
+		case "rejected", "cancelled":
+			ctx.Data["DeployStatusIcon"] = "octicon-x-circle"
+		default:
+			ctx.Data["DeployStatusIcon"] = "octicon-diff"
+		}
+
+		// pr.Issue.Poster is the central repo's own owner (see DeployPost) —
+		// the actual requester's identity only lives in the branch name
+		// (same lookup company/deployrequests.go does for its own list).
+		// Best-effort: a lookup failure here just means the header's byline
+		// is omitted, not that the whole page fails.
+		if _, _, requesterID, ok := parseDeployBranchName(pr.HeadBranch); ok {
+			if requester, err := user_model.GetUserByID(ctx, requesterID); err == nil {
+				ctx.Data["DeployRequester"] = requester
+			}
+		}
 
 		// Only fetched when there's actually something to explain — most
 		// often an admin's own reason for rejecting this, typed into
-		// Gitea's native "close with comment" box on the PR (see the same
-		// comment-loading logic, and why it shows every comment rather than
-		// guessing which one "is" the reason, in DeployRequestFiles,
-		// company/deployrequestfiles.go).
+		// Gitea's native "close with comment" box on the PR. Shared with
+		// DeployStatus (company/deploystatus.go), which summarizes the same
+		// reasons into the repo home page badge's tooltip.
 		if status.Status == "rejected" {
-			comments, err := issues_model.FindComments(ctx, &issues_model.FindCommentsOptions{
-				IssueID: pr.Issue.ID,
-				Type:    issues_model.CommentTypeComment,
-			})
+			formHeadingKey = "company.deploy.resubmit_heading"
+			reasons, err := rejectionReasons(ctx, pr)
 			if err != nil {
-				ctx.ServerError("FindComments", err)
+				ctx.ServerError("rejectionReasons", err)
 				return
-			}
-			if err := comments.LoadPosters(ctx); err != nil {
-				ctx.ServerError("LoadPosters", err)
-				return
-			}
-			// The automatic AI review (posted on every submission,
-			// regardless of outcome — postAIReviewComment) isn't a
-			// rejection reason and would be misleading under a "why was
-			// this rejected" heading specifically; DeployRequestFiles'
-			// own general Comments section (company/deployrequestfiles.go)
-			// still shows it, since that one isn't making that claim.
-			reasons := make([]*issues_model.Comment, 0, len(comments))
-			for _, c := range comments {
-				if !strings.HasPrefix(c.Content, aiReviewCommentMarker) {
-					reasons = append(reasons, c)
-				}
 			}
 			ctx.Data["RejectionComments"] = reasons
 		}
 	}
+
+	// Totals for the file list's toolbar (per-type filter counts) and its
+	// overall diffstat — summed here rather than with template arithmetic,
+	// which Go's html/template has none of.
+	var added, modified, removed, totalAdds, totalDels int
+	for _, f := range files {
+		switch f.TypeClass {
+		case "A":
+			added++
+		case "D":
+			removed++
+		default:
+			modified++
+		}
+		totalAdds += f.Adds
+		totalDels += f.Dels
+	}
+	ctx.Data["DeployFilesAdded"] = added
+	ctx.Data["DeployFilesModified"] = modified
+	ctx.Data["DeployFilesRemoved"] = removed
+	ctx.Data["DeployDiffAdds"] = totalAdds
+	ctx.Data["DeployDiffDels"] = totalDels
+	ctx.Data["DeployFilesVisibleLimit"] = deployFilesVisibleLimit
+	if len(files) > deployFilesVisibleLimit {
+		ctx.Data["DeployFilesRemaining"] = len(files) - deployFilesVisibleLimit
+	}
+
+	ctx.Data["DeployFormHeadingKey"] = formHeadingKey
+
 	ctx.Data["Title"] = string(ctx.Locale.Tr("company.deploy.title"))
 	ctx.Data["Repo"] = ctx.Repo.Repository
 	ctx.Data["DeployFiles"] = files
@@ -286,6 +358,14 @@ func deployFilePreviews(ctx *context.Context, repo *repo_model.Repository) ([]de
 	previews := make([]deployFilePreview, 0, len(allPaths))
 	for path := range allPaths {
 		preview := deployFilePreview{Path: path, IsNew: !beforePaths[path], IsRemoved: !afterPaths[path]}
+		switch {
+		case preview.IsNew:
+			preview.TypeClass = "A"
+		case preview.IsRemoved:
+			preview.TypeClass = "D"
+		default:
+			preview.TypeClass = "M"
+		}
 
 		var beforeContent, afterContent []byte
 		var tooLarge bool
@@ -308,6 +388,16 @@ func deployFilePreviews(ctx *context.Context, repo *repo_model.Repository) ([]de
 			previews = append(previews, preview)
 			continue
 		}
+		// A path present on both sides with byte-identical content isn't
+		// actually changing — before this check it still landed here as
+		// "Modified" with an empty, all-context diff (+0/-0), which the
+		// file list's own Added/Modified/Removed filter then dutifully
+		// counted and showed as if something had changed. Nothing to skip
+		// for IsNew/IsRemoved: those have only one side to begin with, so
+		// they're never spuriously "identical".
+		if preview.TypeClass == "M" && bytes.Equal(beforeContent, afterContent) {
+			continue
+		}
 		if !typesniffer.DetectContentType(beforeContent).IsText() || !typesniffer.DetectContentType(afterContent).IsText() {
 			// DetectContentType([]byte{}) reports plain text, so an empty
 			// nil-content side (the file doesn't exist there) never
@@ -317,7 +407,16 @@ func deployFilePreviews(ctx *context.Context, repo *repo_model.Repository) ([]de
 			continue
 		}
 
-		preview.Lines = diffPreviewLines(path, beforeContent, afterContent)
+		preview.Rows = diffPreviewSplitRows(path, beforeContent, afterContent)
+		for _, row := range preview.Rows {
+			if row.OldType == "del" {
+				preview.Dels++
+			}
+			if row.NewType == "add" {
+				preview.Adds++
+			}
+		}
+		preview.Segments = groupDiffSegments(preview.Rows)
 		previews = append(previews, preview)
 	}
 	sort.Slice(previews, func(i, j int) bool { return previews[i].Path < previews[j].Path })
@@ -344,13 +443,14 @@ func readBlobAt(ctx *context.Context, commit *git.Commit, gitRepo *git.Repositor
 	return content, false, err
 }
 
-// diffPreviewLines computes a line-level diff between before and after
+// diffPreviewSplitRows computes a line-level diff between before and after
 // (empty on whichever side doesn't apply — a brand-new or fully-removed
-// file), syntax-highlighting each side once (modules/highlight, same as
-// the native file view) and distributing the resulting highlighted lines
-// according to the diff's own operation sequence, so the output looks the
-// same as any other highlighted file, not plain unstyled text.
-func diffPreviewLines(filename string, before, after []byte) []deployDiffLine {
+// file), syntax-highlighting each side once (modules/highlight, same as the
+// native file view), and pairs the result into side-by-side rows
+// (deploySplitRow) with real old/new line numbers on each side — the same
+// "split" view convention Gitea's own PR diff offers, rather than a single
+// flat +/- column with no numbering that left old vs. new ambiguous.
+func diffPreviewSplitRows(filename string, before, after []byte) []deploySplitRow {
 	dmp := diffmatchpatch.New()
 	a, b, lineArray := dmp.DiffLinesToChars(string(before), string(after))
 	diffs := dmp.DiffCharsToLines(dmp.DiffMain(a, b, false), lineArray)
@@ -358,8 +458,44 @@ func diffPreviewLines(filename string, before, after []byte) []deployDiffLine {
 	beforeLines, _ := highlight.RenderFullFile(filename, "", before)
 	afterLines, _ := highlight.RenderFullFile(filename, "", after)
 
-	var result []deployDiffLine
-	var bi, ai int
+	var rows []deploySplitRow
+	var bi, ai int // count of beforeLines/afterLines already committed to rows
+	var pendingDel, pendingAdd []template.HTML
+
+	// takeLines grabs up to n lines starting at start, clamped to what's
+	// actually left — beforeLines/afterLines can run short of what the
+	// diff's own line count implies if RenderFullFile ever splits
+	// differently than DiffLinesToChars did (same defensive clamp the old
+	// unified renderer applied per line).
+	takeLines := func(lines []template.HTML, start, n int) []template.HTML {
+		end := min(start+n, len(lines))
+		start = min(start, len(lines))
+		return lines[start:end]
+	}
+
+	// flushPending pairs up one contiguous run of deleted/inserted lines
+	// side by side — a plain del-then-add block (the common "line
+	// changed" case) becomes one row per line with both sides filled; an
+	// uneven count (more deletes than inserts or vice versa) leaves the
+	// shorter side's remaining rows blank rather than misaligning content
+	// that was never actually a pair.
+	flushPending := func() {
+		n := max(len(pendingDel), len(pendingAdd))
+		for i := range n {
+			var row deploySplitRow
+			if i < len(pendingDel) {
+				bi++
+				row.OldNum, row.OldType, row.OldContent = bi, "del", pendingDel[i]
+			}
+			if i < len(pendingAdd) {
+				ai++
+				row.NewNum, row.NewType, row.NewContent = ai, "add", pendingAdd[i]
+			}
+			rows = append(rows, row)
+		}
+		pendingDel, pendingAdd = nil, nil
+	}
+
 	for _, d := range diffs {
 		text := strings.TrimSuffix(d.Text, "\n")
 		if text == "" {
@@ -368,30 +504,66 @@ func diffPreviewLines(filename string, before, after []byte) []deployDiffLine {
 		n := strings.Count(text, "\n") + 1
 		switch d.Type {
 		case diffmatchpatch.DiffDelete:
-			for range n {
-				if bi < len(beforeLines) {
-					result = append(result, deployDiffLine{Type: "del", Content: beforeLines[bi]})
-				}
-				bi++
-			}
+			pendingDel = append(pendingDel, takeLines(beforeLines, bi+len(pendingDel), n)...)
 		case diffmatchpatch.DiffInsert:
-			for range n {
-				if ai < len(afterLines) {
-					result = append(result, deployDiffLine{Type: "add", Content: afterLines[ai]})
-				}
-				ai++
-			}
-		default: // Equal
-			for range n {
-				if ai < len(afterLines) {
-					result = append(result, deployDiffLine{Type: "context", Content: afterLines[ai]})
-				}
+			pendingAdd = append(pendingAdd, takeLines(afterLines, ai+len(pendingAdd), n)...)
+		default: // Equal — same content on both sides, so both line counters always advance together
+			flushPending()
+			for _, line := range takeLines(afterLines, ai, n) {
 				bi++
 				ai++
+				rows = append(rows, deploySplitRow{OldNum: bi, OldType: "context", OldContent: line, NewNum: ai, NewType: "context", NewContent: line})
 			}
 		}
 	}
-	return result
+	flushPending()
+	return rows
+}
+
+// deployDiffContextMargin is how many unchanged lines stay visible
+// immediately around each actual change — the same convention `git diff`
+// itself uses by default (-U3). Anything further from a change collapses
+// behind a "Show N more lines" toggle instead of dumping a whole file's
+// untouched content by default, matching the reference UI: only the
+// changed parts are visible at first, with the rest available on demand.
+const deployDiffContextMargin = 3
+
+// deployDiffCollapseMin is the smallest a run of hideable context has to be
+// before collapsing it is worth doing at all — collapsing away a single
+// line just to show a "Show 1 more line" button would be more clutter than
+// it saves.
+const deployDiffCollapseMin = deployDiffContextMargin + 2
+
+// groupDiffSegments groups rows into segments for deploy.tmpl: a change
+// (deleted or added line) always keeps deployDiffContextMargin lines of
+// plain context visible on either side of it; a run of context longer than
+// that, once trimmed to deployDiffCollapseMin or more, becomes one
+// collapsed segment instead of deployDiffCollapseMin-plus individual rows.
+func groupDiffSegments(rows []deploySplitRow) []deployDiffSegment {
+	keep := make([]bool, len(rows))
+	for i, r := range rows {
+		if r.OldType != "del" && r.NewType != "add" {
+			continue
+		}
+		for j := max(0, i-deployDiffContextMargin); j <= min(len(rows)-1, i+deployDiffContextMargin); j++ {
+			keep[j] = true
+		}
+	}
+
+	var segments []deployDiffSegment
+	for i := 0; i < len(rows); {
+		j := i
+		for j < len(rows) && keep[j] == keep[i] {
+			j++
+		}
+		if !keep[i] && j-i >= deployDiffCollapseMin {
+			segments = append(segments, deployDiffSegment{Collapsed: true, Rows: rows[i:j]})
+		} else {
+			segments = append(segments, deployDiffSegment{Rows: rows[i:j]})
+		}
+		i = j
+	}
+	return segments
 }
 
 // DeployPost snapshots this department repo's current default branch into

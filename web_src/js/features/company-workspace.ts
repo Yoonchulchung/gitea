@@ -247,6 +247,7 @@ export function initCompanyWorkspace() {
       errorLoadFile: attr(el, 'data-i18n-error-load-file'),
       statusRecovering: attr(el, 'data-i18n-status-recovering'),
       errorFileExists: attr(el, 'data-i18n-error-file-exists'),
+      errorBinaryFile: attr(el, 'data-i18n-error-binary-file'),
       statusMoved: attr(el, 'data-i18n-status-moved'),
       newFilePlaceholder: attr(el, 'data-i18n-new-file-placeholder'),
       newFolderPlaceholder: attr(el, 'data-i18n-new-folder-placeholder'),
@@ -636,7 +637,17 @@ export function initCompanyWorkspace() {
     // instant content exists, not only once some later async step settles.
     function writePendingLocal(path: string, content: string, createdAt: number, baseSha?: string): string {
       const key = pendingKey(repoLink, branch, path);
-      localStorage.setItem(key, JSON.stringify({content, createdAt, baseSha} satisfies PendingWrite));
+      try {
+        localStorage.setItem(key, JSON.stringify({content, createdAt, baseSha} satisfies PendingWrite));
+      } catch {
+        // Quota exceeded (or storage disabled entirely) — this mirror is
+        // only ever a narrow safety net for a write still in flight to the
+        // server (see the comment above LEGACY_DRAFT_PREFIX), never the
+        // edit's only copy. Losing it just narrows that one race window
+        // back to what it was before this mirror existed; it must not
+        // crash the caller (stageTmpEdit's own server POST, or a brand-new
+        // dropped file's tab, still goes ahead regardless).
+      }
       return key;
     }
 
@@ -884,6 +895,20 @@ export function initCompanyWorkspace() {
       }
     }
 
+    // Binary files (PDFs, images, archives, ...) aren't something this
+    // plain-text editor can hold — file.text() below would silently mangle
+    // one (and, for anything but a small file, blow the localStorage quota
+    // in writePendingLocal with an unhandled rejection instead of a clear
+    // error). Same heuristic git itself uses to decide "is this diffable as
+    // text": a NUL byte anywhere in the first few KB reliably marks binary
+    // content — real text, in any encoding this editor supports, never
+    // contains one this early.
+    const BINARY_SNIFF_BYTES = 8000;
+    async function isLikelyBinary(file: File): Promise<boolean> {
+      const head = await file.slice(0, BINARY_SNIFF_BYTES).arrayBuffer();
+      return new Uint8Array(head).includes(0);
+    }
+
     // Reads every dropped file's (or folder's, recursively) content and
     // opens/stages each as a new tab in targetFolder — same "still needs
     // Save" rule as any other new file (openFile + writePendingLocal/
@@ -898,20 +923,32 @@ export function initCompanyWorkspace() {
       // isn't a real OS-originated drag (synthetic DataTransfers included),
       // so a single dropped plain file still needs its own getAsFile()
       // fallback even in a browser that generally supports entries.
+      // Both calls must happen synchronously across every item before any
+      // await — the browser ends the drop event's DataTransfer lifetime as
+      // soon as this handler first suspends, so awaiting mid-loop (e.g. per
+      // item) silently drops every item after the first on a multi-file drop.
+      const entries: FileSystemEntry[] = [];
+      const plainFiles: File[] = [];
       for (const item of dataTransfer.items) {
         const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null;
         if (entry) {
-          await collectFilesFromEntry(entry, '', collected);
+          entries.push(entry);
           continue;
         }
         const file = item.getAsFile();
-        if (file) collected.push({path: file.name, file});
+        if (file) plainFiles.push(file);
       }
+      for (const entry of entries) await collectFilesFromEntry(entry, '', collected);
+      for (const file of plainFiles) collected.push({path: file.name, file});
 
       for (const {path: relPath, file} of collected) {
         const path = targetFolder ? `${targetFolder}/${relPath}` : relPath;
         if (openTabs.has(path)) {
           showErrorToast(i18n.errorFileExists.replace('%s', path));
+          continue;
+        }
+        if (await isLikelyBinary(file)) {
+          showErrorToast(i18n.errorBinaryFile.replace('%s', path));
           continue;
         }
         let content: string;

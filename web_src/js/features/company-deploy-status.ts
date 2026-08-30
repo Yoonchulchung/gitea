@@ -12,10 +12,11 @@ export function initCompanyDeployStatus(): void {
     const url = el.getAttribute('data-status-url')!;
     let status: string | null;
     let date: number | null; // unix seconds
+    let reason: string | null | undefined;
     try {
       const resp = await GET(url);
       if (!resp.ok) return;
-      ({status, date} = await resp.json() as {status: string | null, date: number | null});
+      ({status, date, reason} = await resp.json() as {status: string | null, date: number | null, reason?: string | null});
     } catch {
       return;
     }
@@ -26,5 +27,12 @@ export function initCompanyDeployStatus(): void {
     el.textContent = date ? `${label} - ${formatDatetime(date * 1000)}` : label;
     el.classList.add(status);
     el.classList.remove('tw-hidden');
+    // Setting data-tooltip-content here (rather than up front in the
+    // template) is enough — modules/tippy.ts watches for it via
+    // MutationObserver and wires the tooltip up on its own. Only rejected
+    // ever carries a reason (see DeployStatus, company/deploystatus.go);
+    // this is the one place on the repo page a requester sees why, without
+    // opening /deploy.
+    if (reason) el.setAttribute('data-tooltip-content', reason);
   });
 }

@@ -5,6 +5,7 @@ package company
 
 import (
 	"net/http"
+	"strings"
 
 	"gitea.dev/models/db"
 	issues_model "gitea.dev/models/issues"
@@ -81,6 +82,36 @@ func deployStatusFor(ctx *context.Context, pr *issues_model.PullRequest) (*deplo
 	return &deployRequestStatus{Status: "pending", Date: pr.Issue.CreatedUnix}, nil
 }
 
+// rejectionReasons returns every comment on pr's issue except the automatic
+// AI review (posted on every submission regardless of outcome —
+// postAIReviewComment) — that one isn't a human's rejection reason and
+// would be misleading under a "why was this rejected" heading specifically.
+// Never guesses which single comment "is" the reason (an admin can type as
+// many as they like natively); shared by DeployForm (deploy.go, full list on
+// the /deploy page) and DeployStatus below (summarized into the repo home
+// page badge's tooltip). DeployRequestFiles (company/deployrequestfiles.go)
+// has its own, unfiltered comment list — it isn't making the same claim, so
+// it still shows the AI review too.
+func rejectionReasons(ctx *context.Context, pr *issues_model.PullRequest) ([]*issues_model.Comment, error) {
+	comments, err := issues_model.FindComments(ctx, &issues_model.FindCommentsOptions{
+		IssueID: pr.Issue.ID,
+		Type:    issues_model.CommentTypeComment,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := comments.LoadPosters(ctx); err != nil {
+		return nil, err
+	}
+	reasons := make([]*issues_model.Comment, 0, len(comments))
+	for _, c := range comments {
+		if !strings.HasPrefix(c.Content, aiReviewCommentMarker) {
+			reasons = append(reasons, c)
+		}
+	}
+	return reasons, nil
+}
+
 // DeployStatus reports this repo's most recent "Deploy Request" outcome —
 // see deployStatusFor — or null if it's never had one. Fetched
 // client-side (custom/templates/repo/view_content.tmpl,
@@ -103,5 +134,23 @@ func DeployStatus(ctx *context.Context) {
 		ctx.ServerError("deployStatusFor", err)
 		return
 	}
-	ctx.JSON(http.StatusOK, map[string]any{"status": s.Status, "date": s.Date.AsTime().Unix()})
+	resp := map[string]any{"status": s.Status, "date": s.Date.AsTime().Unix()}
+	// Reason is only meaningful (and only fetched) for "rejected" — the
+	// repo home page badge shows it as a tooltip so staff don't have to
+	// open /deploy just to find out why, see company-deploy-status.ts.
+	if s.Status == "rejected" {
+		reasons, err := rejectionReasons(ctx, pr)
+		if err != nil {
+			ctx.ServerError("rejectionReasons", err)
+			return
+		}
+		if len(reasons) > 0 {
+			texts := make([]string, len(reasons))
+			for i, c := range reasons {
+				texts[i] = c.Poster.Name + ": " + c.Content
+			}
+			resp["reason"] = strings.Join(texts, "\n\n")
+		}
+	}
+	ctx.JSON(http.StatusOK, resp)
 }

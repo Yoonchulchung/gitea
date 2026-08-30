@@ -1,36 +1,43 @@
 {{template "base/head" .}}
-<div role="main" class="page-content">
-	<div class="ui container">
-		<div class="tw-mb-4">
-			<a href="{{.Repo.Link}}" class="muted">&larr; {{.Repo.Name}}</a>
+<div role="main" class="page-content company-deploy-page">
+	<div class="ui container company-deploy-wrap">
+		<a href="{{.Repo.Link}}" class="muted company-deploy-back">{{svg "octicon-chevron-left" 15}}{{.Repo.Name}}</a>
+
+		<div class="company-deploy-title">
+			<h1>{{svg "octicon-rocket" 22 "tw-mr-1"}}{{ctx.Locale.Tr "company.deploy.title"}}</h1>
+			{{if .DeployRequestStatus}}
+				<span class="company-deploy-status-badge {{.DeployRequestStatus.Status}}">
+					{{svg .DeployStatusIcon 13}}{{ctx.Locale.Tr (printf "company.deploy_status.%s" .DeployRequestStatus.Status)}} - {{DateUtils.AbsoluteShort .DeployRequestStatus.Date}}
+				</span>
+			{{end}}
 		</div>
-
-		<h1 class="tw-mb-2">{{svg "octicon-rocket" 22 "tw-mr-2"}}{{ctx.Locale.Tr "company.deploy.title"}} — {{.Repo.Name}}</h1>
-
-		{{if .DeployRequestStatus}}
-			<div class="ui {{if eq .DeployRequestStatus.Status "approved"}}green{{else if eq .DeployRequestStatus.Status "rejected"}}red{{else if eq .DeployRequestStatus.Status "cancelled"}}grey{{else}}yellow{{end}} label tw-mb-2">
-				{{ctx.Locale.Tr (printf "company.deploy_status.%s" .DeployRequestStatus.Status)}} - {{DateUtils.AbsoluteShort .DeployRequestStatus.Date}}
+		{{if .DeployRequester}}
+			<div class="company-deploy-subline">
+				{{ctx.AvatarUtils.Avatar .DeployRequester 20}}
+				{{ctx.Locale.Tr "company.deploy.requested_by" .DeployRequester.Name}}
 			</div>
 		{{end}}
 
 		{{if .RejectionComments}}
-			{{/* Whatever the admin wrote when rejecting — typed alongside closing
-			     the PR natively, same source as DeployRequestFiles' own comment
-			     list (company/deployrequestfiles.go). Without this the requester
-			     only ever saw "Rejected" with no way to find out why. */}}
-			<div class="ui warning message tw-mb-4">
-				<div class="header">{{ctx.Locale.Tr "company.deploy.rejection_reason_heading"}}</div>
+			{{/* Whatever the admin wrote when rejecting — typed alongside
+			     closing the PR natively, same source as DeployRequestFiles'
+			     own comment list (company/deployrequestfiles.go). Without
+			     this the requester only ever saw "Rejected" with no way to
+			     find out why. No separate "This deploy was rejected"
+			     heading here — the badge above already says that; this box
+			     only exists to show the one thing the badge can't: why. */}}
+			<div class="company-deploy-statusbox {{.DeployRequestStatus.Status}}">
 				{{range .RejectionComments}}
-					<p class="tw-mt-2">
-						<strong>{{.Poster.Name}}</strong>
-						<span class="text-grey tw-text-13">{{DateUtils.TimeSince .CreatedUnix}}</span><br>
-						<span class="tw-whitespace-pre-wrap">{{.Content}}</span>
-					</p>
+					<div class="company-deploy-reason">
+						<div class="company-deploy-reason-head">{{ctx.AvatarUtils.Avatar .Poster 20}}<strong>{{.Poster.Name}}</strong><span class="muted">{{DateUtils.TimeSince .CreatedUnix}}</span></div>
+						<div class="company-deploy-reason-quote">{{.Content}}</div>
+					</div>
 				{{end}}
 			</div>
 		{{end}}
 
-		<form class="ui form tw-max-w-2xl" id="deploy-form" method="post">
+		<form class="ui form company-deploy-form" id="deploy-form" method="post">
+			<div class="company-deploy-section-lbl">{{ctx.Locale.Tr .DeployFormHeadingKey}}</div>
 			<div class="field">
 				<label>{{ctx.Locale.Tr "company.deploy.title_field_label"}}</label>
 				<input type="text" name="title" placeholder="{{ctx.Locale.Tr "company.deploy.title_field_placeholder"}}" required>
@@ -40,49 +47,138 @@
 				<textarea name="message" rows="3" placeholder="{{ctx.Locale.Tr "company.deploy.message_placeholder"}}"></textarea>
 			</div>
 			<button type="submit" id="submit-button" class="ui primary button">
-				{{svg "octicon-rocket" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.deploy.title"}}
+				{{svg "octicon-rocket" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.deploy.submit_button"}}
 			</button>
 		</form>
 
-		<div class="tw-mt-5">
-			<h4 class="tw-mb-2 flex-text-block">{{svg "octicon-file-diff" 16}}{{ctx.Locale.Tr "company.deploy.files_heading" (len .DeployFiles)}}</h4>
+		<div class="company-deploy-files" data-global-init="initCompanyDeployForm"
+			data-i18n-collapse-all="{{ctx.Locale.Tr "company.deploy.collapse_all"}}"
+			data-i18n-expand-all="{{ctx.Locale.Tr "company.deploy.expand_all"}}"
+			data-i18n-none-matching-search="{{ctx.Locale.Tr "company.deploy.none_matching_search" "%s"}}"
+			data-i18n-none-matching-filter="{{ctx.Locale.Tr "company.deploy.none_matching_filter"}}"
+		>
+			<div class="company-deploy-files-head">
+				<span class="company-deploy-files-heading">{{svg "octicon-file-diff" 16}}{{ctx.Locale.Tr "company.deploy.files_heading" (len .DeployFiles)}}</span>
+				{{if .DeployFiles}}
+					<span class="company-deploy-diffstat" title="{{ctx.Locale.Tr "company.deploy.diffstat_label" .DeployDiffAdds .DeployDiffDels}}">
+						<span class="company-deploy-add">+{{.DeployDiffAdds}}</span><span class="company-deploy-del">&minus;{{.DeployDiffDels}}</span>
+					</span>
+				{{end}}
+			</div>
+
 			{{if .DeployFiles}}
-				{{range .DeployFiles}}
-					<div class="ui top attached header flex-text-block company-deploy-diff-file-header">
-						{{if .IsNew}}
-							{{svg "octicon-diff-added" 16 "tw-text-green"}}
-						{{else if .IsRemoved}}
-							{{svg "octicon-diff-removed" 16 "tw-text-red"}}
-						{{else}}
-							{{svg "octicon-diff-modified" 16 "tw-text-yellow"}}
-						{{end}}
-						<span class="tw-flex-1 tw-font-mono tw-text-14">{{.Path}}</span>
-						{{if not .IsRemoved}}
-							<a class="muted tw-text-13" href="{{$.Repo.Link}}/src/branch/{{PathEscapeSegments $.Repo.DefaultBranch}}/{{PathEscapeSegments .Path}}" target="_blank" rel="noopener" title="{{ctx.Locale.Tr "company.deploy.view_file"}}">
-								{{svg "octicon-link-external" 13}}
-							</a>
-						{{end}}
+				<div class="company-deploy-toolbar">
+					<div class="company-deploy-search">
+						{{svg "octicon-search" 15}}
+						<input class="company-deploy-filter-input" placeholder="{{ctx.Locale.Tr "company.deploy.filter_placeholder"}}" autocomplete="off">
 					</div>
-					<div class="ui attached unstackable table segment tw-mb-4 tw-p-0 tw-overflow-x-auto">
-						{{if .IsBinary}}
-							<div class="tw-p-3 text-grey">{{ctx.Locale.Tr "repo.diff.bin"}}</div>
-						{{else if .TooLarge}}
-							<div class="tw-p-3 text-grey">{{ctx.Locale.Tr "repo.diff.file_suppressed"}}</div>
-						{{else}}
-							{{/* code-diff-unified is what scopes native Gitea's own add-code/
-							     del-code row styling (web_src/css/repo.css) — reusing it here
-							     means the green/red backgrounds come for free, no new CSS. */}}
-							<table class="chroma tw-w-full code-diff-unified">
-								<tbody>
-									{{range .Lines}}
-										<tr class="{{if eq .Type "add"}}add-code{{else if eq .Type "del"}}del-code{{else}}same-code{{end}}">
-											<td class="lines-type-marker"><span class="tw-font-mono" data-type-marker="{{if eq .Type "add"}}+{{else if eq .Type "del"}}-{{end}}"></span></td>
-											<td class="lines-code chroma"><code class="code-inner">{{.Content}}</code></td>
-										</tr>
+					<div class="company-deploy-filters">
+						<button type="button" class="company-deploy-flt on" data-type="all">{{ctx.Locale.Tr "company.deploy.filter_all"}} <span class="company-deploy-count">{{len .DeployFiles}}</span></button>
+						<button type="button" class="company-deploy-flt" data-type="A">{{ctx.Locale.Tr "company.deploy.filter_added"}} <span class="company-deploy-count">{{.DeployFilesAdded}}</span></button>
+						<button type="button" class="company-deploy-flt" data-type="M">{{ctx.Locale.Tr "company.deploy.filter_modified"}} <span class="company-deploy-count">{{.DeployFilesModified}}</span></button>
+						<button type="button" class="company-deploy-flt" data-type="D">{{ctx.Locale.Tr "company.deploy.filter_removed"}} <span class="company-deploy-count">{{.DeployFilesRemoved}}</span></button>
+					</div>
+					<button type="button" class="company-deploy-collapse-all">{{ctx.Locale.Tr "company.deploy.expand_all"}}</button>
+				</div>
+
+				{{range $i, $f := .DeployFiles}}
+					<div class="company-deploy-file" data-type="{{$f.TypeClass}}" data-path="{{$f.Path}}"{{if ge $i $.DeployFilesVisibleLimit}} data-more="1"{{end}}>
+						<div class="company-deploy-fhead">
+							{{svg "octicon-chevron-right" 13 "company-deploy-chev"}}
+							{{if eq $f.TypeClass "A"}}
+								{{svg "octicon-diff-added" 16 "tw-text-green"}}
+							{{else if eq $f.TypeClass "D"}}
+								{{svg "octicon-diff-removed" 16 "tw-text-red"}}
+							{{else}}
+								{{svg "octicon-diff-modified" 16 "tw-text-yellow"}}
+							{{end}}
+							<span class="company-deploy-fname">{{$f.Path}}</span>
+							<span class="company-deploy-fmeta">
+								{{if not (or $f.IsBinary $f.TooLarge)}}
+									<span class="company-deploy-fd"><span class="company-deploy-add">+{{$f.Adds}}</span> <span class="company-deploy-del">&minus;{{$f.Dels}}</span></span>
+								{{end}}
+								{{if not $f.IsRemoved}}
+									<a class="company-deploy-ext" href="{{$.Repo.Link}}/src/branch/{{PathEscapeSegments $.Repo.DefaultBranch}}/{{PathEscapeSegments $f.Path}}" target="_blank" rel="noopener" title="{{ctx.Locale.Tr "company.deploy.view_file"}}">
+										{{svg "octicon-link-external" 13}}
+									</a>
+								{{end}}
+							</span>
+						</div>
+						<div class="company-deploy-fbody">
+							{{if $f.IsBinary}}
+								<div class="tw-p-3 text-grey">{{ctx.Locale.Tr "repo.diff.bin"}}</div>
+							{{else if $f.TooLarge}}
+								<div class="tw-p-3 text-grey">{{ctx.Locale.Tr "repo.diff.file_suppressed"}}</div>
+							{{else if or $f.IsNew $f.IsRemoved}}
+								{{/* Single full-width column — the other side is always entirely
+								     blank for a brand-new or fully-removed file (every row is
+								     "add" or every row is "del"), so the split view's two-column
+								     layout would waste half the width on nothing and cramp the
+								     side that actually has content. */}}
+								<table class="company-deploy-diff-table company-deploy-diff-table-single">
+									<colgroup>
+										<col class="company-deploy-diff-ln-col"><col>
+									</colgroup>
+									<tbody>
+										{{range $f.Rows}}
+											{{if $f.IsNew}}
+												<tr>
+													<td class="company-deploy-diff-ln new add">{{.NewNum}}</td>
+													<td class="company-deploy-diff-code new add"><code class="code-inner">{{.NewContent}}</code></td>
+												</tr>
+											{{else}}
+												<tr>
+													<td class="company-deploy-diff-ln old del">{{.OldNum}}</td>
+													<td class="company-deploy-diff-code old del"><code class="code-inner">{{.OldContent}}</code></td>
+												</tr>
+											{{end}}
+										{{end}}
+									</tbody>
+								</table>
+							{{else}}
+								{{/* Split (side-by-side) view — real old/new line numbers on each
+								     side, computed in company/deploy.go's diffPreviewSplitRows,
+								     so "before" and "after" are never ambiguous the way a single
+								     +/- column with no numbering was. Long unchanged stretches
+								     (deployDiffSegment.Collapsed) start hidden behind a "Show N
+								     more lines" toggle — see company-deploy-form.ts — the same
+								     "changed parts first, expand for the rest" convention `git
+								     diff` itself uses. */}}
+								<table class="company-deploy-diff-table">
+									<colgroup>
+										<col class="company-deploy-diff-ln-col"><col><col class="company-deploy-diff-ln-col"><col>
+									</colgroup>
+									{{range $f.Segments}}
+										{{$seg := .}}
+										<tbody{{if $seg.Collapsed}} class="company-deploy-diff-collapsed"{{end}}>
+											{{if $seg.Collapsed}}
+												<tr class="company-deploy-diff-expand-row">
+													<td colspan="4">
+														<button type="button" class="company-deploy-diff-expand-btn">{{svg "octicon-unfold" 14}}{{ctx.Locale.Tr "company.deploy.expand_lines" (len $seg.Rows)}}</button>
+													</td>
+												</tr>
+											{{end}}
+											{{range $seg.Rows}}
+												<tr{{if $seg.Collapsed}} class="tw-hidden"{{end}}>
+													<td class="company-deploy-diff-ln old{{if not .OldNum}} blank{{else if eq .OldType "del"}} del{{end}}">{{if .OldNum}}{{.OldNum}}{{end}}</td>
+													<td class="company-deploy-diff-code old{{if not .OldNum}} blank{{else if eq .OldType "del"}} del{{end}}"><code class="code-inner">{{.OldContent}}</code></td>
+													<td class="company-deploy-diff-ln new{{if not .NewNum}} blank{{else if eq .NewType "add"}} add{{end}}">{{if .NewNum}}{{.NewNum}}{{end}}</td>
+													<td class="company-deploy-diff-code new{{if not .NewNum}} blank{{else if eq .NewType "add"}} add{{end}}"><code class="code-inner">{{.NewContent}}</code></td>
+												</tr>
+											{{end}}
+										</tbody>
 									{{end}}
-								</tbody>
-							</table>
-						{{end}}
+								</table>
+							{{end}}
+						</div>
+					</div>
+				{{end}}
+
+				<div class="company-deploy-none tw-hidden"></div>
+
+				{{if .DeployFilesRemaining}}
+					<div class="company-deploy-loadmore">
+						<button type="button" class="company-deploy-loadmore-btn">{{ctx.Locale.Tr "company.deploy.load_remaining" .DeployFilesRemaining}}</button>
 					</div>
 				{{end}}
 			{{else}}
@@ -91,4 +187,95 @@
 		</div>
 	</div>
 </div>
+<style>
+.company-deploy-wrap { padding-top: 16px; padding-bottom: 64px; }
+.company-deploy-back { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 14px; }
+.company-deploy-title { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+.company-deploy-title h1 { margin: 0; font-size: 22px; display: flex; align-items: center; }
+.company-deploy-subline { display: flex; align-items: center; gap: 6px; color: var(--color-text-light-2); font-size: 13px; margin-top: 8px; }
+
+/* Same class the repo home page's own badge uses (custom/templates/custom/header.tmpl,
+   company-deploy-status.ts) — this page renders it server-side instead of fetching it,
+   but it should look identical wherever it shows up. */
+.company-deploy-status-badge { display: inline-flex; align-items: center; gap: 5px; }
+
+/* Only ever rendered for "rejected" (see RejectionComments, company/deploy.go) — the
+   badge above already states the status itself, so this box exists purely to hold the
+   admin's own reason, not to restate "rejected" a second time. */
+.company-deploy-statusbox { border: 1px solid var(--color-secondary); border-radius: 6px; margin-top: 16px; padding: 12px 14px; }
+.company-deploy-statusbox.rejected { background: var(--color-error-bg); }
+.company-deploy-reason + .company-deploy-reason { margin-top: 10px; }
+.company-deploy-reason-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--color-text-light-2); margin-bottom: 4px; }
+.company-deploy-reason-head strong { color: var(--color-text); }
+.company-deploy-reason-quote { white-space: pre-wrap; font-size: 14px; }
+
+.company-deploy-form { margin-top: 20px; max-width: 640px; }
+.company-deploy-section-lbl { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+
+.company-deploy-files { margin-top: 30px; }
+.company-deploy-files-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.company-deploy-files-heading { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--color-text-light-2); }
+.company-deploy-diffstat { font-family: var(--fonts-monospace); font-size: 12.5px; display: inline-flex; gap: 7px; }
+.company-deploy-add { color: var(--color-green); font-weight: 600; }
+.company-deploy-del { color: var(--color-red); font-weight: 600; }
+
+.company-deploy-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.company-deploy-search { position: relative; flex: 1; min-width: 200px; }
+.company-deploy-search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--color-text-light-3); }
+.company-deploy-filter-input { width: 100%; font-family: var(--fonts-monospace); font-size: 13px; padding: 6px 10px 6px 30px; border: 1px solid var(--color-secondary); border-radius: 6px; background: var(--color-input-background); color: var(--color-text); }
+.company-deploy-filters { display: inline-flex; border: 1px solid var(--color-secondary); border-radius: 6px; overflow: hidden; }
+.company-deploy-flt { font-size: 12.5px; font-weight: 500; padding: 6px 11px; border: 0; border-right: 1px solid var(--color-secondary); background: var(--color-box-body); color: var(--color-text-light-2); cursor: pointer; }
+.company-deploy-flt:last-child { border-right: 0; }
+.company-deploy-flt:hover { background: var(--color-hover); }
+.company-deploy-flt.on { background: var(--color-primary); color: var(--color-primary-contrast); }
+.company-deploy-count { font-family: var(--fonts-monospace); font-size: 11px; opacity: .8; }
+.company-deploy-collapse-all { font-size: 12.5px; color: var(--color-primary); background: 0; border: 0; cursor: pointer; margin-left: auto; }
+.company-deploy-collapse-all:hover { text-decoration: underline; }
+
+.company-deploy-file { border: 1px solid var(--color-secondary); border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
+.company-deploy-fhead { display: flex; align-items: center; gap: 9px; padding: 8px 12px; background: var(--color-nav-bg); cursor: pointer; }
+.company-deploy-fhead:hover { background: var(--color-hover); }
+.company-deploy-chev { color: var(--color-text-light-2); flex: none; transition: transform .12s; }
+.company-deploy-file.open .company-deploy-chev { transform: rotate(90deg); }
+.company-deploy-fname { font-family: var(--fonts-monospace); font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.company-deploy-fmeta { display: flex; align-items: center; gap: 10px; flex: none; color: var(--color-text-light-2); }
+.company-deploy-fd { font-family: var(--fonts-monospace); font-size: 12px; }
+.company-deploy-ext { display: inline-flex; color: var(--color-text-light-3); }
+.company-deploy-ext:hover { color: var(--color-primary); }
+.company-deploy-fbody { display: none; border-top: 1px solid var(--color-secondary); overflow-x: auto; }
+.company-deploy-file.open .company-deploy-fbody { display: block; }
+
+/* Split diff — a "before" column and an "after" column side by side, each with its own
+   real line number, so it's never ambiguous which side a given line belongs to. A pure
+   add/removal (company-deploy-diff-table-single) skips the split entirely — there's
+   nothing to show on the other side, so it gets the full width instead of half of it. */
+.company-deploy-diff-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: var(--fonts-monospace); font-size: 12.5px; background: var(--color-code-bg); }
+.company-deploy-diff-ln-col { width: 48px; }
+.company-deploy-diff-ln { padding: 0 8px; text-align: right; color: var(--color-text-light-3); user-select: none; white-space: nowrap; vertical-align: top; }
+.company-deploy-diff-table:not(.company-deploy-diff-table-single) .company-deploy-diff-ln.new { border-left: 1px solid var(--color-secondary); }
+/* pre-wrap (not pre) + overflow-wrap so a long line wraps within its own column instead of
+   overflowing, uncontained, into the next one — table cells don't clip overflow on their own. */
+.company-deploy-diff-code { padding: 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; vertical-align: top; }
+.company-deploy-diff-code .code-inner { white-space: pre-wrap; }
+.company-deploy-diff-ln.del { background: var(--color-diff-removed-linenum-bg); }
+.company-deploy-diff-code.del { background: var(--color-diff-removed-row-bg); }
+.company-deploy-diff-ln.add { background: var(--color-diff-added-linenum-bg); }
+.company-deploy-diff-code.add { background: var(--color-diff-added-row-bg); }
+.company-deploy-diff-ln.blank, .company-deploy-diff-code.blank { background: var(--color-diff-inactive); }
+
+.company-deploy-diff-expand-row td { padding: 4px 10px; background: var(--color-nav-bg); }
+.company-deploy-diff-expand-btn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--fonts-monospace); font-size: 12px; color: var(--color-primary); background: 0; border: 1px solid var(--color-secondary); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.company-deploy-diff-expand-btn:hover { background: var(--color-hover); }
+
+.company-deploy-none { padding: 26px; text-align: center; color: var(--color-text-light-2); border: 1px dashed var(--color-secondary); border-radius: 6px; font-size: 13.5px; }
+.company-deploy-loadmore { text-align: center; margin-top: 4px; }
+.company-deploy-loadmore-btn { font-size: 13px; color: var(--color-primary); background: 0; border: 1px solid var(--color-secondary); border-radius: 6px; padding: 6px 15px; cursor: pointer; }
+.company-deploy-loadmore-btn:hover { background: var(--color-hover); }
+
+@media (max-width: 640px) {
+	.company-deploy-fmeta .company-deploy-fd { display: none; }
+	.company-deploy-collapse-all { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .company-deploy-chev { transition: none; } }
+</style>
 {{template "base/footer" .}}

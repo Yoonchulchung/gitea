@@ -55,6 +55,7 @@ import {initRepositorySearch} from './features/repo-search.ts';
 import {initColorPickers} from './features/colorpicker.ts';
 import {initCompanyWorkspace} from './features/company-workspace.ts';
 import {initCompanyDeployStatus} from './features/company-deploy-status.ts';
+import {initCompanyDeployForm} from './features/company-deploy-form.ts';
 import {initCompanySettingsAI} from './features/company-settings-ai.ts';
 import {initAdminSelfCheck} from './features/admin/selfcheck.ts';
 import {initOAuth2SettingsDisableCheckbox} from './features/oauth2-settings.ts';
@@ -162,6 +163,7 @@ const initPerformanceTracer = callInitFunctions([
   initColorPickers,
   initCompanyWorkspace, // company/'s multi-file editor needs Gitea's own bundled CodeMirror setup (modules/codeeditor), which only ships to the browser if something reachable from this entry point imports it — see web_src/js/features/company-workspace.ts
   initCompanyDeployStatus,
+  initCompanyDeployForm,
   initCompanySettingsAI,
 
   initOAuth2SettingsDisableCheckbox,

@@ -6,6 +6,8 @@ package company
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"gitea.dev/models/db"
@@ -17,7 +19,15 @@ import (
 	webrepo "gitea.dev/routers/web/repo"
 	"gitea.dev/services/context"
 	issue_service "gitea.dev/services/issue"
+
+	"xorm.io/xorm"
 )
+
+// deployRequestsPageSize is the page size for both the Requested and
+// Deployed sections on DeployRequests — they paginate independently (see
+// company/deploy_requests_pager.tmpl), so each gets its own page of this
+// size rather than sharing one combined page.
+const deployRequestsPageSize = 15
 
 const tplDeployRequests templates.TplName = "company/deploy_requests"
 
@@ -127,30 +137,81 @@ func DeployRequests(ctx *context.Context) {
 		return
 	}
 
+	requestedPage := max(ctx.FormInt("requested_page"), 1)
+	deployedPage := max(ctx.FormInt("deployed_page"), 1)
+
 	// Deploy-request PRs are same-repo PRs on the central deploy repo
 	// (company/deploy.go's DeployPost) — which department repo each one
 	// is "for" isn't HeadRepoID (that's central too), it's encoded in the
 	// branch name (deployBranchName/parseDeployBranchName). Every branch
 	// for a repo this org owns starts with "deploy/<org-name>/".
-	var prs []*issues_model.PullRequest
-	if err := db.GetEngine(ctx).
-		Join("INNER", "issue", "issue.id = pull_request.issue_id").
-		Where("pull_request.base_repo_id = ?", central.ID).
-		And("pull_request.head_repo_id = ?", central.ID).
-		And("pull_request.head_branch LIKE ?", "deploy/"+org.Name+"/%").
-		Desc("issue.created_unix").
-		Limit(200).
-		Find(&prs); err != nil {
-		ctx.ServerError("list deploy requests", err)
+	branchPrefix := "deploy/" + org.Name + "/"
+
+	requested, requestedTotal, err := loadDeployRequestPage(ctx, central, branchPrefix, false, requestedPage)
+	if err != nil {
+		ctx.ServerError("load requested deploy requests", err)
+		return
+	}
+	deployed, deployedTotal, err := loadDeployRequestPage(ctx, central, branchPrefix, true, deployedPage)
+	if err != nil {
+		ctx.ServerError("load deployed deploy requests", err)
 		return
 	}
 
-	requested := make([]*deployRequestView, 0, len(prs))
-	deployed := make([]*deployRequestView, 0, len(prs))
+	// Requested and Deployed paginate independently (they're separate
+	// lists on the same page, not tabs of one list) — each pager carries
+	// the other section's current page along as an extra query param so
+	// paging through one doesn't reset the other back to page 1.
+	requestedPager := context.NewPagination(requestedTotal, deployRequestsPageSize, requestedPage, 5)
+	requestedPager.AddParamFromQuery(url.Values{"deployed_page": {strconv.Itoa(deployedPage)}})
+	deployedPager := context.NewPagination(deployedTotal, deployRequestsPageSize, deployedPage, 5)
+	deployedPager.AddParamFromQuery(url.Values{"requested_page": {strconv.Itoa(requestedPage)}})
+
+	ctx.Data["Title"] = "Deploy requests"
+	ctx.Data["Org"] = org
+	ctx.Data["Requested"] = requested
+	ctx.Data["RequestedPage"] = requestedPager
+	ctx.Data["Deployed"] = deployed
+	ctx.Data["DeployedPage"] = deployedPager
+	ctx.HTML(http.StatusOK, tplDeployRequests)
+}
+
+// deployRequestSession builds the shared base query for one status (open or
+// closed) of one org's deploy requests — factored out so
+// loadDeployRequestPage can run it once for the count and once, fresh, for
+// the page of rows (an xorm session is single-use).
+func deployRequestSession(ctx *context.Context, central *repo_model.Repository, branchPrefix string, closed bool) *xorm.Session {
+	return db.GetEngine(ctx).
+		Join("INNER", "issue", "issue.id = pull_request.issue_id").
+		Where("pull_request.base_repo_id = ?", central.ID).
+		And("pull_request.head_repo_id = ?", central.ID).
+		And("pull_request.head_branch LIKE ?", branchPrefix+"%").
+		And("issue.is_closed = ?", closed)
+}
+
+// loadDeployRequestPage fetches one page of one status (open/closed) of
+// org's deploy requests, translated into deployRequestView, plus the total
+// count across all pages for Pagination. Split out of DeployRequests so
+// Requested and Deployed can be queried, counted, and paginated
+// independently despite sharing the same underlying PR data.
+func loadDeployRequestPage(ctx *context.Context, central *repo_model.Repository, branchPrefix string, closed bool, page int) ([]*deployRequestView, int64, error) {
+	total, err := deployRequestSession(ctx, central, branchPrefix, closed).Count(new(issues_model.PullRequest))
+	if err != nil {
+		return nil, 0, fmt.Errorf("count deploy requests: %w", err)
+	}
+
+	var prs []*issues_model.PullRequest
+	if err := deployRequestSession(ctx, central, branchPrefix, closed).
+		Desc("issue.created_unix").
+		Limit(deployRequestsPageSize, (page-1)*deployRequestsPageSize).
+		Find(&prs); err != nil {
+		return nil, 0, fmt.Errorf("list deploy requests: %w", err)
+	}
+
+	views := make([]*deployRequestView, 0, len(prs))
 	for _, pr := range prs {
 		if err := pr.LoadIssue(ctx); err != nil {
-			ctx.ServerError("LoadIssue", err)
-			return
+			return nil, 0, fmt.Errorf("LoadIssue: %w", err)
 		}
 		ownerName, repoName, requesterID, ok := parseDeployBranchName(pr.HeadBranch)
 		if !ok {
@@ -174,16 +235,15 @@ func DeployRequests(ctx *context.Context) {
 			Poster:      requester,
 			CreatedUnix: pr.Issue.CreatedUnix,
 		}
-		if !pr.Issue.IsClosed {
+		if !closed {
 			view.CanCancel = ctx.Doer.IsAdmin || requesterID == ctx.Doer.ID
-			requested = append(requested, view)
+			views = append(views, view)
 			continue
 		}
 		if !pr.HasMerged {
 			cancelled, err := wasCancelledByRequester(ctx, pr.Issue.ID)
 			if err != nil {
-				ctx.ServerError("wasCancelledByRequester", err)
-				return
+				return nil, 0, fmt.Errorf("wasCancelledByRequester: %w", err)
 			}
 			if cancelled {
 				view.Cancelled = true
@@ -191,14 +251,9 @@ func DeployRequests(ctx *context.Context) {
 				view.Rejected = true
 			}
 		}
-		deployed = append(deployed, view)
+		views = append(views, view)
 	}
-
-	ctx.Data["Title"] = "Deploy requests"
-	ctx.Data["Org"] = org
-	ctx.Data["Requested"] = requested
-	ctx.Data["Deployed"] = deployed
-	ctx.HTML(http.StatusOK, tplDeployRequests)
+	return views, total, nil
 }
 
 // CancelDeployRequest lets the original requester (or an admin) withdraw

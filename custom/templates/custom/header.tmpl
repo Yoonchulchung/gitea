@@ -55,6 +55,8 @@
 }
 .company-deploy-status-badge.pending { background: var(--color-warning-bg); color: var(--color-warning-text); }
 .company-deploy-status-badge.approved { background: var(--color-success-bg); color: var(--color-success-text); }
-.company-deploy-status-badge.rejected { background: var(--color-error-bg); color: var(--color-error-text); }
+/* only "rejected" ever gets a data-tooltip-content (the rejection reason,
+   set by company-deploy-status.ts) — cursor:help hints there's more to see */
+.company-deploy-status-badge.rejected { background: var(--color-error-bg); color: var(--color-error-text); cursor: help; }
 .company-deploy-status-badge.cancelled { background: var(--color-secondary); color: var(--color-text); }
 </style>

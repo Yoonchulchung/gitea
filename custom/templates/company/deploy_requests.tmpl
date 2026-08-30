@@ -48,6 +48,7 @@
 				<div class="item text-grey">{{ctx.Locale.Tr "company.deploy_requests.none_requested"}}</div>
 			{{end}}
 		</div>
+		{{template "company/deploy_requests_pager" (dict "Page" .RequestedPage "ParamName" "requested_page")}}
 
 		<h3 class="tw-flex tw-items-center tw-gap-2">
 			{{ctx.Locale.Tr "company.deploy_requests.deployed"}}
@@ -83,6 +84,7 @@
 				<div class="item text-grey">{{ctx.Locale.Tr "company.deploy_requests.none_deployed"}}</div>
 			{{end}}
 		</div>
+		{{template "company/deploy_requests_pager" (dict "Page" .DeployedPage "ParamName" "deployed_page")}}
 	</div>
 </div>
 {{template "base/footer" .}}
