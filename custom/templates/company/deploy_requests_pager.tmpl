@@ -4,7 +4,7 @@
 {{$page := .Page}}
 {{$paramName := .ParamName}}
 {{$paginationParams := $page.GetParams}}
-{{with $page.Paginater}}
+{{with $page.Paginator}}
 	{{if or (eq .TotalPages -1) (gt .TotalPages 1)}}
 		{{$showFirstLast := gt .TotalPages 1}}
 		<div class="center page buttons">

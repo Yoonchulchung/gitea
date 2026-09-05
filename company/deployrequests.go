@@ -6,14 +6,13 @@ package company
 import (
 	"fmt"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 
 	"gitea.dev/models/db"
 	issues_model "gitea.dev/models/issues"
 	repo_model "gitea.dev/models/repo"
 	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/container"
 	"gitea.dev/modules/setting"
 	"gitea.dev/modules/templates"
 	webrepo "gitea.dev/routers/web/repo"
@@ -159,13 +158,16 @@ func DeployRequests(ctx *context.Context) {
 	}
 
 	// Requested and Deployed paginate independently (they're separate
-	// lists on the same page, not tabs of one list) — each pager carries
-	// the other section's current page along as an extra query param so
-	// paging through one doesn't reset the other back to page 1.
-	requestedPager := context.NewPagination(requestedTotal, deployRequestsPageSize, requestedPage, 5)
-	requestedPager.AddParamFromQuery(url.Values{"deployed_page": {strconv.Itoa(deployedPage)}})
-	deployedPager := context.NewPagination(deployedTotal, deployRequestsPageSize, deployedPage, 5)
-	deployedPager.AddParamFromQuery(url.Values{"requested_page": {strconv.Itoa(requestedPage)}})
+	// lists on the same page, not tabs of one list). Build() carries every
+	// query param of the current request into each pager's own links, which
+	// is exactly what keeps the other section's page from resetting to 1 —
+	// but it would also re-emit this pager's own page param alongside the
+	// one deploy_requests_pager.tmpl writes explicitly, so each drops its
+	// own here and keeps only the other's.
+	requestedPager := context.NewPagerBuilder(ctx).TotalCount(requestedTotal).PerPageLimit(deployRequestsPageSize).CurPage(requestedPage).Build()
+	requestedPager.RemoveParam(container.SetOf("requested_page"))
+	deployedPager := context.NewPagerBuilder(ctx).TotalCount(deployedTotal).PerPageLimit(deployRequestsPageSize).CurPage(deployedPage).Build()
+	deployedPager.RemoveParam(container.SetOf("deployed_page"))
 
 	ctx.Data["Title"] = "Deploy requests"
 	ctx.Data["Org"] = org
