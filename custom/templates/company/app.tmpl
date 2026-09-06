@@ -125,8 +125,13 @@
 									<td><input type="password" name="env_value_{{$i}}" placeholder="(변경하지 않음)" autocomplete="new-password"></td>
 								</tr>
 							{{end}}
+							{{/* An unsaved row is selectable too: it is the row most likely
+							     to be wrong, and having to reload the page to drop a typo is
+							     worse than the checkbox costing a column. It carries no name —
+							     there is nothing on the server to delete — so the JS removes
+							     it from the form instead. */}}
 							<tr>
-								<td class="company-env-select"></td>
+								<td class="company-env-select"><input type="checkbox" data-company-env-delete data-company-env-new aria-label="이 행 선택"></td>
 								<td><input type="text" name="env_name_new0" placeholder="NEW_VARIABLE"></td>
 								<td><input type="password" name="env_value_new0" placeholder="값" autocomplete="new-password"></td>
 							</tr>
@@ -136,7 +141,7 @@
 					     name so a new row cannot collide with one already on the page. */}}
 					<template data-company-env-template>
 						<tr>
-							<td class="company-env-select"></td>
+							<td class="company-env-select"><input type="checkbox" data-company-env-delete data-company-env-new aria-label="이 행 선택"></td>
 							<td><input type="text" data-name-prefix="env_name_" placeholder="NEW_VARIABLE"></td>
 							<td><input type="password" data-name-prefix="env_value_" placeholder="값" autocomplete="new-password"></td>
 						</tr>

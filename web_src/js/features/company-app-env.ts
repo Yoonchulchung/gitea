@@ -62,17 +62,32 @@ export function initCompanyAppEnv(): void {
   });
   initSelectAll(container);
 
-  // Deleting a secret cannot be undone by retyping it — nobody can read the
-  // old value back — so the count is stated rather than implied.
   container.querySelector('[data-company-env-remove]')?.addEventListener('click', (e) => {
-    const checked = container.querySelectorAll('[data-company-env-delete]:checked').length;
-    if (checked === 0) {
+    const checked = Array.from(container.querySelectorAll<HTMLInputElement>('[data-company-env-delete]:checked'));
+    if (checked.length === 0) {
       e.preventDefault();
       window.alert('삭제할 항목을 선택해 주세요.');
       return;
     }
-    if (!window.confirm(`선택한 환경변수 ${checked}개를 삭제합니다. 값은 다시 볼 수 없습니다. 계속할까요?`)) {
+
+    // A row that was never saved has nothing on the server to delete, so it
+    // is dropped from the form here. Doing it the other way — submitting so
+    // the page comes back without it — would discard whatever was typed into
+    // every other unsaved row on the way.
+    const unsaved = checked.filter((box) => box.hasAttribute('data-company-env-new'));
+    const saved = checked.filter((box) => !box.hasAttribute('data-company-env-new'));
+
+    // Deleting a stored secret cannot be undone by retyping it — nobody can
+    // read the old value back — so it is confirmed and counted. Removing a
+    // row someone is still typing into is not worth a dialog.
+    if (saved.length > 0 &&
+        !window.confirm(`저장된 환경변수 ${saved.length}개를 삭제합니다. 값은 다시 볼 수 없습니다. 계속할까요?`)) {
       e.preventDefault();
+      return;
+    }
+    for (const box of unsaved) box.closest('tr')?.remove();
+    if (saved.length === 0) {
+      e.preventDefault(); // nothing for the server to do
     }
   });
 }
