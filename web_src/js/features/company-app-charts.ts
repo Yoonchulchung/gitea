@@ -1,4 +1,5 @@
 import {
+  _adapters,
   BarController,
   BarElement,
   CategoryScale,
@@ -49,8 +50,28 @@ function registerOnce() {
   Chart.defaults.borderColor = chartJsColors.border;
   // A minimal time adapter, matching ChartCanvas.vue's. Only the units these
   // charts actually ask for are implemented.
-  (Chart as any)._adapters._date.override({
-    formats: () => ({minute: 'HH:mm', hour: 'HH:mm', day: 'M/D', week: 'M/D', month: 'YYYY-MM'}),
+  //
+  // From the named export, not off Chart: `Chart._adapters` does not exist in
+  // chart.js v4, so the cast that made this compile turned a missing property
+  // into "Cannot read properties of undefined (reading '_date')" at runtime,
+  // on the one page that draws these charts.
+  _adapters._date.override({
+    // Every unit, not only the ones these charts ask for: chart.js picks the
+    // unit from the visible range, so a missing one formats as undefined on
+    // whatever zoom level happens to select it. 24-hour and Y-M-D throughout,
+    // which is how the rest of these screens write a time.
+    formats: () => ({
+      datetime: 'YYYY-MM-DD HH:mm:ss',
+      millisecond: 'HH:mm:ss.SSS',
+      second: 'HH:mm:ss',
+      minute: 'HH:mm',
+      hour: 'HH:mm',
+      day: 'M/D',
+      week: 'M/D',
+      month: 'YYYY-MM',
+      quarter: 'YYYY [Q]Q',
+      year: 'YYYY',
+    }),
     parse: (v: any) => (dayjs(v).isValid() ? dayjs(v).valueOf() : null),
     format: (t: number, f: string) => dayjs(t).format(f),
     add: (t: number, n: number, u: any) => dayjs(t).add(n, u).valueOf(),

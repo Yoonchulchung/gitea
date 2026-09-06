@@ -159,6 +159,13 @@
 
 .company-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 .company-chart h5 { margin: 0 0 6px; font-size: .82rem; color: var(--color-text-light-2); }
+/* The chart needs a height that does not come from the chart.
+   `maintainAspectRatio: false` makes the canvas fill its parent, so a parent
+   sized by its content is a feedback loop: the canvas grows, the box grows to
+   fit it, chart.js resizes to the taller box, and the graph creeps down the
+   page forever. Fixing the box breaks the cycle. */
+.company-chart-canvas { position: relative; height: 200px; }
+.company-chart-canvas > canvas { position: absolute; inset: 0; }
 /* Wide content scrolls inside its own box rather than pushing the page. */
 .company-log {
 	max-height: 60vh;

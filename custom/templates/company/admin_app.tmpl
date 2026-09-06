@@ -126,9 +126,9 @@
 			data-points="{{.ChartPoints}}"
 			data-annotations="{{.ChartAnnotations}}"
 			data-memory-limit="{{.MemoryLimitMB}}">
-			<div class="company-chart"><h5>요청 수 · 에러</h5><canvas data-chart="requests" height="120"></canvas></div>
-			<div class="company-chart"><h5>메모리 (MB) · CPU (%)</h5><canvas data-chart="resources" height="120"></canvas></div>
-			<div class="company-chart"><h5>응답시간 p95 (ms)</h5><canvas data-chart="latency" height="120"></canvas></div>
+			<div class="company-chart"><h5>요청 수 · 에러</h5><div class="company-chart-canvas"><canvas data-chart="requests"></canvas></div></div>
+			<div class="company-chart"><h5>메모리 (MB) · CPU (%)</h5><div class="company-chart-canvas"><canvas data-chart="resources"></canvas></div></div>
+			<div class="company-chart"><h5>응답시간 p95 (ms)</h5><div class="company-chart-canvas"><canvas data-chart="latency"></canvas></div></div>
 		</div>
 
 		<h4 class="ui top attached header tw-mt-4">환경변수</h4>
