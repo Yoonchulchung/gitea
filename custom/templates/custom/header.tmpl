@@ -83,7 +83,7 @@
 	align-items: center;
 	padding: .15rem .5rem;
 	border-radius: 1rem;
-	font-size: .78rem;
+	font-size: .82rem;
 	font-weight: 600;
 	white-space: nowrap;
 	background: var(--color-secondary);
@@ -104,7 +104,7 @@
 	color: var(--color-error-text);
 	border-radius: 4px;
 	padding: 8px 10px;
-	font-size: .82rem;
+	font-size: .9rem;
 	/* A failure message is not under this panel's control — a package name or
 	   a pip error can be arbitrarily long and has no spaces to wrap at. Left
 	   alone it widens the sidebar column and pushes the page apart. */
@@ -117,6 +117,9 @@
    was doing this instead, which also preserved the template's own indentation
    and turned it into visible blank space. */
 .company-app-cause-line + .company-app-cause-line { margin-top: 2px; }
+/* The detail sits one step under the summary above it, not two: it is the
+   half that says what to do. */
+.company-app-cause-line { font-size: .86rem; }
 /* The environment editor. Semantic UI's table gives a cell its content's
    width, so an input sized by its default `size` attribute left a wide empty
    gutter beside every field — the name and value columns share the row and
@@ -208,12 +211,17 @@
 .company-app-panel > * { min-width: 0; }
 .company-perm-value,
 .company-perm-reason { overflow-wrap: anywhere; }
-.company-perm-row { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: .82rem; align-items: baseline; }
-.company-perm-label { min-width: 5.5em; color: var(--color-text-light-2); }
+/* Sized against the sidebar's own text rather than shrunk to fit: this panel
+   is read by the people the platform is for, and .82rem next to a 16px
+   heading reads as a footnote about their app rather than as its status. */
+.company-perm-row { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: .95rem; align-items: baseline; }
+.company-perm-label { min-width: 6em; color: var(--color-text-light-2); }
 .company-perm-value { font-weight: 600; }
 .company-perm-row.denied .company-perm-value { color: var(--color-error-text); }
 .company-perm-row.pending .company-perm-value { color: var(--color-warning-text); }
-.company-perm-reason { flex-basis: 100%; color: var(--color-text-light-2); font-size: .75rem; font-weight: 400; }
+/* The reason stays a step down from the value it explains, but only one:
+   it is the line that saves a support request, so it has to be readable. */
+.company-perm-reason { flex-basis: 100%; color: var(--color-text-light-2); font-size: .86rem; font-weight: 400; line-height: 1.45; }
 
 .company-kpis { display: flex; flex-wrap: wrap; gap: 10px; }
 .company-kpi {
