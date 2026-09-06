@@ -120,7 +120,7 @@
 							<input type="checkbox" name="perm_{{.Kind}}_{{.Value}}" value="1" checked>
 							<span>
 								<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{.Detail}}
-								{{if .Evidence}}<span class="text-grey tw-text-12 tw-block">{{.Evidence}}</span>{{end}}
+								{{if .Evidence}}<span class="text-grey tw-text-12 tw-block">{{if ctx.Locale.HasKey .Evidence}}{{ctx.Locale.Tr .Evidence}}{{else}}{{.Evidence}}{{end}}</span>{{end}}
 							</span>
 						</label>
 					{{end}}

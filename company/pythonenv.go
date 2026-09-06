@@ -73,10 +73,8 @@ var errNoPython = errors.New("python is unavailable")
 func pythonPath() (string, error) {
 	info, err := pythonProbe()
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", errNoPython, audienceError(
-			"서버에 파이썬이 준비되어 있지 않아 앱을 빌드할 수 없습니다. "+
-				"부서에서 고칠 수 있는 문제가 아니니 관리자에게 알려 주세요.",
-			"파이썬을 사용할 수 없습니다: "+err.Error()))
+		return "", fmt.Errorf("%w: %w", errNoPython, audienceKeyError(
+			"company.err.no_python", "company.err.no_python.admin", err.Error()))
 	}
 	return info.Path, nil
 }

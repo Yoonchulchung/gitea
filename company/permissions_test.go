@@ -243,12 +243,12 @@ func TestClearMissingPackagesDropsOnlyWhatWasApproved(t *testing.T) {
 // one had no route to a request at all.
 func TestOutboundEvidenceSeparatesInternalFromInternet(t *testing.T) {
 	for _, host := range []string{"erp.internal.company.com", "billing.local", "reports.corp", "erp"} {
-		assert.Contains(t, outboundEvidence(host), "사내", host)
+		assert.Contains(t, outboundEvidence(host), "company.evidence.internal", host)
 	}
 	// The distinction an operator who is not a developer cannot make alone,
 	// and it is most of the decision.
 	for _, host := range []string{"api.example.com", "hooks.slack.com"} {
-		assert.Contains(t, outboundEvidence(host), "사외", host)
+		assert.Equal(t, "company.evidence.external", outboundEvidence(host), host)
 	}
 }
 

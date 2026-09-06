@@ -87,9 +87,9 @@ func AppAccessSave(ctx *context.Context) {
 	owner := ctx.Repo.Owner.Name
 	name := ctx.Repo.Repository.Name
 	if err := SetDepartmentAccess(owner, name, ctx.Doer.Name, ctx.FormString("access")); err != nil {
-		ctx.Flash.Error(DepartmentSafeError("setting access for "+owner+"/"+name, err))
+		ctx.Flash.Error(DepartmentSafeErrorL(ctx.Locale, "setting access for "+owner+"/"+name, err))
 	} else {
-		ctx.Flash.Success("접근 범위를 변경했습니다. 바로 적용됩니다.")
+		ctx.Flash.Success(ctx.Locale.TrString("company.flash.access_changed"))
 	}
 	ctx.Redirect(ctx.Repo.RepoLink + "/_app")
 }
@@ -120,7 +120,7 @@ func AppControl(ctx *context.Context) {
 	if err != nil {
 		// Never err.Error(): an os error carries the absolute path it failed
 		// on, which is inside Gitea's data directory (company/usererror.go).
-		ctx.Flash.Error(DepartmentSafeError(ctx.PathParam("verb")+" "+owner+"/"+name, err))
+		ctx.Flash.Error(DepartmentSafeErrorL(ctx.Locale, ctx.PathParam("verb")+" "+owner+"/"+name, err))
 	}
 	// Back where the button was pressed. These controls sit on the repository
 	// header as well as this screen, and bouncing someone to a different page
@@ -144,7 +144,7 @@ func AppEnvSave(ctx *context.Context) {
 	// asked for, so ranging over it first found nothing and every save was a
 	// no-op — the form came back empty and no variable was ever stored.
 	if err := ctx.Req.ParseForm(); err != nil {
-		ctx.Flash.Error("입력을 읽지 못했습니다. 다시 시도해 주세요.")
+		ctx.Flash.Error(ctx.Locale.TrString("company.flash.form_unreadable"))
 		ctx.Redirect(ctx.Repo.RepoLink + "/_app")
 		return
 	}
@@ -171,17 +171,17 @@ func AppEnvSave(ctx *context.Context) {
 	}
 
 	if len(set) == 0 && len(unset) == 0 {
-		ctx.Flash.Info("변경된 항목이 없습니다.")
+		ctx.Flash.Info(ctx.Locale.TrString("company.flash.nothing_changed"))
 		ctx.Redirect(ctx.Repo.RepoLink + "/_app")
 		return
 	}
 	if err := SaveAppEnv(owner, name, ctx.Doer.Name, set, unset); err != nil {
-		ctx.Flash.Error(DepartmentSafeError("saving env for "+owner+"/"+name, err))
+		ctx.Flash.Error(DepartmentSafeErrorL(ctx.Locale, "saving env for "+owner+"/"+name, err))
 	} else {
 		// The trap this warning exists for: a process's environment cannot be
 		// changed while it runs, so without saying so the department changes a
 		// value, sees no effect, and spends an afternoon on it.
-		ctx.Flash.Success("저장했습니다. 변경사항을 적용하려면 앱을 재시작하세요.")
+		ctx.Flash.Success(ctx.Locale.TrString("company.flash.env_saved"))
 	}
 	ctx.Redirect(ctx.Repo.RepoLink + "/_app")
 }

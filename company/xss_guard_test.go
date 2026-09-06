@@ -69,7 +69,8 @@ func TestDynamicTrKeysComeFromOurOwnVocabulary(t *testing.T) {
 		".What":                 true,                                                    // historyStatusLabel: HasKey-guarded in history_table.tmpl
 		".DeployFormHeadingKey": true,                                                    // one of two constants in DeployForm
 		".Label":                true, ".Value": true, ".Reason": true, ".Explain": true, // PermissionRow/accessOption: keys by construction; stored request labels are HasKey-guarded
-		"$r.Label": true, // admin_packages pending list: HasKey-guarded
+		"$r.Label":  true, // admin_packages pending list: HasKey-guarded
+		".Evidence": true, // stored request evidence: HasKey-guarded
 	}
 	for _, path := range companyTemplateRoots(t) {
 		body, err := os.ReadFile(path)

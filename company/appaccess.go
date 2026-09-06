@@ -68,10 +68,10 @@ func effectiveAccess(owner, repo, configured string) string {
 // the request has to get past.
 func SetDepartmentAccess(owner, repo, actor, mode string) error {
 	if _, known := accessRank[mode]; !known {
-		return userErrorf("알 수 없는 접근 범위입니다")
+		return userKeyError("company.err.unknown_access")
 	}
 	if accessRank[mode] > accessRank[configuredAccess(owner, repo)] {
-		return userErrorf("접근 범위를 넓히려면 배포 요청으로 승인을 받아야 합니다")
+		return userKeyError("company.err.widen_needs_request")
 	}
 
 	if err := MutateAppState(owner, repo, func(st *AppState) bool {

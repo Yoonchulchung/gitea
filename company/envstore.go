@@ -132,7 +132,7 @@ func LoadAppEnv(owner, repo string) (map[string]string, int64, error) {
 		if err != nil {
 			// The name is safe to report; it is what the department needs in
 			// order to re-enter the value. The ciphertext is not.
-			return nil, 0, userErrorf("환경변수 %q 를 복호화하지 못했습니다. 값을 다시 입력해 주세요", name)
+			return nil, 0, userKeyError("company.err.env_decrypt", name)
 		}
 		out[name] = value
 	}
@@ -177,13 +177,13 @@ func AppEnvHistory(owner, repo string) []AppEnvChange {
 // out of the sandbox.
 func ValidateEnvName(name string) error {
 	if name == "" {
-		return userErrorf("변수 이름이 비어 있습니다")
+		return userKeyError("company.err.env_name_empty")
 	}
 	if len(name) > 128 {
-		return userErrorf("변수 이름이 너무 깁니다: %s…", name[:32])
+		return userKeyError("company.err.env_name_long", name[:32])
 	}
 	if !envNamePattern.MatchString(name) {
-		return userErrorf("%q 는 사용할 수 없는 변수 이름입니다 — 영문자로 시작하고 영문자·숫자·밑줄만 쓸 수 있습니다", name)
+		return userKeyError("company.err.env_name_invalid", name)
 	}
 	if isReservedEnvName(name) {
 		// LD_PRELOAD is the one that matters: it injects an arbitrary shared
@@ -191,7 +191,7 @@ func ValidateEnvName(name string) error {
 		// sandbox from a text field. PATH/HOME/PYTHON* are rejected because
 		// overriding them breaks the app in ways that look like a platform
 		// bug.
-		return userErrorf("%s 는 플랫폼이 예약한 이름이라 설정할 수 없습니다", strings.ToUpper(name))
+		return userKeyError("company.err.env_name_reserved", strings.ToUpper(name))
 	}
 	return nil
 }
@@ -210,12 +210,12 @@ func SaveAppEnv(owner, repo, actor string, set map[string]string, unset []string
 			return err
 		}
 		if len(value) > maxEnvValueSize {
-			return userErrorf("%q 의 값이 너무 큽니다 (최대 %d 바이트)", name, maxEnvValueSize)
+			return userKeyError("company.err.env_value_large", name, maxEnvValueSize)
 		}
 		if strings.ContainsRune(value, 0) {
 			// A NUL terminates the string in the environment block, so the
 			// process would silently receive a truncated credential.
-			return userErrorf("%q 의 값에 널 문자가 들어 있습니다", name)
+			return userKeyError("company.err.env_value_nul", name)
 		}
 	}
 
@@ -242,7 +242,7 @@ func SaveAppEnv(owner, repo, actor string, set map[string]string, unset []string
 		f.Vars[name] = encrypted
 	}
 	if len(f.Vars) > maxEnvVars {
-		return userErrorf("환경변수는 최대 %d 개까지 설정할 수 있습니다", maxEnvVars)
+		return userKeyError("company.err.env_too_many", maxEnvVars)
 	}
 
 	f.Version++

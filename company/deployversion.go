@@ -32,7 +32,7 @@ func DeployVersion(ctx context.Context, owner, repo, sha, actor string, isAdmin 
 	// Same gate as a redeploy: this replaces what is serving, so it is refused
 	// in exactly the states a redeploy is.
 	if ok, why := st.CanTransition("redeploy", isAdmin); !ok {
-		return userErrorf("%s", why)
+		return userKeyError(why)
 	}
 
 	full, err := resolveDeployCommit(ctx, sha)
@@ -42,7 +42,7 @@ func DeployVersion(ctx context.Context, owner, repo, sha, actor string, isAdmin 
 	if full == CurrentReleaseSHA(owner, repo) && st.Actual == AppStateRunning {
 		// Otherwise this stops a working app and starts the same code again,
 		// which looks like a deploy and changes nothing.
-		return userErrorf("이 버전이 이미 실행 중입니다")
+		return userKeyError("company.err.version_already_running")
 	}
 
 	if err := MutateAppState(owner, repo, func(s *AppState) bool {
@@ -90,9 +90,7 @@ func resolveDeployCommit(ctx context.Context, sha string) (string, error) {
 
 	commit, err := gitRepo.GetCommit(ctx, sha)
 	if err != nil {
-		return "", audienceError(
-			"그 버전을 배포 저장소에서 찾을 수 없습니다",
-			"커밋 "+sha+" 이 central-deploy 에 없습니다 — 정리되었거나 잘못된 값입니다")
+		return "", audienceKeyError("company.err.version_gone", "company.err.version_gone.admin", sha)
 	}
 	return commit.ID.String(), nil
 }

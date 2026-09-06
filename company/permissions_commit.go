@@ -309,7 +309,7 @@ func ApproveAppPackages(ctx context.Context, doer *user_model.User, owner, repo 
 		})
 	}
 	if len(requests) == 0 {
-		return userErrorf("승인할 패키지를 선택하거나 입력해 주세요")
+		return userKeyError("company.err.no_packages_selected")
 	}
 
 	var lastErr error

@@ -135,15 +135,15 @@ func outboundEvidence(host string) string {
 	// suffix test would call it an internet address.
 	labels := strings.Split(name, ".")
 	if len(labels) == 1 {
-		return "사내 주소로 보입니다 (도메인 없음)"
+		return "company.evidence.internal_bare"
 	}
 	for _, label := range labels {
 		switch label {
 		case "internal", "local", "lan", "corp", "intranet":
-			return "사내 주소로 보입니다"
+			return "company.evidence.internal"
 		}
 	}
-	return "인터넷 주소로 보입니다 — 승인하면 이 앱이 사외로 데이터를 보낼 수 있습니다"
+	return "company.evidence.external"
 }
 
 // withDependencies adds the packages the ticked ones will drag in.

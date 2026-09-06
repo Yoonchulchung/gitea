@@ -285,9 +285,9 @@ func AdminAppControl(ctx *context.Context) {
 		// written for them. A department gets DepartmentSafeError instead —
 		// safe to show is not the same as addressed to the reader
 		// (company/usererror.go).
-		ctx.Flash.Error(AdminError(err))
+		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 	} else {
-		ctx.Flash.Success("완료되었습니다: " + verb)
+		ctx.Flash.Success(ctx.Locale.TrString("company.flash.done", verb))
 	}
 	if verb == "remove" {
 		ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys")
@@ -343,7 +343,7 @@ func AdminApprovePackages(ctx *context.Context) {
 	// nil until something asks for a field. Either way the approval saw an
 	// empty selection and refused a request that had two packages ticked.
 	if err := ctx.Req.ParseForm(); err != nil {
-		ctx.Flash.Error("입력을 읽지 못했습니다. 다시 시도해 주세요.")
+		ctx.Flash.Error(ctx.Locale.TrString("company.flash.form_unreadable"))
 		ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo)
 		return
 	}
@@ -357,12 +357,12 @@ func AdminApprovePackages(ctx *context.Context) {
 	names = append(names, extra...)
 
 	if err := ApproveAppPackages(ctx, ctx.Doer, owner, repo, names); err != nil {
-		ctx.Flash.Error(AdminError(err))
+		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 	} else {
 		// Says what it did and what it did not: apps.yml is policy, and an
 		// environment is built once, so nothing changes for the running app
 		// until it is built again.
-		ctx.Flash.Success("승인했습니다: " + strings.Join(names, ", ") + ". 적용하려면 [다시 배포]를 눌러 주세요.")
+		ctx.Flash.Success(ctx.Locale.TrString("company.flash.approved", strings.Join(names, ", ")))
 	}
 	ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo)
 }
@@ -371,11 +371,11 @@ func AdminApprovePackages(ctx *context.Context) {
 func AdminDeployVersion(ctx *context.Context) {
 	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")
 	if err := DeployVersion(ctx, owner, repo, ctx.FormString("sha"), ctx.Doer.Name, true); err != nil {
-		ctx.Flash.Error(AdminError(err))
+		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 	} else {
 		// Says what is about to happen rather than that it has: the build runs
 		// in the background and the health check decides whether it goes live.
-		ctx.Flash.Success("그 버전으로 배포를 시작했습니다. 빌드와 상태 확인이 끝나면 반영됩니다.")
+		ctx.Flash.Success(ctx.Locale.TrString("company.flash.version_deploying"))
 	}
 	ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo + "/history")
 }
@@ -401,7 +401,7 @@ func AdminSetNetwork(ctx *context.Context) {
 	case "access":
 		access := ctx.FormString("access")
 		if _, known := accessRank[access]; !known {
-			ctx.Flash.Error("알 수 없는 접근 범위입니다.")
+			ctx.Flash.Error(ctx.Locale.TrString("company.err.unknown_access"))
 			ctx.Redirect(back)
 			return
 		}
@@ -410,8 +410,7 @@ func AdminSetNetwork(ctx *context.Context) {
 	case "outbound-add":
 		host, ok := normalizeOutboundHost(ctx.FormString("host"))
 		if !ok {
-			ctx.Flash.Error("주소를 알아볼 수 없습니다. 사이트 주소나 호스트 이름을 넣어 주세요 " +
-				"(예: erp.internal.company.com 또는 https://erp.internal.company.com/api).")
+			ctx.Flash.Error(ctx.Locale.TrString("company.flash.bad_host"))
 			ctx.Redirect(back)
 			return
 		}
@@ -420,7 +419,7 @@ func AdminSetNetwork(ctx *context.Context) {
 		// Said back, because what was applied is not always what was typed: a
 		// pasted URL becomes a host, and the rule opens the whole site rather
 		// than the one page.
-		note = " " + host + " 전체가 열립니다 (경로 단위가 아닙니다). " + outboundEvidence(host)
+		note = " " + ctx.Locale.TrString("company.flash.host_opened", host) + " " + ctx.Locale.TrString(outboundEvidence(host))
 
 	case "outbound-remove":
 		host := strings.TrimSpace(ctx.FormString("host"))
@@ -439,11 +438,11 @@ func AdminSetNetwork(ctx *context.Context) {
 	}
 
 	if err := SetAppNetworkPolicy(ctx, ctx.Doer, owner, repo, subject, mutate); err != nil {
-		ctx.Flash.Error(AdminError(err))
+		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 	} else {
 		// Inbound and download take effect on the next request; outbound is
 		// read when the app starts, so it does not.
-		ctx.Flash.Success("정책을 변경했습니다." + note + " 외부 통신 변경은 앱을 재시작해야 적용됩니다.")
+		ctx.Flash.Success(ctx.Locale.TrString("company.flash.policy_changed") + note + " " + ctx.Locale.TrString("company.flash.policy_restart_note"))
 	}
 	ctx.Redirect(back)
 }

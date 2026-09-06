@@ -12,6 +12,7 @@ import (
 
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
+	"gitea.dev/modules/translation"
 )
 
 // Errors from the app platform reach two very different audiences, and most
@@ -40,9 +41,32 @@ import (
 type userError struct {
 	staff string
 	admin string // falls back to staff when the advice is the same for both
+
+	// The key-based form. An error is raised deep in the stack, far from any
+	// request and therefore from any language setting, so it cannot be
+	// translated where it is created — it carries the key and the arguments,
+	// and whoever finally shows it to a person translates it in *that*
+	// person's language. The strings above are the pre-i18n form and remain
+	// the fallback while call sites migrate.
+	staffKey string
+	adminKey string
+	// Arguments per audience, never shared: the admin half regularly carries
+	// a path or a raw tool error, and formatting the staff sentence with the
+	// admin's arguments would either garble it (%!(EXTRA …)) or hand the
+	// department the very detail the split exists to withhold.
+	staffArgs []any
+	adminArgs []any
 }
 
-func (e *userError) Error() string { return e.staff }
+// Error returns the English rendering, which is what lands in logs — a log
+// line in whatever language a request happened to arrive in is a log an
+// operator cannot grep.
+func (e *userError) Error() string {
+	if e.staffKey != "" {
+		return translation.NewLocale("en-US").TrString(e.staffKey, e.staffArgs...)
+	}
+	return e.staff
+}
 
 // userErrorf builds an error whose text suits either audience. Use it only
 // for sentences a non-developer can act on — never to wrap an error that
@@ -51,11 +75,32 @@ func userErrorf(format string, a ...any) error {
 	return &userError{staff: fmt.Sprintf(format, a...)}
 }
 
+// userKeyError is the translated form: a locale key plus its arguments,
+// rendered in the reader's language at the moment of display.
+func userKeyError(key string, args ...any) error {
+	return &userError{staffKey: key, staffArgs: args}
+}
+
 // audienceError builds an error that says different things to a department
 // and to an administrator, because the thing each of them should do next is
 // different.
 func audienceError(staff, admin string) error {
 	return &userError{staff: staff, admin: admin}
+}
+
+// audienceKeyError is audienceError in locale keys. The variadic arguments
+// belong to the admin sentence alone — see the field comment above.
+func audienceKeyError(staffKey, adminKey string, adminArgs ...any) error {
+	return &userError{staffKey: staffKey, adminKey: adminKey, adminArgs: adminArgs}
+}
+
+// render translates one half of the error for a locale, falling back through
+// the legacy string.
+func (e *userError) render(l translation.Locale, key, legacy string, args []any) string {
+	if key != "" {
+		return l.TrString(key, args...)
+	}
+	return legacy
 }
 
 func asUserError(err error) (*userError, bool) {
@@ -81,16 +126,23 @@ func userMessage(err error) (string, bool) {
 // what actually went wrong so an administrator still has it.
 //
 // context should name the operation ("starting PO/report"), because the log
-// line is all an admin gets once the original error is dropped.
+// line is all an admin gets once the original error is dropped. Renders in
+// Korean for callers that have no locale; handlers should prefer
+// DepartmentSafeErrorL.
 func DepartmentSafeError(context string, err error) string {
+	return DepartmentSafeErrorL(translation.NewLocale("ko-KR"), context, err)
+}
+
+// DepartmentSafeErrorL is DepartmentSafeError in the reader's own language.
+func DepartmentSafeErrorL(l translation.Locale, context string, err error) string {
 	if err == nil {
 		return ""
 	}
-	if msg, ok := userMessage(err); ok {
-		return msg
+	if u, ok := asUserError(err); ok {
+		return u.render(l, u.staffKey, u.staff, u.staffArgs)
 	}
 	log.Error("company: %s: %v", context, err)
-	return "처리 중 문제가 발생했습니다. 관리자에게 문의해 주세요."
+	return l.TrString("company.error.generic")
 }
 
 // AdminError returns the message for an administrator.
@@ -100,14 +152,19 @@ func DepartmentSafeError(context string, err error) string {
 // the admin's version is used. Telling an operator to press "Deploy Request"
 // describes the department's job, not theirs.
 func AdminError(err error) string {
+	return AdminErrorL(translation.NewLocale("ko-KR"), err)
+}
+
+// AdminErrorL is AdminError in the reader's own language.
+func AdminErrorL(l translation.Locale, err error) string {
 	if err == nil {
 		return ""
 	}
 	if u, ok := asUserError(err); ok {
-		if u.admin != "" {
-			return u.admin
+		if u.adminKey != "" || u.admin != "" {
+			return u.render(l, u.adminKey, u.admin, u.adminArgs)
 		}
-		return u.staff
+		return u.render(l, u.staffKey, u.staff, u.staffArgs)
 	}
 	return err.Error()
 }

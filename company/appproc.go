@@ -37,14 +37,10 @@ import (
 // errNoRelease means start was pressed before any deploy ever succeeded —
 // a different situation from an app that is broken, and the only one the
 // department fixes by deploying rather than by editing code.
-var errNoRelease = audienceError(
-	"아직 실행할 수 있는 버전이 없습니다. 오른쪽 위 [Deploy Request] 에서 배포를 요청하면, "+
-		"관리자 승인 뒤 앱이 자동으로 시작됩니다.",
-	// The admin does not press Deploy Request — the department does, and the
-	// admin approves it. Telling an operator to do the requester's job is
-	// worse than telling them nothing.
-	"빌드된 릴리스가 없어 시작할 수 없습니다. 이 부서의 배포 요청을 승인하면 자동으로 빌드·기동됩니다. "+
-		"직전 배포가 실패했다면 아래 원문과 로그를 확인해 주세요.")
+// The admin half differs because the admin does not press Deploy Request —
+// the department does, and the admin approves it. Telling an operator to do
+// the requester's job is worse than telling them nothing.
+var errNoRelease = audienceKeyError("company.err.no_release", "company.err.no_release.admin")
 
 const (
 	// stopGracePeriod is how long a process gets to finish in-flight
@@ -230,7 +226,7 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 		// The app contract is a fixed convention, not a config file, so a
 		// missing main.py is the one thing we can and must check up front —
 		// otherwise the failure surfaces as an opaque uvicorn traceback.
-		return userErrorf("저장소 최상위에 main.py 가 없습니다")
+		return userKeyError("company.err.no_main_py")
 	}
 
 	if err := os.MkdirAll(s.paths.run, 0o700); err != nil {
@@ -250,10 +246,8 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	// "OSError: AF_UNIX path too long" from deep inside asyncio, which says
 	// nothing about which path or what the limit is.
 	if len(s.paths.socket) >= maxUnixSocketPath {
-		return audienceError(
-			"서버 설정 문제로 앱을 시작할 수 없습니다. 관리자에게 알려 주세요.",
-			fmt.Sprintf("소켓 경로가 %d바이트로 커널 한도(%d)를 넘습니다: %s — APP_DATA_PATH 를 더 짧은 경로로 옮겨야 합니다",
-				len(s.paths.socket), maxUnixSocketPath, s.paths.socket))
+		return audienceKeyError("company.err.socket_too_long", "company.err.socket_too_long.admin",
+			len(s.paths.socket), maxUnixSocketPath, s.paths.socket)
 	}
 
 	// A socket left behind by a process that died without cleaning up makes
@@ -268,9 +262,7 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	// and kill it, which is recoverable, while two live copies writing to one
 	// app's files is not.
 	if socketInUse(s.paths.socket) {
-		return audienceError(
-			"이 앱이 이미 실행 중입니다. 잠시 뒤 다시 시도해 주세요.",
-			"소켓이 이미 응답합니다 — 이전 프로세스가 살아 있습니다. Gitea 가 비정상 종료된 뒤라면 그 프로세스를 종료해야 합니다: "+s.paths.socket)
+		return audienceKeyError("company.err.already_running", "company.err.already_running.admin", s.paths.socket)
 	}
 	if err := os.Remove(s.paths.socket); err != nil && !os.IsNotExist(err) {
 		log.Warn("company: %s/%s: could not remove stale socket: %v", s.owner, s.repo, err)
@@ -286,9 +278,7 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	// reports "no such file or directory" about a file that plainly exists.
 	// Saying so here beats letting that reach anybody.
 	if _, statErr := os.Stat(cmd.Path); statErr != nil {
-		return audienceError(
-			"앱 실행 환경이 손상되었습니다. 다시 배포하면 복구됩니다.",
-			"실행 파일이 없습니다 ("+cmd.Path+") — venv 가 옮겨졌거나 지워졌습니다. [다시 배포]로 재생성하세요")
+		return audienceKeyError("company.err.venv_broken", "company.err.venv_broken.admin", cmd.Path)
 	}
 	brokerOn := settings.Network.Mode == NetworkBroker || settings.Network.Mode == NetworkOpen
 	if brokerOn {
@@ -470,9 +460,7 @@ func (s *appSupervisor) Start() error {
 func (s *appSupervisor) startProcess(freshAttempt bool) (int, error) {
 	settings := SettingsFor(s.owner, s.repo)
 	if !settings.IsEnabled() {
-		return 0, audienceError(
-			"관리자가 이 앱을 비활성화했습니다",
-			"apps.yml 에서 이 앱이 enabled: false 로 되어 있습니다")
+		return 0, audienceKeyError("company.err.disabled", "company.err.disabled.admin")
 	}
 	appEnv, envVer, err := LoadAppEnv(s.owner, s.repo)
 	if err != nil {
@@ -568,7 +556,7 @@ func (s *appSupervisor) Restart() error {
 func StartApp(owner, repo string) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("start", false); !ok {
-		return userErrorf("%s", why)
+		return userKeyError(why)
 	}
 	return supervisorFor(owner, repo).Start()
 }
@@ -576,7 +564,7 @@ func StartApp(owner, repo string) error {
 func StopApp(owner, repo, actor string, isAdmin bool) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("stop", isAdmin); !ok {
-		return userErrorf("%s", why)
+		return userKeyError(why)
 	}
 	return supervisorFor(owner, repo).Stop(actor, AppStateStopped, "")
 }
@@ -584,7 +572,7 @@ func StopApp(owner, repo, actor string, isAdmin bool) error {
 func RestartApp(owner, repo string, isAdmin bool) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("restart", isAdmin); !ok {
-		return userErrorf("%s", why)
+		return userKeyError(why)
 	}
 	return supervisorFor(owner, repo).Restart()
 }
@@ -595,7 +583,7 @@ func RestartApp(owner, repo string, isAdmin bool) error {
 func SuspendApp(owner, repo, actor, reason string) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("suspend", true); !ok {
-		return userErrorf("%s", why)
+		return userKeyError(why)
 	}
 	if reason == "" {
 		// The department only sees "an administrator stopped this app"; the
@@ -608,7 +596,7 @@ func SuspendApp(owner, repo, actor, reason string) error {
 func ResumeApp(owner, repo, actor string) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("resume", true); !ok {
-		return userErrorf("%s", why)
+		return userKeyError(why)
 	}
 	if err := MutateAppState(owner, repo, func(s *AppState) bool {
 		s.Actual = AppStateStopped
@@ -750,11 +738,13 @@ func (s *appSupervisor) stableFor(pid int, d time.Duration) bool {
 // than a graceful TERM: these are processes whose supervisor is gone, and
 // there is nobody to watch a grace period for them.
 func reapOrphans(owner, repo string) {
-	home := appPathsFor(owner, repo).home
+	p := appPathsFor(owner, repo)
+	home := p.home
 	out, err := exec.Command("ps", "-axo", "pid=,command=").Output()
 	if err != nil {
 		return // no ps, no cleanup — the socket probe still protects us
 	}
+	killed := false
 	for line := range strings.SplitSeq(string(out), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 || !strings.Contains(line, home+string(os.PathSeparator)) {
@@ -768,5 +758,19 @@ func reapOrphans(owner, repo string) {
 		if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
 		}
+		killed = true
 	}
+	if !killed {
+		return
+	}
+	// SIGKILL is not synchronous: the reconcile that follows probes the
+	// socket, and a corpse that has not released it yet reads as "already
+	// running" — which is the exact refusal this reaper exists to prevent.
+	for range 20 {
+		if !socketInUse(p.socket) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	log.Warn("company: %s/%s: the orphan's socket is still answering after a kill", owner, repo)
 }

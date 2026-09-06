@@ -152,8 +152,8 @@ func TestRedeployWithoutAnyDeploy(t *testing.T) {
 	withTempAppData(t)
 	err := RedeployApp("PO", "never", "admin", true)
 	require.Error(t, err)
-	assert.Contains(t, AdminError(err), "기록된 커밋")
-	assert.Contains(t, DepartmentSafeError("ctx", err), "배포된 적이 없")
+	assert.Equal(t, "company.err.never_deployed.admin", AdminError(err), "keys now; the sentences live in the locale files")
+	assert.Equal(t, "company.err.never_deployed", DepartmentSafeError("ctx", err))
 }
 
 // The version currently serving users belongs to the department whatever

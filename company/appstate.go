@@ -6,7 +6,6 @@ package company
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -403,35 +402,35 @@ func (st *AppState) CanTransition(action string, isAdmin bool) (bool, string) {
 	// new deploy request has not given up control of the version currently
 	// serving their users.
 	if st.IsSwapping() && action != "suspend" && action != "stop" {
-		return false, "새 버전으로 교체하는 중입니다 — 잠시 뒤 다시 시도해 주세요"
+		return false, "company.err.swapping"
 	}
 	// A second deploy while one is already queued or building is duplication,
 	// not urgency — the one in flight is already rebuilding this commit.
 	if action == "redeploy" && st.IsBusy() {
-		return false, "이미 배포가 진행 중입니다 — 끝난 뒤 다시 시도해 주세요"
+		return false, "company.err.deploy_busy"
 	}
 	switch action {
 	case "start", "restart", "rollback", "redeploy":
 		if st.Actual == AppStateSuspended {
 			if !isAdmin {
-				return false, "an administrator stopped this app; ask them to resume it"
+				return false, "company.err.suspended_dept"
 			}
-			return false, "resume the app before starting it"
+			return false, "company.err.suspended_admin"
 		}
 		return true, ""
 	case "stop":
 		if st.Actual == AppStateSuspended {
-			return false, "the app is already stopped by an administrator"
+			return false, "company.err.already_suspended"
 		}
 		return true, ""
 	case "suspend", "resume", "remove":
 		if !isAdmin {
-			return false, "only an administrator can do this"
+			return false, "company.err.admin_only"
 		}
 		if action == "resume" && st.Actual != AppStateSuspended {
-			return false, "the app is not suspended"
+			return false, "company.err.not_suspended"
 		}
 		return true, ""
 	}
-	return false, fmt.Sprintf("unknown action %q", action)
+	return false, "company.err.unknown_action"
 }

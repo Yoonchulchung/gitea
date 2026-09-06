@@ -95,11 +95,11 @@ func AdminSetBasePackages(ctx *context.Context) {
 		return
 	}
 	if err := CommitBasePackages(ctx, ctx.Doer, packages); err != nil {
-		ctx.Flash.Error(AdminError(err))
+		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 	} else {
 		// Says what actually happened: an environment is built once and
 		// reused, so this does not reach apps that are already running.
-		ctx.Flash.Success("기본 패키지를 저장했습니다. 새로 배포되는 앱부터 적용됩니다.")
+		ctx.Flash.Success(ctx.Locale.TrString("company.flash.base_saved"))
 	}
 	ctx.Redirect(setting.AppSubURL + "/-/admin/company-packages")
 }

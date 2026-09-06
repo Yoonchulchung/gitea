@@ -133,9 +133,10 @@ func TestAdminErrorFallsBack(t *testing.T) {
 // The message that prompted the split: an admin pressing start on an app
 // with nothing built must not be told to file a deploy request.
 func TestNoReleaseSpeaksToBothAudiences(t *testing.T) {
-	assert.Contains(t, DepartmentSafeError("ctx", errNoRelease), "Deploy Request")
-	assert.NotContains(t, AdminError(errNoRelease), "Deploy Request")
-	assert.Contains(t, AdminError(errNoRelease), "승인")
+	assert.Equal(t, "company.err.no_release", DepartmentSafeError("ctx", errNoRelease))
+	assert.NotEqual(t, "company.err.no_release", AdminError(errNoRelease),
+		"the admin half must not fall through to the department sentence")
+	assert.Equal(t, "company.err.no_release.admin", AdminError(errNoRelease))
 }
 
 // An app's own output names the server's paths — a Python traceback prints

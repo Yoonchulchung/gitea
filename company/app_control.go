@@ -27,7 +27,7 @@ import (
 func startAppAs(owner, repo, actor string, isAdmin bool) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("start", isAdmin); !ok {
-		return userErrorf("%s", why) // CanTransition's text is written for staff
+		return userKeyError(why) // CanTransition's text is written for staff
 	}
 	if err := supervisorFor(owner, repo).Start(); err != nil {
 		return err
@@ -48,20 +48,18 @@ func RollbackApp(owner, repo, actor string) error {
 	p := appPathsFor(owner, repo)
 	previous, err := os.Readlink(p.previous)
 	if err != nil {
-		return userErrorf("되돌아갈 이전 버전이 없습니다")
+		return userKeyError("company.err.no_rollback_target")
 	}
 	// The button is hidden in this case, but a form can still be submitted:
 	// restarting the running version and calling it a rollback would tell
 	// someone they went back when they did not.
 	if current, err := os.Readlink(p.current); err == nil && current == previous {
-		return userErrorf("되돌아갈 이전 버전이 없습니다")
+		return userKeyError("company.err.no_rollback_target")
 	}
 	if _, err := os.Stat(previous); err != nil {
 		// A release directory that has been cleaned up would otherwise fail
 		// after the app is already stopped, leaving it down.
-		return audienceError(
-			"이전 버전의 파일이 서버에 더 이상 없습니다",
-			"이전 릴리스 디렉터리가 없습니다 — 릴리스 GC 로 정리되었을 수 있습니다. 재배포가 필요합니다")
+		return audienceKeyError("company.err.rollback_gone", "company.err.rollback_gone.admin")
 	}
 
 	s := supervisorFor(owner, repo)
@@ -176,12 +174,10 @@ func RemoveApp(owner, repo, actor string) error {
 func RedeployApp(owner, repo, actor string, isAdmin bool) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("redeploy", isAdmin); !ok {
-		return userErrorf("%s", why)
+		return userKeyError(why)
 	}
 	if st.SHA == "" {
-		return audienceError(
-			"아직 배포된 적이 없어 다시 배포할 것이 없습니다",
-			"기록된 커밋이 없습니다 — 이 앱은 배포 요청이 승인된 적이 없습니다")
+		return audienceKeyError("company.err.never_deployed", "company.err.never_deployed.admin")
 	}
 	if err := MutateAppState(owner, repo, func(s *AppState) bool {
 		s.Desired = AppStateRunning

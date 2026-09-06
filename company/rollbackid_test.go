@@ -110,7 +110,7 @@ func TestPreviousPointingAtCurrentIsNotARollbackTarget(t *testing.T) {
 	// form from being submitted.
 	err := RollbackApp("PO", "app", "someone")
 	require.Error(t, err)
-	assert.Contains(t, DepartmentSafeError("rollback", err), "되돌아갈 이전 버전이 없습니다")
+	assert.Equal(t, "company.err.no_rollback_target", DepartmentSafeError("rollback", err))
 }
 
 // Rolling back one step follows a symlink that only ever holds one version.

@@ -470,9 +470,7 @@ func installIntoVenv(ctx context.Context, venv string, reqs []Requirement, setti
 	if len(settings.BasePackages) > 0 {
 		if err := pipInstall(ctx, venv, settings.BasePackages); err != nil {
 			// The department did not ask for these and cannot fix them.
-			return audienceError(
-				"서버가 기본 제공하는 패키지를 설치하지 못했습니다. 관리자에게 알려 주세요.",
-				"기본 패키지 설치 실패 — 관리자 화면에서 목록을 확인하세요: "+err.Error())
+			return audienceKeyError("company.err.base_install_failed", "company.err.base_install_failed.admin", err.Error())
 		}
 	}
 	baseline, err := installedPackages(ctx, venv)
