@@ -86,10 +86,9 @@
 .company-app-state.building,
 .company-app-state.activating { background: var(--color-warning-bg); color: var(--color-warning-text); }
 
-/* Quiet by default: the panel only draws a coloured edge when there is
-   something to act on, so that a department notices it on the day it
-   matters instead of tuning it out. */
-.company-app-panel.has-problem { border-left: 3px solid var(--color-red); padding-left: 8px; }
+/* The panel stays quiet when nothing is wrong. When something is, the status
+   badge and the coloured cause box already say so — a third marker on the
+   same block was noise rather than emphasis. */
 .company-app-cause {
 	background: var(--color-error-bg);
 	color: var(--color-error-text);

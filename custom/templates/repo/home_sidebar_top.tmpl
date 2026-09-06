@@ -120,7 +120,7 @@
 	     grid-column 2 (web_src/css/repo/home.css), so a second element with
 	     that class lands in the same cell and draws on top of the first. */}}
 	{{with .CompanyApp}}
-	<div class="flex-relaxed-list company-app-panel{{if .HasProblem}} has-problem{{end}}">
+	<div class="flex-relaxed-list company-app-panel">
 		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
 			<span>앱</span>
 			<span class="company-app-state {{.Status}}">{{.StatusLabel}}</span>

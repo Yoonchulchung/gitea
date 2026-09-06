@@ -4,7 +4,6 @@
 package company
 
 import (
-	"slices"
 	"strings"
 
 	"gitea.dev/models/unit"
@@ -24,7 +23,10 @@ import (
 //   - Resource use is shown next to the limit, because "512MB" alone gives
 //     nobody grounds to decide whether to ask for more.
 //   - When nothing is wrong, the panel stays quiet. A panel that always has
-//     something to say is a panel nobody reads on the day it matters.
+//     something to say is a panel nobody reads on the day it matters. The
+//     cause box appears only on a real failure, and that plus the status
+//     badge is the whole of the emphasis — a third marker on the same block
+//     read as noise rather than urgency.
 
 // PermissionState is how one permission is rendered.
 type PermissionState string
@@ -63,8 +65,6 @@ type AppSidebarData struct {
 	// an admin stopped it and the department cannot undo that.
 	Running   bool
 	Suspended bool
-	// HasProblem drives whether the panel draws attention to itself.
-	HasProblem bool
 }
 
 // SetAppPermissionData attaches the sidebar panel's data to the repo home
@@ -105,9 +105,6 @@ func SetAppPermissionData(ctx *context.Context) {
 		AppLink:     ctx.Repo.RepoLink + "/_app",
 		DeployLink:  ctx.Repo.RepoLink + "/deploy",
 	}
-	data.HasProblem = data.Cause != nil || slices.ContainsFunc(data.Rows,
-		func(r PermissionRow) bool { return r.State != PermAllowed })
-
 	ctx.Data["CompanyApp"] = data
 }
 
