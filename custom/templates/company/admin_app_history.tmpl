@@ -35,7 +35,13 @@
 									<span class="company-app-state running">성공</span>
 								{{end}}
 							</td>
-							<td class="tw-font-mono">{{if .SHA}}{{ShortSha .SHA}}{{else}}<span class="text-grey">—</span>{{end}}</td>
+							{{/* Which one is live is not "the newest": a failed deploy
+							     leaves the previous version running, and a rollback puts
+							     an older one back. */}}
+							<td class="tw-font-mono">
+								{{if .SHA}}{{ShortSha .SHA}}{{else}}<span class="text-grey">—</span>{{end}}
+								{{if .Current}}<span class="ui green mini label tw-ml-1">실행 중</span>{{end}}
+							</td>
 							{{/* The build log is the app's own output and an admin screen,
 							     so paths are left alone here — see company/applogs.go. */}}
 							<td>{{if .Summary}}{{.Summary}}{{else}}<span class="text-grey">—</span>{{end}}</td>

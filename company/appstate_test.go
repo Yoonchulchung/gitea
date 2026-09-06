@@ -244,3 +244,24 @@ func TestAccessOptionsMeasureAgainstPolicyNotChoice(t *testing.T) {
 		assert.Equal(t, o.Value != AccessOrg, o.NeedsRequest, o.Value)
 	}
 }
+
+// Which release is live is not "the newest attempt": a failed deploy leaves
+// the previous version running, and a rollback puts an older one back. The
+// build log records a shortened SHA, so the match is by prefix.
+func TestMarkCurrentFlagsTheLiveRelease(t *testing.T) {
+	attempts := []deployAttempt{
+		{SHA: "aaaaaaaaaaaa", Failed: true}, // newest, and it failed
+		{SHA: "bbbbbbbbbbbb"},               // what is actually serving
+		{SHA: "bbbbbbbbbbbb"},               // an earlier deploy of the same commit
+	}
+	markCurrent(attempts, "bbbbbbbbbbbbccccccccccccdddddddddddd")
+
+	assert.False(t, attempts[0].Current)
+	assert.True(t, attempts[1].Current)
+	assert.False(t, attempts[2].Current, "only the newest attempt for that commit is marked")
+
+	// Nothing deployed yet: no row claims to be running.
+	none := []deployAttempt{{SHA: "aaaaaaaaaaaa"}}
+	markCurrent(none, "")
+	assert.False(t, none[0].Current)
+}

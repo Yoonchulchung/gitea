@@ -174,30 +174,38 @@
 			</div>
 			{{/* The case this exists for: a dependency the build resolved that
 			     appears in no file anyone wrote, so the department has nothing
-			     to tick and cannot raise a request for it at all. */}}
+			     to tick and cannot raise a request for it at all. The button
+			     sits with the names because by the time this panel is on screen
+			     the decision is already made — what is missing is one click. */}}
 			<form method="post" action="{{.AdminAppLink}}/approve-packages" class="ui form tw-mt-4">
 				{{.CsrfTokenHtml}}
 				{{if .MissingPackages}}
 					<div class="ui warning message tw-mt-0">
 						<div class="header">직전 배포가 이 패키지에서 멈췄습니다</div>
-						<div class="tw-mt-2">
+						<div class="tw-text-13 tw-mt-1">
+							승인한 패키지가 필요로 하는 의존성이라 부서에서는 요청할 방법이 없습니다.
+						</div>
+						<div class="tw-flex tw-items-center tw-gap-3 tw-flex-wrap tw-mt-3">
 							{{range .MissingPackages}}
-								<label class="tw-inline-flex tw-items-center tw-gap-1 tw-mr-3">
+								<label class="tw-inline-flex tw-items-center tw-gap-1">
 									<input type="checkbox" name="package" value="{{.}}" checked>
 									<span class="tw-font-mono">{{.}}</span>
 								</label>
 							{{end}}
-						</div>
-						<div class="tw-text-12 tw-mt-2">
-							승인한 패키지가 필요로 하는 의존성이라 부서에서는 요청할 방법이 없습니다. 여기서 바로 승인하세요.
+							<button class="ui primary button tw-ml-2">승인</button>
 						</div>
 					</div>
 				{{end}}
-				<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
-					<input type="text" name="extra" placeholder="직접 입력 (한 줄에 하나, 이름 또는 이름==버전)" class="tw-flex-1">
-					<button class="ui primary button">승인</button>
-				</div>
-				<div class="text-grey tw-text-12 tw-mt-2">
+				{{/* Secondary: for an admin who already knows what is needed and
+				     does not want to wait for a build to discover it. */}}
+				<details class="tw-mt-2">
+					<summary class="text-grey tw-text-13 tw-cursor-pointer">패키지를 직접 지정해 승인</summary>
+					<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap tw-mt-2">
+						<input type="text" name="extra" placeholder="한 줄에 하나, 이름 또는 이름==버전" class="tw-flex-1">
+						<button class="ui button">승인</button>
+					</div>
+				</details>
+				<div class="text-grey tw-text-12 tw-mt-3">
 					보통은 배포 요청을 머지할 때 승인됩니다. 어느 쪽이든 결과는 central-deploy 의
 					<code>.company/apps.yml</code> 커밋으로 남고, 커밋 작성자가 승인한 사람입니다.
 					승인해도 <strong>[다시 배포]</strong> 를 눌러야 실제로 설치됩니다.

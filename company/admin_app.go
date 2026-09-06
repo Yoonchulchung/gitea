@@ -317,7 +317,10 @@ func AdminAppMetrics(ctx *context.Context) {
 func AdminApprovePackages(ctx *context.Context) {
 	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")
 
-	names := ctx.Req.Form["package"]
+	// FormStrings, not ctx.Req.Form: the request body is not parsed until
+	// something asks for a field, so reading the map directly returns nothing
+	// and the approval silently does nothing at all.
+	names := ctx.FormStrings("package")
 	extra, problems := ParseBasePackages(ctx.FormString("extra"))
 	if len(problems) > 0 {
 		ctx.Flash.Error(strings.Join(problems, " / "))

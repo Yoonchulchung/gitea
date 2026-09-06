@@ -157,12 +157,20 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 		})
 	}
 
-	// A package the app asked for and did not get is the single most useful
-	// line here — it is the exact reason a deploy failed.
-	if st.Reason == ReasonPackageDenied && st.Message != "" {
+	// A package the app needs and did not get is the single most useful line
+	// here — it is the exact reason a deploy failed.
+	//
+	// Driven by MissingPackages rather than by st.Reason: the reason code is
+	// cleared the moment another deploy is queued, so the one fact that
+	// explains why nothing will install disappeared from this panel while
+	// still being true. MissingPackages survives until a build succeeds.
+	//
+	// Names only. st.Message is the build's own prose, written for an admin.
+	if len(st.MissingPackages) > 0 {
 		rows = append(rows, PermissionRow{
-			Label: "패키지", Value: st.Message, State: PermPending,
-			Reason: "관리자 승인을 기다리고 있습니다.",
+			Label: "패키지", Value: strings.Join(st.MissingPackages, ", "), State: PermPending,
+			Reason: "이 패키지가 승인되지 않아 새 버전을 설치하지 못했습니다. " +
+				"직접 적은 패키지가 아니라 그것들이 필요로 하는 것이라, 배포 요청에서 함께 승인받아야 합니다.",
 		})
 	}
 

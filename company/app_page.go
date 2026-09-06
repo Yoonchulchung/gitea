@@ -70,6 +70,10 @@ func AppPage(ctx *context.Context) {
 	ctx.Data["Running"] = CurrentRelease(owner, name)
 	ctx.Data["Previous"] = PreviousRelease(owner, name)
 	ctx.Data["HistoryRows"] = describeHistory(st.History)
+	// Surfaced on its own rather than through DepartmentCause, which keys on
+	// st.Reason — and that is cleared as soon as another deploy is queued,
+	// taking the only explanation of why nothing installs with it.
+	ctx.Data["MissingPackages"] = st.MissingPackages
 	ctx.HTML(http.StatusOK, tplApp)
 }
 
@@ -130,6 +134,15 @@ func AppControl(ctx *context.Context) {
 func AppEnvSave(ctx *context.Context) {
 	owner := ctx.Repo.Owner.Name
 	name := ctx.Repo.Repository.Name
+
+	// Parsed before the map is read: ctx.Req.Form is nil until a field is
+	// asked for, so ranging over it first found nothing and every save was a
+	// no-op — the form came back empty and no variable was ever stored.
+	if err := ctx.Req.ParseForm(); err != nil {
+		ctx.Flash.Error("입력을 읽지 못했습니다. 다시 시도해 주세요.")
+		ctx.Redirect(ctx.Repo.RepoLink + "/_app")
+		return
+	}
 
 	set := map[string]string{}
 	var unset []string
@@ -396,6 +409,8 @@ func AppHistory(ctx *context.Context) {
 	for i := range attempts {
 		attempts[i].Summary = RedactServerPaths(attempts[i].Summary)
 	}
+	running := CurrentRelease(owner, name)
+	markCurrent(attempts, running.SHA)
 
 	page := max(ctx.FormInt("page"), 1)
 	const perPage = 20
@@ -409,7 +424,7 @@ func AppHistory(ctx *context.Context) {
 	ctx.Data["TotalAttempts"] = len(attempts)
 	ctx.Data["Page"] = context.NewPagerBuilder(ctx).TotalCount(int64(len(attempts))).PerPageLimit(perPage).CurPage(page).Build()
 	ctx.Data["HistoryRows"] = describeHistory(st.History)
-	ctx.Data["Running"] = CurrentRelease(owner, name)
+	ctx.Data["Running"] = running
 	ctx.Data["AppLink"] = ctx.Repo.RepoLink + "/_app"
 	ctx.HTML(http.StatusOK, tplAppHistory)
 }

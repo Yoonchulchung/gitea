@@ -25,6 +25,23 @@
 			</div>
 		{{end}}
 
+		{{if .MissingPackages}}
+			{{/* The department cannot work this out from anywhere else: these
+			     names are in no file they wrote, and the deploy that needed them
+			     failed while the previous version kept serving — so the app looks
+			     fine and their change is simply not live. */}}
+			<div class="ui warning message">
+				<div class="header">승인이 필요해 새 버전이 적용되지 못했습니다</div>
+				<div class="tw-mt-1">
+					필요한 패키지: <span class="tw-font-mono">{{StringUtils.Join .MissingPackages ", "}}</span>
+				</div>
+				<div class="tw-text-13 tw-mt-1">
+					직접 적은 패키지가 아니라, 그 패키지들이 필요로 하는 것입니다.
+					지금은 이전 버전이 계속 실행 중이라 앱은 정상으로 보이지만, 최근 변경은 반영되지 않았습니다.
+				</div>
+				<a class="ui small primary button tw-mt-2" href="{{.DeployLink}}">승인 요청하기</a>
+			</div>
+		{{end}}
 		<div class="ui segment">
 			<div class="tw-flex tw-items-center tw-gap-3 tw-flex-wrap">
 				<a class="ui basic button" href="{{.AppURL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} 앱 열어보기</a>

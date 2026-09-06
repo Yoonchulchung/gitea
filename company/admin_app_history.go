@@ -40,6 +40,28 @@ type deployAttempt struct {
 	Outcome string // OK | FAILED, as written by appendBuildLog
 	Failed  bool
 	Summary string // the first line of output, which for a failure is the cause
+	// Current marks the release the app is serving right now, which is not
+	// necessarily the newest attempt: a failed deploy leaves the previous
+	// version running, and a rollback puts an older one back.
+	Current bool
+}
+
+// markCurrent flags the attempt that built what is running.
+//
+// Compared by prefix because the build log records a shortened SHA
+// (appendBuildLog) while the release records the full one. A deploy can be
+// attempted more than once for the same commit, so only the newest matching
+// attempt is marked — the list is already newest first.
+func markCurrent(attempts []deployAttempt, runningSHA string) {
+	if runningSHA == "" {
+		return
+	}
+	for i := range attempts {
+		if attempts[i].SHA != "" && strings.HasPrefix(runningSHA, attempts[i].SHA) {
+			attempts[i].Current = true
+			return
+		}
+	}
 }
 
 // buildLogHeader is the marker appendBuildLog writes:
@@ -53,6 +75,8 @@ func AdminAppHistory(ctx *context.Context) {
 	st := LoadAppState(owner, repo)
 
 	attempts := readDeployAttempts(appPathsFor(owner, repo))
+	running := CurrentRelease(owner, repo)
+	markCurrent(attempts, running.SHA)
 
 	// Paged: an app that has been redeployed weekly for a year has fifty of
 	// these, and the page exists precisely for the ones that are not recent.
@@ -67,7 +91,7 @@ func AdminAppHistory(ctx *context.Context) {
 	ctx.Data["TotalAttempts"] = len(attempts)
 	ctx.Data["Page"] = context.NewPagerBuilder(ctx).TotalCount(int64(len(attempts))).PerPageLimit(perPage).CurPage(page).Build()
 	ctx.Data["HistoryRows"] = describeHistory(st.History)
-	ctx.Data["Running"] = CurrentRelease(owner, repo)
+	ctx.Data["Running"] = running
 	ctx.Data["AdminAppLink"] = setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo
 	ctx.HTML(http.StatusOK, tplAdminAppHistory)
 }
