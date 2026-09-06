@@ -40,7 +40,10 @@ type PlatformEnvironment struct {
 	StartCommand  string
 	HealthPath    string
 	NetworkMode   string
-	SandboxMode   string
+	// NetworkEnforced is whether the sandbox is actually imposing the mode
+	// above. Policy and outcome differ on a host with no sandbox.
+	NetworkEnforced bool
+	SandboxMode     string
 }
 
 // DescribePlatformEnvironment collects what an app in this repository will
@@ -63,6 +66,7 @@ func DescribePlatformEnvironment(owner, repo string) PlatformEnvironment {
 	}
 	mode, _ := sandboxMode()
 	env.SandboxMode = string(mode)
+	env.NetworkEnforced, _ = NetworkEnforced()
 	return env
 }
 
@@ -108,10 +112,19 @@ func (e PlatformEnvironment) AIContext() string {
 		fmt.Fprintf(&b, "- Memory limit: %s MB. Reading a large file entirely into memory will be "+
 			"stopped by the platform.\n", strconv.Itoa(e.MemoryLimitMB))
 	}
-	if e.NetworkMode == NetworkNone {
+	switch {
+	case e.NetworkMode == NetworkNone && e.NetworkEnforced:
 		b.WriteString("- The app has NO network access: outbound HTTP calls, DNS and sockets all fail. " +
 			"Do not write code that calls an external API unless the employee says that access has been " +
 			"approved — suggest they request it instead.\n")
+	case e.NetworkMode == NetworkNone:
+		// Said as policy rather than as fact, because it is not being
+		// enforced here and telling the model calls "fail" would have it
+		// write code around a barrier that is not there — or trust one that
+		// is not there.
+		b.WriteString("- Policy for this app is no outbound network access, but this host cannot enforce it, " +
+			"so calls would actually succeed. Still do not write code that calls an external API unless the " +
+			"employee says it has been approved: it is not allowed, only unblocked.\n")
 	}
 	return b.String()
 }

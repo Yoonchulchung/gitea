@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildStartArgs(t *testing.T) {
@@ -58,4 +59,42 @@ func TestBuildEnvDoesNotInheritParent(t *testing.T) {
 		assert.NotContains(t, entry, "LD_PRELOAD")
 	}
 	assert.Contains(t, env, "API_KEY=sk-abc")
+}
+
+// Egress is blocked by the sandbox and by nothing else. Where none can be
+// applied, apps.yml saying `network: none` changes nothing about what the app
+// can reach — and the screens were reporting the policy as though it were the
+// outcome, which is the platform vouching for a control it is not applying.
+func TestOutboundRowSaysWhenNothingIsEnforcing(t *testing.T) {
+	settings := AppSettings{Network: AppNetwork{Mode: NetworkNone}}
+	rows := permissionRows(settings, &AppState{})
+
+	var outbound *PermissionRow
+	for i := range rows {
+		if rows[i].Label == "외부 통신" {
+			outbound = &rows[i]
+		}
+	}
+	require.NotNil(t, outbound)
+
+	if enforced, _ := NetworkEnforced(); enforced {
+		assert.Equal(t, "차단됨", outbound.Value)
+		return
+	}
+	// The case this test exists for, and the one every development machine is
+	// in: policy says blocked, nothing is blocking.
+	assert.Equal(t, "차단되지 않음", outbound.Value)
+	assert.Contains(t, outbound.Reason, "실제로는 적용되지 않습니다")
+}
+
+// The assistant must not be told calls "fail" on a host where they succeed:
+// it would write code around a barrier that is not there, or trust one.
+func TestAIContextDoesNotPromiseAnUnenforcedBlock(t *testing.T) {
+	blocked := PlatformEnvironment{NetworkMode: NetworkNone, NetworkEnforced: true}.AIContext()
+	assert.Contains(t, blocked, "NO network access")
+
+	unenforced := PlatformEnvironment{NetworkMode: NetworkNone}.AIContext()
+	assert.NotContains(t, unenforced, "NO network access")
+	assert.Contains(t, unenforced, "cannot enforce")
+	assert.Contains(t, unenforced, "not allowed, only unblocked")
 }

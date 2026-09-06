@@ -409,3 +409,25 @@ func buildStartArgs(start, socket, rootPath string) []string {
 		"$ROOT_PATH", rootPath,
 	).Replace(start))
 }
+
+// NetworkEnforced reports whether "no outbound" is actually imposed on this
+// host, as opposed to merely written in policy.
+//
+// Egress is blocked by the sandbox and by nothing else — a network namespace
+// under bubblewrap, Landlock's network rules under the helper. Where no
+// sandbox can be applied the app is an ordinary child process of Gitea with
+// ordinary access to the network, and apps.yml saying `network: none` changes
+// nothing about that.
+//
+// This exists because the screens were reporting the policy as though it were
+// the outcome. "외부 통신: 차단됨" on a host that blocks nothing is worse than
+// showing no row at all: it is the platform vouching for a control it is not
+// applying, and someone approving an app to handle real data would be reading
+// a guarantee that does not exist.
+func NetworkEnforced() (bool, string) {
+	mode, detail := sandboxMode()
+	if mode == SandboxNone {
+		return false, detail
+	}
+	return true, ""
+}

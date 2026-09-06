@@ -24,6 +24,9 @@ func TestAIContextExplainsWhatThePythonVersionMeans(t *testing.T) {
 		MemoryLimitMB: 192,
 		StartCommand:  "uvicorn main:app --uds ${SOCKET}",
 		NetworkMode:   NetworkNone,
+		// The enforced case: the unenforced one is its own test, because the
+		// two must not say the same thing.
+		NetworkEnforced: true,
 	}
 	got := env.AIContext()
 

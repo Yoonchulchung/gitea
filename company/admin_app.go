@@ -190,6 +190,10 @@ func AdminApp(ctx *context.Context) {
 	ctx.Data["AccessOptions"] = accessOptionsFor(settings.Access, AccessPublic)
 	ctx.Data["OutboundRules"] = settings.Network.Allow
 	ctx.Data["NetworkMode"] = settings.Network.Mode
+	// Policy is not enforcement. Stated separately so an operator deciding
+	// whether this app may handle real data is not reading a guarantee the
+	// host is not providing.
+	ctx.Data["NetworkEnforced"], ctx.Data["NetworkUnenforcedWhy"] = NetworkEnforced()
 	ctx.Data["DownloadAllowed"] = settings.Download.Policy == "allow"
 	ctx.Data["EnvNames"] = envNames
 	ctx.Data["EnvVersion"] = envVersion

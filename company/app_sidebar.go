@@ -131,10 +131,21 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 		State: PermAllowed,
 	}}
 
-	switch settings.Network.Mode {
-	case NetworkOpen:
+	// Policy is not the same as enforcement, and this row is read as a
+	// guarantee. Where no sandbox can be applied the app reaches the network
+	// freely whatever apps.yml says (company/appsandbox.go).
+	enforced, _ := NetworkEnforced()
+
+	switch {
+	case !enforced:
+		rows = append(rows, PermissionRow{
+			Label: "외부 통신", Value: "차단되지 않음", State: PermDenied,
+			Reason: "이 서버는 앱의 외부 연결을 막을 수 없는 상태입니다. 정책은 차단으로 되어 있지만 실제로는 적용되지 않습니다. " +
+				"민감한 자료를 다루는 앱이라면 관리자에게 알려 주세요.",
+		})
+	case settings.Network.Mode == NetworkOpen:
 		rows = append(rows, PermissionRow{Label: "외부 통신", Value: "제한 없음", State: PermAllowed})
-	case NetworkBroker:
+	case settings.Network.Mode == NetworkBroker:
 		for _, rule := range settings.Network.Allow {
 			value := rule.Host
 			if len(rule.Methods) > 0 {
