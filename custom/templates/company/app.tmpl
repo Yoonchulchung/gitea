@@ -37,8 +37,11 @@
 						<form method="post" action="{{.AppLink}}/stop" data-company-confirm="앱을 중지하면 지금 사용 중인 사람들이 접속할 수 없게 됩니다. 계속할까요?">
 							{{.CsrfTokenHtml}}<button class="ui button">중지</button>
 						</form>
-					{{else}}
+					{{else if .App.HasRelease}}
 						<form method="post" action="{{.AppLink}}/start">{{.CsrfTokenHtml}}<button class="ui primary button">시작</button></form>
+					{{else}}
+						{{/* Nothing built yet — a start button here could only fail. */}}
+						<a class="ui primary button" href="{{.DeployLink}}">배포 요청하기</a>
 					{{end}}
 					<form method="post" action="{{.AppLink}}/rollback" data-company-confirm="이전 버전으로 되돌립니다. 계속할까요?">
 						{{.CsrfTokenHtml}}<button class="ui basic button">이전 버전으로</button>

@@ -155,6 +155,11 @@ func AdminApp(ctx *context.Context) {
 
 	ctx.Data["Title"] = st.Owner + "/" + st.Repo
 	ctx.Data["App"] = st
+	// An admin needs three things about a failure, and the page showed none
+	// of them: the classified cause, the raw detail behind it, and what the
+	// department is being told — because "why is my app broken" arrives as a
+	// question about that sentence, not about the log.
+	ctx.Data["Cause"] = DepartmentCause(st)
 	ctx.Data["AppRepo"] = repo
 	ctx.Data["Settings"] = settings
 	ctx.Data["Summary"] = summary

@@ -53,6 +53,31 @@
 			</div>
 		{{end}}
 
+		{{/* Why it is broken, in the order an admin needs it: the classified
+		     cause, then the raw detail, then where to read more. The
+		     department sees only the first part, so it is shown here too —
+		     their question will be about that sentence, not about the log. */}}
+		{{if .App.Reason}}
+			<div class="ui attached negative message">
+				<div class="tw-flex tw-items-baseline tw-gap-2">
+					<strong>{{with .Cause}}{{.Summary}}{{end}}</strong>
+					<code class="tw-text-12">{{.App.Reason}}</code>
+				</div>
+				{{with .Cause}}{{if .Detail}}
+					<div class="tw-text-13 tw-mt-1">부서에 보이는 안내: {{.Detail}}</div>
+				{{end}}{{end}}
+				{{if .App.Message}}
+					{{/* Admin-only by definition — this is the half that can carry
+					     absolute paths and build output (company/usererror.go). */}}
+					<details class="tw-mt-2">
+						<summary class="tw-cursor-pointer tw-text-13">원문 (관리자만)</summary>
+						<pre class="company-log tw-mt-1">{{.App.Message}}</pre>
+					</details>
+				{{end}}
+				<a class="ui tiny basic button tw-mt-2" href="{{.AdminAppLink}}/logs">{{svg "octicon-log" 14}} 로그 전체 보기</a>
+			</div>
+		{{end}}
+
 		<div class="ui attached segment">
 			<div class="company-kpis">
 				<div class="company-kpi"><b>{{.Summary.Requests}}</b><span>요청</span></div>

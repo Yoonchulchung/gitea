@@ -34,7 +34,8 @@ import (
 // errNoRelease means start was pressed before any deploy ever succeeded —
 // a different situation from an app that is broken, and the only one the
 // department fixes by deploying rather than by editing code.
-var errNoRelease = userErrorf("실행할 수 있는 버전이 없습니다. 배포가 끝나야 시작할 수 있습니다.")
+var errNoRelease = userErrorf("아직 실행할 수 있는 버전이 없습니다. " +
+	"오른쪽 위 [Deploy Request] 에서 배포를 요청하면, 관리자 승인 뒤 앱이 자동으로 시작됩니다.")
 
 const (
 	// stopGracePeriod is how long a process gets to finish in-flight
@@ -378,6 +379,8 @@ func (s *appSupervisor) Start() error {
 	return MutateAppState(s.owner, s.repo, func(st *AppState) bool {
 		st.Actual = AppStateRunning
 		st.Desired = AppStateRunning
+		// Also heals a state file written before this field existed.
+		st.HasRelease = true
 		st.PID = pid
 		st.StartedAt = time.Now().Unix()
 		st.EnvVersionRunning = envVer

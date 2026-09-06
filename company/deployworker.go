@@ -423,6 +423,7 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 			return MutateAppState(owner, repo, func(st *AppState) bool {
 				st.Actual = AppStateRunning
 				st.Desired = AppStateRunning
+				st.HasRelease = true
 				st.PID = pid
 				st.StartedAt = time.Now().Unix()
 				st.SHA = sha
@@ -463,6 +464,7 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 	return MutateAppState(owner, repo, func(st *AppState) bool {
 		st.Actual = AppStateRunning
 		st.Desired = AppStateRunning
+		st.HasRelease = true
 		st.Reason = ReasonRolledBack
 		st.Message = "the new version did not respond after starting, so the previous version was restored"
 		st.Health = AppHealth{State: "up", CheckedAt: time.Now().Unix()}

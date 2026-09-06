@@ -99,11 +99,13 @@
 									{{$.CsrfTokenHtml}}
 									<button class="ui compact small basic button">중지</button>
 								</form>
-							{{else}}
+							{{else if .CanStart}}
 								<form method="post" action="{{.AppLink}}/start" class="company-app-action">
 									{{$.CsrfTokenHtml}}
 									<button class="ui compact small basic button">시작</button>
 								</form>
+							{{/* Nothing built yet: pressing start could only fail, so it is
+							     not offered. The sidebar panel says to deploy instead. */}}
 							{{end}}
 						{{end}}
 					{{end}}

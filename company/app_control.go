@@ -82,6 +82,7 @@ func RollbackApp(owner, repo, actor string) error {
 	}
 	RecordRestart(owner, repo)
 	return MutateAppState(owner, repo, func(st *AppState) bool {
+		st.HasRelease = true
 		st.Reason, st.Message, st.UserMessage = "", "", ""
 		st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, Actor: actor, Reason: ReasonRolledBack})
 		return true
@@ -134,6 +135,7 @@ func RemoveApp(owner, repo, actor string) error {
 	return MutateAppState(owner, repo, func(st *AppState) bool {
 		st.Desired = AppStateStopped
 		st.Actual = AppStateStopped
+		st.HasRelease = false // the files are gone; a redeploy is the only way back
 		st.PID = 0
 		st.Reason = "removed"
 		st.Message = "removed from the platform by " + actor

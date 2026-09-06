@@ -101,6 +101,12 @@ type AppState struct {
 	Desired string `json:"desired"`
 	Actual  string `json:"actual"`
 
+	// HasRelease is whether a deploy has ever produced something runnable.
+	// Without it the start button is offered on an app that has nothing to
+	// run, where pressing it can only fail — and a button that never works
+	// is worse than no button.
+	HasRelease bool `json:"hasRelease,omitempty"`
+
 	SHA       string `json:"sha,omitempty"` // central-deploy commit currently live
 	PRID      int64  `json:"prID,omitempty"`
 	PID       int    `json:"pid,omitempty"`

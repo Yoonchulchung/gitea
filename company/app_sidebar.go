@@ -65,6 +65,10 @@ type AppSidebarData struct {
 	// an admin stopped it and the department cannot undo that.
 	Running   bool
 	Suspended bool
+	// CanStart is whether pressing start could actually work. An app with
+	// nothing built yet is not offered the button at all — the cause panel
+	// tells them to deploy instead, which is the thing that would help.
+	CanStart bool
 }
 
 // SetAppPermissionData attaches the sidebar panel's data to the repo home
@@ -94,6 +98,7 @@ func SetAppPermissionData(ctx *context.Context) {
 		CanControl:  ctx.Repo.Permission.CanWrite(unit.TypeCode),
 		Running:     st.Actual == AppStateRunning,
 		Suspended:   st.Actual == AppStateSuspended,
+		CanStart:    st.HasRelease && st.Actual != AppStateRunning && st.Actual != AppStateSuspended,
 		Deployed:    true,
 		StatusLabel: departmentStatusLabel(st),
 		Status:      st.Actual,
