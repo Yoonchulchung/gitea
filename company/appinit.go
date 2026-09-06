@@ -35,6 +35,11 @@ func InitAppPlatform(ctx context.Context) {
 		// not from a deploy that mysteriously refuses to run.
 		log.Warn("company: app sandboxing is unavailable: %s", detail)
 	}
+	// Before anything reads state or files: shortening appKey renamed every
+	// directory the platform owns, and an instance that starts without this
+	// finds its apps with no releases and no secrets (company/appkeymigrate.go).
+	migrateAppKeyLength()
+
 	// The proxy answers "is this a real app?" from memory, so the registry has
 	// to know about everything deployed before the first request arrives.
 	loadAppRegistry()

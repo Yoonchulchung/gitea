@@ -259,6 +259,15 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	if err != nil {
 		return err
 	}
+	// A virtualenv is not relocatable: its console scripts name the
+	// interpreter by absolute path, so a moved one execs into nothing and
+	// reports "no such file or directory" about a file that plainly exists.
+	// Saying so here beats letting that reach anybody.
+	if _, statErr := os.Stat(cmd.Path); statErr != nil {
+		return audienceError(
+			"앱 실행 환경이 손상되었습니다. 다시 배포하면 복구됩니다.",
+			"실행 파일이 없습니다 ("+cmd.Path+") — venv 가 옮겨졌거나 지워졌습니다. [다시 배포]로 재생성하세요")
+	}
 	cmd.Env = buildEnv(s.paths, rootPath, appEnv)
 	cmd.Dir = filepath.Join(target, "app")
 	// Its own process group so a stop reaches everything the app spawned,
@@ -474,7 +483,10 @@ func (s *appSupervisor) startProcess(freshAttempt bool) (int, error) {
 			st.Actual = AppStateFailed
 			st.FailedAt = time.Now().Unix()
 			st.Reason = reason
-			st.Message = startErr.Error()
+			// AdminError, not Error(): a userError's Error() is its *staff*
+			// sentence, so this field was showing an administrator the
+			// department's wording under a heading that said "raw".
+			st.Message = AdminError(startErr)
 			st.UserMessage = userMsg
 			st.PID = 0
 			return true

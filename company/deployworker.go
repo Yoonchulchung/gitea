@@ -187,7 +187,7 @@ func runDeploy(ctx context.Context, job deployJob) {
 	p := appPathsFor(owner, repo)
 	release := releaseDir(p, job.SHA)
 	if err := buildRelease(ctx, job, p, release, settings); err != nil {
-		appendBuildLog(p, job.SHA, "FAILED", err.Error())
+		appendBuildLog(p, job.SHA, "FAILED", AdminError(err))
 		if denied, ok := errors.AsType[*packagesDeniedError](err); ok {
 			// Written by us and naming the packages, so it is the one thing
 			// the department needs in order to fix this.
@@ -198,7 +198,7 @@ func runDeploy(ctx context.Context, job deployJob) {
 			failDeploy(owner, repo, ReasonNoPython, AdminError(err), DepartmentSafeError("build", err))
 			return
 		}
-		failDeploy(owner, repo, ReasonInstallFailed, err.Error())
+		failDeploy(owner, repo, ReasonInstallFailed, AdminError(err))
 		return
 	}
 	appendBuildLog(p, job.SHA, "OK", "build succeeded")
