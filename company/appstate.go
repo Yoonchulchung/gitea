@@ -64,6 +64,7 @@ const (
 	ReasonRolledBack         = "rolled_back"
 	ReasonNoRelease          = "no_release" // start pressed before any deploy succeeded
 	ReasonNoPython           = "no_python"  // the host has no usable interpreter
+	ReasonAccessChanged      = "access_changed"
 )
 
 // appHistoryLimit bounds the per-app history. It doubles as the rollback
@@ -107,6 +108,10 @@ type AppState struct {
 	// run, where pressing it can only fail — and a button that never works
 	// is worse than no button.
 	HasRelease bool `json:"hasRelease,omitempty"`
+
+	// AccessChoice is the department's own narrowing of the configured access
+	// mode. Only ever narrower — see company/appaccess.go.
+	AccessChoice string `json:"accessChoice,omitempty"`
 
 	SHA       string `json:"sha,omitempty"` // central-deploy commit currently live
 	PRID      int64  `json:"prID,omitempty"`

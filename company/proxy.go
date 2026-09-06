@@ -218,6 +218,11 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(&url.URL{Scheme: "http", Host: "app"})
 			r.Out.Host = "app"
+			// --root-path tells the app what prefix to *build* URLs with; it
+			// does not remove that prefix from what arrives. Forwarding the
+			// mounted path unchanged makes every app answer its own 404.
+			r.Out.URL.Path = appRelativePath(r.In.URL.Path)
+			r.Out.URL.RawPath = ""
 			// Strip first, then set: whatever the client sent is a claim, and
 			// the app must only ever see what we assert.
 			for _, h := range forwardedHeadersToStrip {
@@ -259,6 +264,26 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 		return cached
 	}
 	return proxy
+}
+
+// appRelativePath drops the "/apps/{owner}/{repo}" mount prefix.
+//
+// Counted in segments rather than trimmed as a string because the URL that
+// matched the route may differ in case from the registered app name, and a
+// failed trim would forward the whole path as if nothing were wrong.
+func appRelativePath(p string) string {
+	for range 3 { // "apps", owner, repo
+		p = strings.TrimPrefix(p, "/")
+		i := strings.IndexByte(p, '/')
+		if i < 0 {
+			return "/"
+		}
+		p = p[i:]
+	}
+	if p == "" {
+		return "/"
+	}
+	return p
 }
 
 // doerFromRequest reads the signed-in user off the inbound request's context,

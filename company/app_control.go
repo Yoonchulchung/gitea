@@ -86,7 +86,8 @@ func RollbackApp(owner, repo, actor string) error {
 	return MutateAppState(owner, repo, func(st *AppState) bool {
 		st.HasRelease = true
 		st.Reason, st.Message, st.UserMessage = "", "", ""
-		st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, Actor: actor, Reason: ReasonRolledBack})
+		adoptCurrentReleaseSHA(st, owner, repo)
+		st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, SHA: st.SHA, Actor: actor, Reason: ReasonRolledBack})
 		return true
 	})
 }

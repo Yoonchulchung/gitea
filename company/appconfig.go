@@ -334,5 +334,22 @@ func SettingsFor(owner, repo string) AppSettings {
 	appsConfigCache.mu.RLock()
 	cfg := appsConfigCache.cfg
 	appsConfigCache.mu.RUnlock()
-	return cfg.EffectiveSettings(owner, repo)
+	s := cfg.EffectiveSettings(owner, repo)
+	s.Access = effectiveAccess(owner, repo, s.Access)
+	return s
+}
+
+// configuredAccess is the ceiling policy sets, before the department's own
+// narrowing. What a department may choose is measured against this, not
+// against their current choice — otherwise narrowing once would be permanent,
+// and undoing it would need an admin for a change that exposes nobody.
+func configuredAccess(owner, repo string) string {
+	appsConfigCache.mu.RLock()
+	cfg := appsConfigCache.cfg
+	appsConfigCache.mu.RUnlock()
+	access := cfg.EffectiveSettings(owner, repo).Access
+	if access == "" {
+		return AccessPublic
+	}
+	return access
 }

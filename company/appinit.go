@@ -43,6 +43,7 @@ func InitAppPlatform(ctx context.Context) {
 	// The proxy answers "is this a real app?" from memory, so the registry has
 	// to know about everything deployed before the first request arrives.
 	loadAppRegistry()
+	loadDepartmentAccess()
 
 	StartDeployWorkers()
 	StartMetricsFlusher()

@@ -91,11 +91,16 @@
 									<td><input type="checkbox" name="env_delete_{{$i}}" value="1"></td>
 								</tr>
 							{{end}}
-							<tr>
-								<td><input type="text" name="env_name_new" placeholder="NEW_VARIABLE"></td>
-								<td><input type="password" name="env_value_new" placeholder="값" autocomplete="new-password"></td>
-								<td></td>
-							</tr>
+							{{/* Several blank rows, not one: variables arrive in groups (a
+							     host, a user, a password) and a single row makes that three
+							     saves and three restarts. */}}
+							{{range .BlankEnvRows}}
+								<tr>
+									<td><input type="text" name="env_name_{{.}}" placeholder="NEW_VARIABLE"></td>
+									<td><input type="password" name="env_value_{{.}}" placeholder="값" autocomplete="new-password"></td>
+									<td></td>
+								</tr>
+							{{end}}
 						</tbody>
 					</table>
 					<button class="ui primary button">저장</button>
@@ -124,34 +129,71 @@
 
 		<h3>접근 권한</h3>
 		<div class="ui segment">
+			<p class="text-grey tw-text-13">
+				지금 이 앱을 누가 열어볼 수 있는지 정합니다. 범위를 <strong>좁히는 것</strong>은 바로 적용되고,
+				<strong>넓히는 것</strong>은 더 많은 사람에게 자료가 보이게 되므로 배포 요청으로 승인을 받아야 합니다.
+			</p>
 			{{/* Each option says what happens, not what it is called: the person
 			     choosing is deciding an outcome, not picking a keyword. */}}
-			{{range .AccessOptions}}
-				<div class="tw-py-2">
-					<strong>{{if .Selected}}✓ {{end}}{{.Label}}</strong>
-					<span class="text-grey tw-ml-2">— {{.Explain}}</span>
-					{{if and .NeedsRequest (not .Selected)}}
-						<a class="tw-ml-2 tw-text-13" href="{{$.DeployLink}}">더 넓히려면 승인이 필요합니다 →</a>
-					{{end}}
-				</div>
-			{{end}}
+			<form method="post" action="{{.AppLink}}/access" class="ui form">
+				{{.CsrfTokenHtml}}
+				{{range .AccessOptions}}
+					<div class="tw-py-2">
+						<label class="tw-flex tw-items-baseline tw-gap-2">
+							<input type="radio" name="access" value="{{.Value}}"
+								{{if .Selected}}checked{{end}}
+								{{if or .NeedsRequest (not $.CanControl)}}disabled{{end}}>
+							<span>
+								<strong>{{.Label}}</strong>
+								<span class="text-grey tw-ml-2">— {{.Explain}}</span>
+								{{if .NeedsRequest}}
+									<a class="tw-ml-2 tw-text-13" href="{{$.DeployLink}}">승인이 필요합니다 →</a>
+								{{end}}
+							</span>
+						</label>
+					</div>
+				{{end}}
+				{{if .CanControl}}<button class="ui primary button tw-mt-2">적용</button>{{end}}
+			</form>
 		</div>
 
 		<h3>최근 이력</h3>
 		<div class="ui segment">
+			{{/* Column headers, and words instead of state-machine vocabulary:
+			     without them the reader is looking at three anonymous columns of
+			     "activating / rolled_back" and cannot tell what happened. */}}
 			<table class="ui very basic table tw-text-13">
+				<thead>
+					<tr>
+						<th class="tw-w-1/5">언제</th>
+						<th class="tw-w-1/6">무엇을</th>
+						<th>내용</th>
+						<th class="tw-w-1/6">누가</th>
+						<th class="tw-w-1/6">버전</th>
+					</tr>
+				</thead>
 				<tbody>
-					{{range .App.History}}
+					{{range .HistoryRows}}
 						<tr>
-							<td class="tw-w-1/4">{{DateUtils.TimeSince .At}}</td>
-							<td class="tw-w-1/4">{{.Actor}}</td>
-							<td>{{.Status}}{{if .Reason}} · {{.Reason}}{{end}}</td>
+							<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
+							<td>{{.What}}</td>
+							<td>{{if .Detail}}{{.Detail}}{{else}}<span class="text-grey">—</span>{{end}}</td>
+							{{/* Blank when the platform did it rather than a person; saying
+							     so is clearer than an empty cell. */}}
+							<td>{{if .Actor}}{{.Actor}}{{else}}<span class="text-grey">자동</span>{{end}}</td>
+							<td class="tw-font-mono">{{if .SHA}}{{ShortSha .SHA}}{{else}}<span class="text-grey">—</span>{{end}}</td>
 						</tr>
 					{{else}}
-						<tr><td class="text-grey">아직 이력이 없습니다.</td></tr>
+						<tr><td colspan="5" class="text-grey">아직 이력이 없습니다.</td></tr>
 					{{end}}
 				</tbody>
 			</table>
+			{{if .RunningSHA}}
+				{{/* Read from the release on disk, not from the deploy that was
+				     intended — after a rollback those differ, and this is the one
+				     that is actually serving. */}}
+				<p class="text-grey tw-text-13 tw-mt-2">지금 실행 중인 버전: <span class="tw-font-mono">{{ShortSha .RunningSHA}}</span></p>
+			{{end}}
 		</div>
 	</div>
 </div>

@@ -62,8 +62,23 @@ func AppPage(ctx *context.Context) {
 	ctx.Data["DeployLink"] = ctx.Repo.RepoLink + "/deploy"
 	// The department may narrow access on their own but not widen it —
 	// widening is a Deploy Request, because it exposes their data further.
-	ctx.Data["AccessOptions"] = accessOptionsFor(settings.Access)
+	ctx.Data["AccessOptions"] = accessOptionsFor(settings.Access, configuredAccess(owner, name))
+	ctx.Data["BlankEnvRows"] = blankEnvRowIndexes
+	ctx.Data["RunningSHA"] = CurrentReleaseSHA(owner, name)
+	ctx.Data["HistoryRows"] = describeHistory(st.History)
 	ctx.HTML(http.StatusOK, tplApp)
+}
+
+// AppAccessSave applies a department's access choice.
+func AppAccessSave(ctx *context.Context) {
+	owner := ctx.Repo.Owner.Name
+	name := ctx.Repo.Repository.Name
+	if err := SetDepartmentAccess(owner, name, ctx.Doer.Name, ctx.FormString("access")); err != nil {
+		ctx.Flash.Error(DepartmentSafeError("setting access for "+owner+"/"+name, err))
+	} else {
+		ctx.Flash.Success("접근 범위를 변경했습니다. 바로 적용됩니다.")
+	}
+	ctx.Redirect(ctx.Repo.RepoLink + "/_app")
 }
 
 // AppControl handles a department's start/stop/restart/rollback.
@@ -166,7 +181,10 @@ type accessOption struct {
 // immediate; widening goes through a Deploy Request.
 var accessRank = map[string]int{AccessOrg: 0, AccessLogin: 1, AccessPublic: 2}
 
-func accessOptionsFor(current string) []accessOption {
+// accessOptionsFor describes the picker. `current` is what is in force;
+// `ceiling` is what policy permits, which is what decides whether an option is
+// a switch the department can flip or a request they have to raise.
+func accessOptionsFor(current, ceiling string) []accessOption {
 	if current == "" {
 		current = AccessPublic
 	}
@@ -177,9 +195,107 @@ func accessOptionsFor(current string) []accessOption {
 	}
 	for i := range options {
 		options[i].Selected = options[i].Value == current
-		options[i].NeedsRequest = accessRank[options[i].Value] > accessRank[current]
+		options[i].NeedsRequest = accessRank[options[i].Value] > accessRank[ceiling]
 	}
 	return options
+}
+
+// blankEnvRowIndexes are the empty rows offered for new variables. An app
+// normally needs several at once — a database URL and its credentials arrive
+// together — and a form with room for one turns that into one save, one
+// restart prompt, and one reload per value.
+var blankEnvRowIndexes = []string{"new0", "new1", "new2", "new3", "new4"}
+
+// historyRow is one line of "최근 이력", written out rather than left as the
+// state machine's own vocabulary. `activating`, `rolled_back` and
+// `contract_violation` are precise and mean nothing to the person reading
+// them; the columns exist so it is clear which part is when, who and what.
+type historyRow struct {
+	At     int64
+	Actor  string
+	What   string
+	Detail string
+	SHA    string
+}
+
+func describeHistory(entries []AppHistoryEntry) []historyRow {
+	rows := make([]historyRow, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, historyRow{
+			At: e.At, Actor: e.Actor, SHA: e.SHA,
+			What:   historyStatusLabel(e.Status),
+			Detail: historyReasonLabel(e.Reason),
+		})
+	}
+	return rows
+}
+
+func historyStatusLabel(status string) string {
+	switch status {
+	case AppStateRunning:
+		return "실행"
+	case AppStateStopped:
+		return "중지"
+	case AppStateSuspended:
+		return "관리자 정지"
+	case AppStateFailed:
+		return "실패"
+	case AppStateQueued, AppStateBuilding, AppStateActivating:
+		return "배포"
+	default:
+		return status
+	}
+}
+
+// historyReasonLabel keeps unmapped reasons visible rather than blanking them:
+// an unfamiliar code is still a clue, while an empty cell is not.
+func historyReasonLabel(reason string) string {
+	if mode, ok := strings.CutPrefix(reason, ReasonAccessChanged+":"); ok {
+		switch mode {
+		case AccessOrg:
+			return "접근 범위를 '우리 부서만'으로 변경"
+		case AccessLogin:
+			return "접근 범위를 '로그인한 사람만'으로 변경"
+		default:
+			return "접근 범위를 '사내 누구나'로 변경"
+		}
+	}
+	switch reason {
+	case "":
+		return ""
+	case ReasonRolledBack:
+		return "문제가 있어 이전 버전으로 되돌림"
+	case ReasonInstallFailed:
+		return "필요한 패키지를 설치하지 못함"
+	case ReasonPackageDenied:
+		return "승인되지 않은 패키지"
+	case ReasonOOM:
+		return "메모리 한도 초과"
+	case ReasonHealthTimeout:
+		return "시작 후 응답이 없음"
+	case ReasonCrashLoop:
+		return "반복 종료되어 자동 시작 중단"
+	case ReasonSuspended:
+		return "관리자가 정지시킴"
+	case ReasonNoRelease:
+		return "실행할 수 있는 버전이 없음"
+	case ReasonNoPython:
+		return "서버에 파이썬이 준비되지 않음"
+	case ReasonContractViolation:
+		return "main.py 를 찾을 수 없음"
+	case ReasonDeployQueueFull:
+		return "배포 대기열이 가득 참"
+	case "redeploy":
+		return "다시 배포 요청"
+	case "restarted":
+		return "재시작"
+	case "resumed":
+		return "관리자가 정지를 해제"
+	case "deployed while stopped":
+		return "중지 상태에서 새 버전만 준비됨"
+	default:
+		return reason
+	}
 }
 
 // departmentStatusLabel is the one word a non-developer sees. rolled_back

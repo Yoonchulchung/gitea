@@ -211,3 +211,36 @@ func TestSocketPathFitsInSunPath(t *testing.T) {
 	socket := appPathsFor("PROCUREMENT", "quarterly-report-generator").socket
 	assert.Less(t, len(socket), maxUnixSocketPath, "socket path: %s", socket)
 }
+
+// A rollback moves the `current` symlink but nothing recovers the commit id
+// from it: releases are named sha256(sha)[:16]. Without a record inside the
+// release, the state file keeps naming the version that just failed, so the
+// screen lies about what is serving and "다시 배포" rebuilds the broken commit.
+func TestReleaseRecordsItsOwnSHA(t *testing.T) {
+	release := t.TempDir()
+	assert.Empty(t, readReleaseSHA(release), "a release with no record must not invent one")
+
+	require.NoError(t, writeReleaseSHA(release, "abc123"))
+	assert.Equal(t, "abc123", readReleaseSHA(release))
+
+	// Adoption is what repairs a state left over from before a rollback, and
+	// must not blank a SHA when the release predates the record.
+	st := &AppState{SHA: "stale"}
+	adoptCurrentReleaseSHA(st, "PO", "never-deployed")
+	assert.Equal(t, "stale", st.SHA)
+}
+
+// Narrowing is the department's to make and must be reversible by them up to
+// the ceiling policy sets — measuring against their own current choice instead
+// would make the first narrowing permanent.
+func TestAccessOptionsMeasureAgainstPolicyNotChoice(t *testing.T) {
+	got := accessOptionsFor(AccessOrg, AccessPublic)
+	for _, o := range got {
+		assert.False(t, o.NeedsRequest, "%s is within policy, so it is a switch not a request", o.Value)
+		assert.Equal(t, o.Value == AccessOrg, o.Selected)
+	}
+	// When policy itself is org-only, nothing wider may be offered as a switch.
+	for _, o := range accessOptionsFor(AccessOrg, AccessOrg) {
+		assert.Equal(t, o.Value != AccessOrg, o.NeedsRequest, o.Value)
+	}
+}

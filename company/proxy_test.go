@@ -139,3 +139,23 @@ func newDiscardWriter() *discardWriter               { return &discardWriter{hea
 func (d *discardWriter) Header() http.Header         { return d.header }
 func (d *discardWriter) Write(b []byte) (int, error) { return len(b), nil }
 func (d *discardWriter) WriteHeader(int)             {}
+
+// The app is mounted at /apps/{owner}/{repo} but serves as though it owned the
+// root — uvicorn's --root-path builds URLs with the prefix, it does not strip
+// it from what arrives. Forwarding the mounted path unchanged made every app
+// answer its own 404 for its own index page.
+func TestAppRelativePathStripsMountPrefix(t *testing.T) {
+	cases := map[string]string{
+		"/apps/PO/Test_FastAPI":         "/",
+		"/apps/PO/Test_FastAPI/":        "/",
+		"/apps/PO/Test_FastAPI/health":  "/health",
+		"/apps/PO/Test_FastAPI/a/b?c=d": "/a/b?c=d", // query is not in URL.Path, but nesting is
+		// Case need not match the registered app: the router matched on the
+		// URL as typed, and a trim that silently failed would forward the
+		// whole prefix.
+		"/apps/po/test_fastapi/health": "/health",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, appRelativePath(in), in)
+	}
+}

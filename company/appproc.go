@@ -591,10 +591,18 @@ func ResumeApp(owner, repo, actor string) error {
 // Gitea last stopped would silently undo their decision.
 func ReconcileApps() {
 	for _, st := range ListAppStates() {
+		owner, repo := st.Owner, st.Repo
+		// The symlink decides what starts, so the record has to agree with it
+		// before anything reads the record — a state left over from before a
+		// rollback would otherwise name the failed commit forever.
+		_ = MutateAppState(owner, repo, func(s *AppState) bool {
+			before := s.SHA
+			adoptCurrentReleaseSHA(s, owner, repo)
+			return s.SHA != before
+		})
 		if st.Desired != AppStateRunning || st.Actual == AppStateSuspended {
 			continue
 		}
-		owner, repo := st.Owner, st.Repo
 		go func() {
 			if err := supervisorFor(owner, repo).Start(); err != nil {
 				log.Error("company: reconcile %s/%s: %v", owner, repo, err)

@@ -253,6 +253,9 @@ func buildRelease(ctx context.Context, job deployJob, p appPaths, release string
 	if err := os.MkdirAll(appDir, 0o700); err != nil {
 		return err
 	}
+	if err := writeReleaseSHA(release, job.SHA); err != nil {
+		return err
+	}
 
 	if err := extractAppSource(ctx, job, appDir); err != nil {
 		return err
@@ -595,6 +598,10 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 		failDeploy(owner, repo, ReasonHealthTimeout, "rolling back failed: "+err.Error())
 		return err
 	}
+	// `previous` was set to this same directory a moment ago, when the new
+	// release went in. Leaving it there would make the next rollback restart
+	// the version already running and look like it did nothing.
+	_ = os.Remove(p.previous)
 	if err := s.Start(); err != nil {
 		failDeploy(owner, repo, ReasonRolledBack, "the previous version could not be restarted either")
 		return err
@@ -612,7 +619,10 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 		st.Reason = ReasonRolledBack
 		st.Message = "the new version did not respond after starting, so the previous version was restored"
 		st.Health = AppHealth{State: "up", CheckedAt: time.Now().Unix()}
-		st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, Reason: ReasonRolledBack})
+		// The restored release, not the one that just failed: every later
+		// restart and redeploy reads this field.
+		adoptCurrentReleaseSHA(st, owner, repo)
+		st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, SHA: st.SHA, Reason: ReasonRolledBack})
 		return true
 	})
 }
