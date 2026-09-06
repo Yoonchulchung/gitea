@@ -188,11 +188,13 @@
   - [x] `./run.sh` **2회차 (2026-09-06) — `All checks passed: the sandbox holds.`**
     통제군에서 전부 뚫리고 샌드박스에서 전부 막혔다. 같은 프로브, 같은 호스트, 같은 계정이므로
     **격리가 실제로 동작한다는 증명**이다. 이 프로젝트 최대의 미검증 위험이 해소됐다
-  - [ ] `./gitea deptapp-exec --self-test` — 프로브가 못 건드리는 분기 검사
-    (외부 통신 허가 시에도 ptrace·kill이 막히는지, 32비트 우회 차단, BPF 오프셋).
-    **배포 서버에 Go 툴체인이 없고 테스트 바이너리를 옮길 수단도 없어서**, 검사 로직을
-    바이너리 안에 넣었다 — 앱을 실제로 실행할 그 바이너리가 자기를 검사하는 편이
-    따로 빌드한 것을 돌리는 것보다 증거로서도 강하다
+  - [x] `./gitea deptapp-exec --self-test` **(2026-09-06) — `All checks passed.`**
+    `landlock_create_ruleset`을 실제로 호출해 **ABI 4 확정**(커널 버전 추론이 아님).
+    외부 통신 허가 분기에서도 ptrace·kill이 막히는 것, 32비트 우회 차단, BPF 오프셋 전부 확인
+    - [x] 출력에서 `MAKE_CHAR`·`MAKE_BLOCK`이 handled 마스크에 빠진 것을 발견해 추가
+      (`0x77bf` → `0x7fff`). Landlock은 **handled에 없는 권한을 제한하지 않는다.**
+      실제 노출은 없었다 — `mknod`에는 `CAP_MKNOD`가 필요하고 비특권 계정엔 없다.
+      구멍이 아니라 마스크가 덜 완전했던 것
   - [ ] 실제 토이 앱 배포 후 `subprocess` 다중 자식 → 프로세스 그룹 종료로 고아 0인지 (Landlock에는 PID 네임스페이스가 없어 여기가 bwrap보다 약한 유일한 지점)
 
 ## 5. 모니터링

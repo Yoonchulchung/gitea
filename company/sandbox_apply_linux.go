@@ -79,7 +79,13 @@ const landlockWriteRights = unix.LANDLOCK_ACCESS_FS_WRITE_FILE |
 	unix.LANDLOCK_ACCESS_FS_MAKE_FIFO |
 	unix.LANDLOCK_ACCESS_FS_MAKE_SYM |
 	unix.LANDLOCK_ACCESS_FS_REMOVE_FILE |
-	unix.LANDLOCK_ACCESS_FS_REMOVE_DIR
+	unix.LANDLOCK_ACCESS_FS_REMOVE_DIR |
+	// Device nodes. Listed not because an app could create one — that needs
+	// CAP_MKNOD, which an unprivileged account does not have — but because
+	// Landlock leaves *unhandled* rights entirely unrestricted, and a mask
+	// that silently omits things is one nobody can read as complete.
+	unix.LANDLOCK_ACCESS_FS_MAKE_CHAR |
+	unix.LANDLOCK_ACCESS_FS_MAKE_BLOCK
 
 // landlockABI returns the ABI version this kernel supports, or an error if
 // Landlock is unavailable at all.
