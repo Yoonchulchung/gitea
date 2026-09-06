@@ -29,6 +29,7 @@
 			<div class="tw-flex tw-items-center tw-gap-3 tw-flex-wrap">
 				<a class="ui basic button" href="{{.AppURL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} 앱 열어보기</a>
 				{{if .CanControl}}<a class="ui basic button" href="{{.AppLink}}/logs">{{svg "octicon-log" 14}} 로그</a>{{end}}
+				{{if .CanControl}}<a class="ui basic button" href="{{.AppLink}}/history">{{svg "octicon-history" 14}} 배포 이력</a>{{end}}
 				<div class="tw-flex-1"></div>
 				{{if .CanControl}}
 					{{if eq .App.Actual "suspended"}}

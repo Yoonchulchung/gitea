@@ -1455,6 +1455,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 		// they're not nested under the editor_action group below.
 		m.Get("/{editor_action:_app}", company.AppPage)
 		m.Get("/{editor_action:_app}/logs", reqRepoCodeWriter, company.AppLogs)
+		m.Get("/{editor_action:_app}/history", reqRepoCodeWriter, company.AppHistory)
 		m.Post("/{editor_action:_app}/env", reqRepoCodeWriter, company.AppEnvSave)
 		m.Post("/{editor_action:_app}/access", reqRepoCodeWriter, company.AppAccessSave)
 		m.Post("/{editor_action:_app}/{verb}", reqRepoCodeWriter, company.AppControl)

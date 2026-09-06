@@ -6,6 +6,7 @@ package company
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	repo_model "gitea.dev/models/repo"
@@ -179,6 +180,10 @@ func AdminApp(ctx *context.Context) {
 	ctx.Data["BasePackages"] = settings.BasePackages
 	ctx.Data["SharedAllow"] = settings.Dependencies.Allow
 	ctx.Data["ApprovedExtra"] = settings.Dependencies.AllowExtra
+	// What the last build could not install. Offered for approval right here:
+	// these are dependencies no department can name, so there is no form they
+	// could raise to ask for them.
+	ctx.Data["MissingPackages"] = st.MissingPackages
 	ctx.Data["EnvNames"] = envNames
 	ctx.Data["EnvVersion"] = envVersion
 	ctx.Data["EnvError"] = envErr
@@ -301,4 +306,33 @@ func AdminAppMetrics(ctx *context.Context) {
 			"blocked":   summary.Blocked,
 		},
 	})
+}
+
+// AdminApprovePackages grants packages to one app straight from its page.
+//
+// Takes both the checked suggestions and a free-text field: the suggestions
+// cover the case this exists for — a dependency the build discovered that
+// nobody can request — and the field covers the admin who already knows what
+// is needed and does not want to wait for a form to propose it.
+func AdminApprovePackages(ctx *context.Context) {
+	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")
+
+	names := ctx.Req.Form["package"]
+	extra, problems := ParseBasePackages(ctx.FormString("extra"))
+	if len(problems) > 0 {
+		ctx.Flash.Error(strings.Join(problems, " / "))
+		ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo)
+		return
+	}
+	names = append(names, extra...)
+
+	if err := ApproveAppPackages(ctx, ctx.Doer, owner, repo, names); err != nil {
+		ctx.Flash.Error(AdminError(err))
+	} else {
+		// Says what it did and what it did not: apps.yml is policy, and an
+		// environment is built once, so nothing changes for the running app
+		// until it is built again.
+		ctx.Flash.Success("승인했습니다: " + strings.Join(names, ", ") + ". 적용하려면 [다시 배포]를 눌러 주세요.")
+	}
+	ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo)
 }

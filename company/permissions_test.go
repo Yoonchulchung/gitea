@@ -219,3 +219,19 @@ func TestRequestLogKeepsRecentEntriesNewestFirst(t *testing.T) {
 
 	assert.Empty(t, trimToRecentEntries("no entries yet", 5))
 }
+
+// An admin has to be able to unblock an app without talking a department
+// through a form: a dependency the build discovered is not something they can
+// request, because it appears in no file they wrote.
+func TestClearMissingPackagesDropsOnlyWhatWasApproved(t *testing.T) {
+	withTempAppData(t)
+	require.NoError(t, MutateAppState("PO", "app", func(st *AppState) bool {
+		st.MissingPackages = []string{"MarkupSafe", "python-dotenv"}
+		return true
+	}))
+
+	// Normalization matters here: apps.yml carries the name as written, and
+	// "markupsafe" and "MarkupSafe" are one package to pip.
+	clearMissingPackages("PO", "app", []string{"markupsafe"})
+	assert.Equal(t, []string{"python-dotenv"}, LoadAppState("PO", "app").MissingPackages)
+}

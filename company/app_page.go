@@ -373,3 +373,43 @@ func AppLogs(ctx *context.Context) {
 	ctx.Data["AppLink"] = ctx.Repo.RepoLink + "/_app"
 	ctx.HTML(http.StatusOK, tplAppLogs)
 }
+
+const tplAppHistory templates.TplName = "company/app_history"
+
+// AppHistory shows a department every deploy their app has had.
+//
+// The state file keeps only the last ten events, because it doubles as the
+// rollback index. That is the right size for "what is happening now" and the
+// wrong one for "when did this last work" — which is the question someone
+// asks after a deploy fails, and the one they currently take to an
+// administrator.
+//
+// Same source as the admin view, the build log's own headers, so the two
+// screens cannot disagree about what happened. The one difference is
+// redaction: a failure summary is pip's output and names the server's paths,
+// which are inside the directory the sandbox exists to hide.
+func AppHistory(ctx *context.Context) {
+	owner := ctx.Repo.Owner.Name
+	name := ctx.Repo.Repository.Name
+
+	attempts := readDeployAttempts(appPathsFor(owner, name))
+	for i := range attempts {
+		attempts[i].Summary = RedactServerPaths(attempts[i].Summary)
+	}
+
+	page := max(ctx.FormInt("page"), 1)
+	const perPage = 20
+	start := min((page-1)*perPage, len(attempts))
+	end := min(start+perPage, len(attempts))
+
+	st := LoadAppState(owner, name)
+	ctx.Data["Title"] = "배포 이력"
+	ctx.Data["App"] = st
+	ctx.Data["Attempts"] = attempts[start:end]
+	ctx.Data["TotalAttempts"] = len(attempts)
+	ctx.Data["Page"] = context.NewPagerBuilder(ctx).TotalCount(int64(len(attempts))).PerPageLimit(perPage).CurPage(page).Build()
+	ctx.Data["HistoryRows"] = describeHistory(st.History)
+	ctx.Data["Running"] = CurrentRelease(owner, name)
+	ctx.Data["AppLink"] = ctx.Repo.RepoLink + "/_app"
+	ctx.HTML(http.StatusOK, tplAppHistory)
+}
