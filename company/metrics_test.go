@@ -82,8 +82,8 @@ func TestPercentile(t *testing.T) {
 
 func TestSummarizeMetrics(t *testing.T) {
 	summary := SummarizeMetrics([]MetricsBucket{
-		{Req: RequestCounts{Total: 100, S5xx: 2}, Users: 5, RT: ResponseTime{P95: 100}, Mem: MinMaxAvg{Max: 300 << 20}},
-		{Req: RequestCounts{Total: 100, S5xx: 0}, Users: 9, RT: ResponseTime{P95: 200}, Mem: MinMaxAvg{Max: 510 << 20}},
+		{Req: RequestCounts{Total: 100, S5xx: 2}, Users: 5, RT: ResponseTime{P95: 100}, Mem: MinMaxAvg{Max: 300 << 20}, ResourceSamples: 1},
+		{Req: RequestCounts{Total: 100, S5xx: 0}, Users: 9, RT: ResponseTime{P95: 200}, Mem: MinMaxAvg{Max: 510 << 20}, ResourceSamples: 1},
 	})
 	assert.Equal(t, 200, summary.Requests)
 	assert.InDelta(t, 1.0, summary.ErrorRate, 0.01)
@@ -136,4 +136,25 @@ func TestRecordRequestIsRaceFree(t *testing.T) {
 	bucket, _ := liveBucketFor("PO", "app").snapshotAndReset(bucketStart(time.Now()))
 	assert.Equal(t, 50, bucket.Req.Total)
 	assert.Equal(t, 5, bucket.Users)
+}
+
+// A bucket exists as soon as a request arrives, so a host that cannot read an
+// app's usage produced buckets full of zeroes — which every screen then showed
+// as "this app uses no memory". An admin sizing a limit reads that as evidence.
+func TestUnmeasuredResourcesAreNotReportedAsZero(t *testing.T) {
+	// Requests happened; nothing sampled memory.
+	unmeasured := SummarizeMetrics([]MetricsBucket{
+		{Req: RequestCounts{Total: 10}, RT: ResponseTime{P95: 50}},
+	})
+	assert.False(t, unmeasured.ResourcesMeasured)
+	assert.Zero(t, unmeasured.MemMaxMB)
+	assert.Equal(t, 10, unmeasured.Requests, "request metrics come from the proxy and are unaffected")
+	assert.Equal(t, 50, unmeasured.P95)
+
+	// A genuine zero — sampled, and the app really used nothing measurable —
+	// is still reported as measured, so the screen shows a number.
+	measured := SummarizeMetrics([]MetricsBucket{
+		{Req: RequestCounts{Total: 10}, ResourceSamples: 3},
+	})
+	assert.True(t, measured.ResourcesMeasured)
 }

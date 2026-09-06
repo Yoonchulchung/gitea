@@ -243,3 +243,40 @@ func centralDeployCommitIDs(ctx context.Context) ([]string, error) {
 
 // backfillCommitScan bounds how far back the identification looks.
 const backfillCommitScan = 500
+
+// releaseManifestFile lists what the release's environment actually contains,
+// beside the commit id and for the same reason: the answer belongs with the
+// thing it describes rather than somewhere that can drift from it.
+const releaseManifestFile = "packages"
+
+func writeReleaseManifest(release string, packages []string) error {
+	return os.WriteFile(filepath.Join(release, releaseManifestFile),
+		[]byte(strings.Join(packages, "\n")+"\n"), 0o600)
+}
+
+// InstalledPackages is what the app's current release really has installed.
+//
+// Distinct from the allowlist, which is what it *may* install. Policy changes
+// without the app being rebuilt, so approving a package does not put it in
+// the running environment — and until now every screen showed the policy in a
+// panel titled as though it were the contents.
+//
+// Empty for a release built before this was recorded, which reads as "not
+// known" rather than "nothing installed".
+func InstalledPackages(owner, repo string) []string {
+	target, err := os.Readlink(appPathsFor(owner, repo).current)
+	if err != nil {
+		return nil
+	}
+	body, err := os.ReadFile(filepath.Join(target, releaseManifestFile))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for line := range strings.SplitSeq(string(body), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}

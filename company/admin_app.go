@@ -175,6 +175,9 @@ func AdminApp(ctx *context.Context) {
 	ctx.Data["SandboxDetail"] = sandboxDetail
 	ctx.Data["LimitsEnforced"] = limitsOK
 	ctx.Data["LimitsDetail"] = limitsDetail
+	// Whether the host can measure usage at all, as opposed to whether any
+	// sample happens to exist yet — a blank means different things.
+	ctx.Data["ResourceSamplingAvailable"], ctx.Data["ResourceSamplingWhy"] = ResourceSamplingAvailable()
 	// What this app may install, split by where the permission came from: the
 	// platform's own stack is the same for everyone and is not this app's
 	// decision, while allowExtra is what an admin approved for this app
@@ -183,6 +186,9 @@ func AdminApp(ctx *context.Context) {
 	ctx.Data["BasePackages"] = settings.BasePackages
 	ctx.Data["SharedAllow"] = settings.Dependencies.Allow
 	ctx.Data["ApprovedExtra"] = settings.Dependencies.AllowExtra
+	// What the running release actually has, which is not the same question:
+	// policy changes without the app being rebuilt.
+	ctx.Data["InstalledPackages"] = InstalledPackages(st.Owner, st.Repo)
 	// What the last build could not install. Offered for approval right here:
 	// these are dependencies no department can name, so there is no form they
 	// could raise to ask for them.

@@ -312,3 +312,16 @@ func diskUsageMB(p appPaths) int {
 	}
 	return int(total >> 20)
 }
+
+// ResourceSamplingAvailable reports whether this host can measure an app's
+// memory, CPU and thread usage at all.
+//
+// Separate from whether any samples happen to exist yet: a freshly started app
+// has none either way, and an admin needs to know which of the two they are
+// looking at before treating a blank as information.
+func ResourceSamplingAvailable() (bool, string) {
+	if runtime.GOOS != "linux" {
+		return false, "이 서버에서는 앱의 메모리·CPU 사용량을 측정할 수 없습니다 (/proc 이 없는 운영체제)."
+	}
+	return true, ""
+}

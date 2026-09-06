@@ -407,7 +407,49 @@ func buildVenv(ctx context.Context, p appPaths, release string, reqs []Requireme
 	// so copying one produces an environment that silently uses the wrong
 	// interpreter. bwrap resolves the symlink when it binds it.
 	_ = os.Remove(link)
-	return os.Symlink(venv, link)
+	if err := os.Symlink(venv, link); err != nil {
+		return err
+	}
+
+	// What this release actually has, recorded beside it.
+	//
+	// Written here rather than during the install because the environment is
+	// cached: a release that reused one installed nothing, and would
+	// otherwise carry no record at all. The admin screen shows policy — what
+	// an app *may* install — and policy changes without the app being
+	// rebuilt, so the two drift and nothing on screen said which was which.
+	//
+	// Best-effort: a release that could not be described still deploys.
+	recordInstalledPackages(ctx, venv, release)
+	return nil
+}
+
+// recordInstalledPackages writes the venv's package list into the release.
+func recordInstalledPackages(ctx context.Context, venv, release string) {
+	out, err := runBuildCmd(ctx, filepath.Join(venv, "bin", "pip"), "list", "--format=json")
+	if err != nil {
+		log.Warn("company: listing packages for %s: %v", release, err)
+		return
+	}
+	var installed []struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal([]byte(out), &installed); err != nil {
+		log.Warn("company: package list for %s was unreadable: %v", release, err)
+		return
+	}
+	names := make([]string, 0, len(installed))
+	for _, pkg := range installed {
+		if slices.Contains(pipBaseline, strings.ToLower(pkg.Name)) {
+			continue // every venv has these by construction
+		}
+		names = append(names, pkg.Name+"=="+pkg.Version)
+	}
+	slices.Sort(names)
+	if err := writeReleaseManifest(release, names); err != nil {
+		log.Warn("company: recording packages for %s: %v", release, err)
+	}
 }
 
 // installIntoVenv installs the platform's own stack, then the department's

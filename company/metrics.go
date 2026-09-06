@@ -47,15 +47,22 @@ type MetricsBucket struct {
 	// Users is the number of distinct visitors: accounts for apps that
 	// require sign-in, client addresses for the ones that don't. Those are
 	// not comparable, which the admin screen has to say out loud.
-	Users    int          `json:"users"`
-	RT       ResponseTime `json:"rt"`
-	Mem      MinMaxAvg    `json:"mem"` // bytes, VmRSS summed over the process tree
-	CPU      MinMaxAvg    `json:"cpu"` // percent of one core
-	Threads  MinMaxAvg    `json:"threads"`
-	FDs      int          `json:"fds"`    // max seen
-	DiskMB   int          `json:"diskMB"` // release tree + logs
-	Restarts int          `json:"restarts"`
-	Blocked  int          `json:"blocked"` // downloads refused by policy
+	Users   int          `json:"users"`
+	RT      ResponseTime `json:"rt"`
+	Mem     MinMaxAvg    `json:"mem"` // bytes, VmRSS summed over the process tree
+	CPU     MinMaxAvg    `json:"cpu"` // percent of one core
+	Threads MinMaxAvg    `json:"threads"`
+	// ResourceSamples is how many times memory, CPU and threads were actually
+	// read in this window. Zero means they were never measured — not that
+	// they measured zero. A bucket exists as soon as a request arrives, so
+	// without this a host that cannot sample (no /proc) produced buckets full
+	// of zeroes that every screen then displayed as "this app uses no
+	// memory".
+	ResourceSamples int `json:"resourceSamples,omitempty"`
+	FDs             int `json:"fds"`    // max seen
+	DiskMB          int `json:"diskMB"` // release tree + logs
+	Restarts        int `json:"restarts"`
+	Blocked         int `json:"blocked"` // downloads refused by policy
 }
 
 type RequestCounts struct {
@@ -206,6 +213,7 @@ func (b *liveBucket) snapshotAndReset(now int64) (MetricsBucket, bool) {
 	if b.rtCount > 0 {
 		bucket.RT = ResponseTime{Avg: int(b.rtSum / b.rtCount), P95: percentile(b.samples, 95)}
 	}
+	bucket.ResourceSamples = b.resourceSamples
 	if b.resourceSamples > 0 {
 		n := float64(b.resourceSamples)
 		bucket.Mem = MinMaxAvg{Avg: b.memSum / n, Max: b.memMax}
@@ -387,6 +395,10 @@ type MetricsSummary struct {
 	MemMaxMB  int
 	Blocked   int
 	Restarts  int
+	// ResourcesMeasured is false when nothing in the window sampled memory or
+	// CPU. The figures above are then absent rather than zero, and the screen
+	// has to say so — an admin sizing a limit reads MemMaxMB as evidence.
+	ResourcesMeasured bool
 }
 
 // SummarizeMetrics folds buckets into the headline numbers.
@@ -404,7 +416,10 @@ func SummarizeMetrics(buckets []MetricsBucket) MetricsSummary {
 		errors += b.Req.S5xx
 		s.Blocked += b.Blocked
 		s.Restarts += b.Restarts
-		s.MemMaxMB = max(s.MemMaxMB, int(b.Mem.Max)>>20)
+		if b.ResourceSamples > 0 {
+			s.ResourcesMeasured = true
+			s.MemMaxMB = max(s.MemMaxMB, int(b.Mem.Max)>>20)
+		}
 		if b.RT.P95 > 0 {
 			p95Sum += b.RT.P95
 			p95Count++

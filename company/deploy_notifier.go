@@ -5,11 +5,14 @@ package company
 
 import (
 	"context"
+	"strings"
 
 	issues_model "gitea.dev/models/issues"
+	repo_model "gitea.dev/models/repo"
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/git"
 	"gitea.dev/modules/log"
+	"gitea.dev/modules/repository"
 	notify_service "gitea.dev/services/notify"
 	repo_service "gitea.dev/services/repository"
 )
@@ -191,4 +194,37 @@ func cleanupDeployBranch(ctx context.Context, pr *issues_model.PullRequest) {
 	if err := repo_service.DeleteBranch(ctx, centralOwnerUser, central, gitRepo, pr.HeadBranch); err != nil {
 		log.Error("company: deployBranchCleanupNotifier: DeleteBranch %s: %v", pr.HeadBranch, err)
 	}
+}
+
+// PushCommits reloads the platform's policy when the central repository is
+// pushed to.
+//
+// apps.yml is normally written by the approval buttons, which put the result
+// straight into memory. A commit that arrives any other way — an admin using
+// Gitea's own file editor, or pushing from a clone — did not, and the policy
+// in force stayed at whatever was read when Gitea last started. So git said
+// one thing, every screen said another, and a deploy could fail for a package
+// that had been approved an hour earlier.
+//
+// Reloaded on any push to the default branch rather than only when the file
+// is in the diff: the push payload carries no changed-file list, and a
+// needless re-read of one small file costs far less than a missed change. The
+// central repository receives deploy snapshots and policy commits and nothing
+// else, so this is rare.
+func (*deployBranchCleanupNotifier) PushCommits(ctx context.Context, _ *user_model.User, repo *repo_model.Repository, opts *repository.PushUpdateOptions, _ *repository.PushCommits) {
+	if !isCentralDeployRepo(repo) || !opts.RefFullName.IsBranch() ||
+		opts.RefFullName.BranchName() != repo.DefaultBranch {
+		return
+	}
+	log.Info("company: %s was pushed to; reloading policy from %s", repo.FullName(), appsConfigPath)
+	LoadAppsConfigFromRepo(ctx)
+}
+
+// isCentralDeployRepo reports whether this is the repository policy lives in.
+func isCentralDeployRepo(repo *repo_model.Repository) bool {
+	owner, name, err := centralDeployOwnerName()
+	if err != nil || repo == nil {
+		return false
+	}
+	return strings.EqualFold(repo.OwnerName, owner) && strings.EqualFold(repo.Name, name)
 }

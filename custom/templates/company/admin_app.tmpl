@@ -108,7 +108,17 @@
 				<div class="company-kpi"><b>{{.Summary.Users}}</b><span>사용자{{if eq .Settings.Access "public"}} (IP 기준){{end}}</span></div>
 				<div class="company-kpi"><b>{{printf "%.1f" .Summary.ErrorRate}}%</b><span>에러율</span></div>
 				<div class="company-kpi"><b>{{.Summary.P95}}ms</b><span>응답시간 p95</span></div>
-				<div class="company-kpi"><b>{{.Summary.MemMaxMB}}<small>/{{.MemoryLimitMB}}MB</small></b><span>메모리 최대</span></div>
+				{{/* A blank is not a zero. This host may be unable to read an
+				     app's usage at all, and "0MB" would be read as evidence when
+				     sizing a limit. */}}
+				<div class="company-kpi">
+					{{if .Summary.ResourcesMeasured}}
+						<b>{{.Summary.MemMaxMB}}<small>/{{.MemoryLimitMB}}MB</small></b>
+					{{else}}
+						<b class="text-grey">—<small>/{{.MemoryLimitMB}}MB</small></b>
+					{{end}}
+					<span>메모리 최대</span>
+				</div>
 				{{if .Summary.Blocked}}<div class="company-kpi bad"><b>{{.Summary.Blocked}}</b><span>차단된 다운로드</span></div>{{end}}
 			</div>
 			<div class="tw-mt-2">
@@ -121,6 +131,18 @@
 			     window, not a total. Saying so here is cheaper than an admin
 			     drawing the wrong conclusion from it. */}}
 			<div class="text-grey tw-text-12 tw-mt-2">사용자 수는 5분 구간 중 가장 많았던 값입니다(합계가 아닙니다). 메모리는 프로세스 트리 합산이라 공유 메모리가 중복 계산되어 실제보다 크게 나옵니다.</div>
+			{{if not .ResourceSamplingAvailable}}
+				{{/* Said once, next to the numbers it explains: the memory chart
+				     below is flat at zero for the same reason, and a flat line is
+				     otherwise indistinguishable from an idle app. */}}
+				<div class="ui warning message tw-mt-2">
+					<div class="header">메모리·CPU 사용량은 측정되지 않았습니다</div>
+					<div class="tw-text-13 tw-mt-1">
+						{{.ResourceSamplingWhy}} 아래 메모리·CPU 그래프가 0인 것은 사용량이 0이라는 뜻이 아니라 값이 없다는 뜻입니다.
+						요청 수·응답시간은 프록시가 직접 집계하므로 정상적으로 측정됩니다.
+					</div>
+				</div>
+			{{end}}
 		</div>
 
 		<div class="ui attached segment company-charts"
@@ -285,6 +307,18 @@
 				<span class="text-grey tw-text-13">이 앱에 승인된 패키지</span>
 				<div class="tw-mt-1">
 					{{range .ApprovedExtra}}<span class="ui green basic label tw-mr-1">{{.}}</span>{{else}}<span class="text-grey">아직 승인된 것이 없습니다. 배포 요청을 승인하면 여기에 추가됩니다.</span>{{end}}
+				</div>
+			</div>
+			{{/* Policy is what the app may install; this is what the release that
+			     is running actually has. They are the same only until someone
+			     approves a package and nobody redeploys, and the panel above was
+			     being read as though it were this. */}}
+			<div class="tw-mt-3">
+				<span class="text-grey tw-text-13">실행 중인 버전에 실제로 설치된 것</span>
+				<div class="tw-mt-1">
+					{{range .InstalledPackages}}<span class="ui basic label tw-mr-1 tw-mb-1">{{.}}</span>{{else}}
+						<span class="text-grey">알 수 없습니다 — 이 기능이 생기기 전에 빌드된 버전입니다. 다시 배포하면 기록됩니다.</span>
+					{{end}}
 				</div>
 			</div>
 			{{/* The case this exists for: a dependency the build resolved that
