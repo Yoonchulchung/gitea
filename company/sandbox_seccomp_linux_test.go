@@ -13,70 +13,20 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// runFilter interprets the BPF program the way the kernel does, so the jump
-// offsets can be checked. An off-by-one in a seccomp filter does not fail
-// loudly — it silently allows what it was written to deny — which is exactly
-// why this is worth simulating rather than eyeballing.
-func runFilter(t *testing.T, filter []unix.SockFilter, data seccompData) uint32 {
-	t.Helper()
-	var acc uint32
-	for pc := 0; pc < len(filter); pc++ {
-		ins := filter[pc]
-		switch {
-		case ins.Code == bpfLD|bpfW|bpfABS:
-			acc = data.word(t, ins.K)
-		case ins.Code == bpfRET|bpfK:
-			return ins.K
-		case ins.Code == bpfJMP|bpfJEQ|bpfK:
-			if acc == ins.K {
-				pc += int(ins.Jt)
-			} else {
-				pc += int(ins.Jf)
-			}
-		case ins.Code == bpfJMP|bpfJGT|bpfK:
-			if acc > ins.K {
-				pc += int(ins.Jt)
-			} else {
-				pc += int(ins.Jf)
-			}
-		default:
-			t.Fatalf("unhandled BPF instruction at %d: %+v", pc, ins)
-		}
-	}
-	t.Fatal("filter ran off the end without returning")
-	return 0
-}
-
-// seccompData mirrors the struct the kernel hands the filter.
-type seccompData struct {
-	nr   uint32
-	arch uint32
-	args [6]uint64
-}
-
-func (d seccompData) word(t *testing.T, offset uint32) uint32 {
-	t.Helper()
-	switch {
-	case offset == seccompOffsetNR:
-		return d.nr
-	case offset == seccompOffsetArch:
-		return d.arch
-	case offset >= seccompOffsetArgs:
-		n := (offset - seccompOffsetArgs) / 8
-		require.Less(t, n, uint32(6))
-		if (offset-seccompOffsetArgs)%8 == 0 {
-			return uint32(d.args[n])
-		}
-		return uint32(d.args[n] >> 32)
-	}
-	t.Fatalf("unexpected load offset %d", offset)
-	return 0
-}
-
 func call(nr uintptr, args ...uint64) seccompData {
 	d := seccompData{nr: uint32(nr), arch: seccompAuditArch()}
 	copy(d.args[:], args)
 	return d
+}
+
+// runFilter interprets the program the way the kernel does, so the jump
+// offsets can be checked. An off-by-one in a seccomp filter does not fail
+// loudly — it silently allows what it was written to deny.
+func runFilter(t *testing.T, filter []unix.SockFilter, data seccompData) uint32 {
+	t.Helper()
+	action, err := evalSeccompFilter(filter, data)
+	require.NoError(t, err)
+	return action
 }
 
 func TestSeccompFilterDenies(t *testing.T) {

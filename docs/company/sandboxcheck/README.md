@@ -78,20 +78,34 @@ unix 소켓, `ssl` import, `/etc/passwd`, `getpass.getuser()`. 이게 없으면
 마지막으로 `os.environ`에 Gitea 변수가 섞였는지 확인한다. 샌드박스가 파일을
 막아도 환경변수로 새면 의미가 없다.
 
-## 3. seccomp 필터 단위 테스트
+## 3. `gitea deptapp-exec --self-test` — 필터 자체 검사
 
-BPF 점프 오프셋은 **하나만 틀려도 조용히 허용된다.** 그래서 커널과 같은
-방식으로 프로그램을 해석하는 테스트가 있고, 리눅스에서만 빌드된다:
+```sh
+./gitea deptapp-exec --self-test
+```
+
+Go 툴체인도, 옮길 파일도 필요 없다. **앱을 실제로 실행할 바로 그 바이너리**가
+자기 필터를 검사하므로, 따로 빌드한 테스트 바이너리를 돌리는 것보다 증거로서
+강하다.
+
+`run.sh`와 겹치지 않는 것을 본다:
+
+| | `run.sh` | `--self-test` |
+|---|---|---|
+| `network: none` 앱 | ✅ 실기 | ✅ |
+| **외부 통신을 허가받은 앱** | ❌ 못 건드림 | ✅ 네트워크를 열어줘도 ptrace·kill은 막히는지 |
+| **32비트 syscall 우회** | ❌ 못 건드림 | ✅ 다른 아키텍처면 `KILL_PROCESS` |
+| BPF 점프 오프셋 | 간접 | ✅ 커널과 같은 방식으로 해석 |
+| Landlock ABI 마스크 절삭 | ❌ | ✅ |
+
+두 번째 줄이 특히 중요하다. 관리자가 어느 부서에 외부 통신을 허가하면
+`AllowNetwork` 분기를 타는데, **거기서 ptrace나 `kill`이 같이 풀리면 외부 통신
+허가가 곧 Gitea 공격 허가가 된다.**
+
+Go가 있는 곳에서는 같은 로직이 단위 테스트로도 돌아간다:
 
 ```sh
 go test -run 'Seccomp|HandledRights' ./company/
-```
-
-서버에 Go가 없으면 개발 머신에서 만들어 옮긴다:
-
-```sh
-GOOS=linux GOARCH=amd64 go test -c -o company-linux.test ./company/
-./company-linux.test -test.run 'Seccomp|HandledRights' -test.v
 ```
 
 ## 결과 읽기

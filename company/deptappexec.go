@@ -43,12 +43,27 @@ func NewDeptAppExecCommand() *cli.Command {
 			&cli.IntFlag{Name: "memory-mb"},
 			&cli.IntFlag{Name: "processes"},
 			&cli.IntFlag{Name: "open-files"},
+			&cli.BoolFlag{
+				Name: "self-test",
+				Usage: "check the sandbox's own logic on this host and exit, " +
+					"instead of running anything",
+			},
 		},
 		Action: runDeptAppExec,
 	}
 }
 
 func runDeptAppExec(_ context.Context, cmd *cli.Command) error {
+	if cmd.Bool("self-test") {
+		// Deliberately part of the shipped binary: the deploy server has no
+		// Go toolchain, and checking the binary that will actually run the
+		// apps is better evidence than checking a separately built one.
+		if RunSandboxSelfTest(os.Stdout, os.Getpid()) > 0 {
+			return errors.New("the sandbox self-test failed")
+		}
+		return nil
+	}
+
 	argv := cmd.Args().Slice()
 	if len(argv) == 0 {
 		return errors.New("no command to run: pass it after --")
