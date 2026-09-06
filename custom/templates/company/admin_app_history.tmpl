@@ -11,8 +11,13 @@
 			     deploy itself — so this cannot drift from what happened. It
 			     reaches back as far as the logs are kept, not as far as the app
 			     has existed. */}}
+			{{/* The one thing that is not obvious from a list of past versions:
+			     this is not a restore. The build uses today's policy, today's base
+			     packages and today's interpreter. */}}
 			<p class="text-grey tw-text-13 tw-mt-0">
 				배포를 시도할 때마다 남는 기록입니다. 로그가 보관된 기간까지 거슬러 올라갑니다.
+				어느 버전이든 다시 배포할 수 있고, 그때의 코드로 <strong>지금의 정책·패키지·파이썬</strong> 위에서 새로 빌드됩니다.
+				그래서 당시 실패했던 버전이 지금은 성공할 수 있고, 그 반대도 가능합니다.
 				{{if .Running.SHA}}지금 실행 중인 버전은 <span class="tw-font-mono">{{ShortSha .Running.SHA}}</span> 입니다.{{end}}
 			</p>
 			<table class="ui very basic table tw-text-13">
@@ -22,6 +27,7 @@
 						<th class="tw-w-24">결과</th>
 						<th class="tw-w-1/6">버전</th>
 						<th>내용</th>
+						<th class="tw-w-32"></th>
 					</tr>
 				</thead>
 				<tbody>
@@ -45,9 +51,22 @@
 							{{/* The build log is the app's own output and an admin screen,
 							     so paths are left alone here — see company/applogs.go. */}}
 							<td>{{if .Summary}}{{.Summary}}{{else}}<span class="text-grey">—</span>{{end}}</td>
+							<td>
+								{{/* Offered for failures too: what a build was refused for is
+								     usually policy, and policy has since changed — the package
+								     it needed is approved now. */}}
+								{{if and .SHA (not .Current)}}
+									<form method="post" action="{{$.AdminAppLink}}/deploy-version"
+										data-company-confirm="{{ShortSha .SHA}} 버전으로 배포합니다. 지금 실행 중인 버전은 빌드와 상태 확인을 통과한 뒤에 교체됩니다. 계속할까요?">
+										{{$.CsrfTokenHtml}}
+										<input type="hidden" name="sha" value="{{.SHA}}">
+										<button class="ui tiny basic button">이 버전으로 배포</button>
+									</form>
+								{{end}}
+							</td>
 						</tr>
 					{{else}}
-						<tr><td colspan="4" class="text-grey">아직 배포한 적이 없습니다.</td></tr>
+						<tr><td colspan="5" class="text-grey">아직 배포한 적이 없습니다.</td></tr>
 					{{end}}
 				</tbody>
 			</table>

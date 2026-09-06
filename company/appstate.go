@@ -65,6 +65,7 @@ const (
 	ReasonNoRelease          = "no_release" // start pressed before any deploy succeeded
 	ReasonNoPython           = "no_python"  // the host has no usable interpreter
 	ReasonAccessChanged      = "access_changed"
+	ReasonVersionPinned      = "version_pinned" // a specific past commit was chosen
 )
 
 // appHistoryLimit bounds the per-app history. It doubles as the rollback

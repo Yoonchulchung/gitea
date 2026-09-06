@@ -309,6 +309,8 @@ func historyReasonLabel(reason string) string {
 		return "main.py 를 찾을 수 없음"
 	case ReasonDeployQueueFull:
 		return "배포 대기열이 가득 참"
+	case ReasonVersionPinned:
+		return "특정 버전을 지정해 배포"
 	case "redeploy":
 		return "다시 배포 요청"
 	case "restarted":

@@ -350,3 +350,16 @@ func AdminApprovePackages(ctx *context.Context) {
 	}
 	ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo)
 }
+
+// AdminDeployVersion builds and activates a commit chosen from the history.
+func AdminDeployVersion(ctx *context.Context) {
+	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")
+	if err := DeployVersion(ctx, owner, repo, ctx.FormString("sha"), ctx.Doer.Name, true); err != nil {
+		ctx.Flash.Error(AdminError(err))
+	} else {
+		// Says what is about to happen rather than that it has: the build runs
+		// in the background and the health check decides whether it goes live.
+		ctx.Flash.Success("그 버전으로 배포를 시작했습니다. 빌드와 상태 확인이 끝나면 반영됩니다.")
+	}
+	ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo + "/history")
+}

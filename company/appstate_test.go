@@ -35,7 +35,7 @@ func withTempAppData(t *testing.T) {
 	if _, err := os.Stat(base); err != nil {
 		base = ""
 	}
-	dir, err := os.MkdirTemp(base, "co")
+	dir, err := os.MkdirTemp(base, "co") //nolint:usetesting // t.TempDir()'s name overruns sun_path; see above
 	require.NoError(t, err)
 	setting.AppDataPath = dir
 	t.Cleanup(func() {

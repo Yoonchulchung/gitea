@@ -111,3 +111,27 @@ func TestPreviousPointingAtCurrentIsNotARollbackTarget(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, DepartmentSafeError("rollback", err), "되돌아갈 이전 버전이 없습니다")
 }
+
+// Rolling back one step follows a symlink that only ever holds one version.
+// Every version the app has run is still in the deploy repository, so being
+// able to reach only the most recent one is a limit of the mechanism rather
+// than of what is possible — and a version that failed on an unapproved
+// package is exactly the one worth reaching once the package is approved.
+func TestDeployVersionRefusesWhatItCannotDo(t *testing.T) {
+	withTempAppData(t)
+	require.NoError(t, MutateAppState("PO", "app", func(st *AppState) bool {
+		st.Actual = AppStateActivating // mid-swap
+		return true
+	}))
+
+	// The same gate as a redeploy: this replaces what is serving.
+	err := DeployVersion(t.Context(), "PO", "app", "abc123", "admin", true)
+	require.Error(t, err)
+	assert.NotEmpty(t, DepartmentSafeError("deploy-version", err))
+
+	// The "commit not in the repository" refusal is not exercised here: it
+	// needs the central deploy repo configured, which is integration setup
+	// rather than a unit test. What matters is that it is checked before a
+	// build starts, so the failure is "that version is no longer there" rather
+	// than a message about git from inside a build.
+}
