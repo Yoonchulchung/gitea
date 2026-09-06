@@ -156,14 +156,19 @@ func RemoveApp(owner, repo, actor string) error {
 // without this the only route was to ask the department to submit the whole
 // request again, which re-runs an approval nobody's mind has changed about.
 //
-// Admin-only, and deliberately so. It re-runs the *same* commit, so it fixes
-// nothing that a code change would fix: a department whose requirements.txt
-// names a version that does not exist has to edit it and deploy again, and
-// offering them a retry button here would just invite them to press it until
-// they gave up and asked an administrator anyway.
-func RedeployApp(owner, repo, actor string) error {
+// Open to the department, not only to admins. It re-runs the same commit, so
+// it fixes nothing a code change would fix — but the interesting cases are
+// the ones where the commit was never the problem: an admin has just
+// approved the package the build was refused for, or changed the base
+// package list, and that same commit now builds. Making them submit an
+// identical deploy request to pick that up would re-run an approval nobody's
+// mind has changed about.
+//
+// Where the fix really is in their own files, the failure already says so,
+// which is a better answer than withholding the button.
+func RedeployApp(owner, repo, actor string, isAdmin bool) error {
 	st := LoadAppState(owner, repo)
-	if ok, why := st.CanTransition("redeploy", true); !ok {
+	if ok, why := st.CanTransition("redeploy", isAdmin); !ok {
 		return userErrorf("%s", why)
 	}
 	if st.SHA == "" {

@@ -69,6 +69,14 @@ type AppSidebarData struct {
 	// nothing built yet is not offered the button at all — the cause panel
 	// tells them to deploy instead, which is the thing that would help.
 	CanStart bool
+	// CanRedeploy is whether rebuilding the recorded commit is worth
+	// offering: something has to have been deployed, and nothing may be in
+	// flight already.
+	CanRedeploy bool
+	// StartedAt is when the running process came up. "Running" alone does not
+	// say whether it has been up for a week or restarted a minute ago, which
+	// is the first thing anyone wants to know when something looks wrong.
+	StartedAt int64
 }
 
 // SetAppPermissionData attaches the sidebar panel's data to the repo home
@@ -99,6 +107,8 @@ func SetAppPermissionData(ctx *context.Context) {
 		Running:     st.Actual == AppStateRunning,
 		Suspended:   st.Actual == AppStateSuspended,
 		CanStart:    st.HasRelease && st.Actual != AppStateRunning && st.Actual != AppStateSuspended,
+		CanRedeploy: st.SHA != "" && !st.IsBusy(),
+		StartedAt:   st.StartedAt,
 		Deployed:    true,
 		StatusLabel: departmentStatusLabel(st),
 		Status:      st.Actual,

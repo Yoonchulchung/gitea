@@ -47,6 +47,11 @@
 						{{/* Nothing built yet — a start button here could only fail. */}}
 						<a class="ui primary button" href="{{.DeployLink}}">배포 요청하기</a>
 					{{end}}
+					{{if .App.SHA}}
+						<form method="post" action="{{.AppLink}}/redeploy">
+							{{.CsrfTokenHtml}}<button class="ui basic button">다시 배포</button>
+						</form>
+					{{end}}
 					<form method="post" action="{{.AppLink}}/rollback" data-company-confirm="이전 버전으로 되돌립니다. 계속할까요?">
 						{{.CsrfTokenHtml}}<button class="ui basic button">이전 버전으로</button>
 					</form>

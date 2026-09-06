@@ -136,7 +136,7 @@ func TestRedeployRequeuesTheRecordedCommit(t *testing.T) {
 	deployQueue = make(chan deployJob, 1)
 	t.Cleanup(func() { deployQueue = saved })
 
-	require.NoError(t, RedeployApp("PO", "app", "admin"))
+	require.NoError(t, RedeployApp("PO", "app", "admin", true))
 
 	job := <-deployQueue
 	assert.Equal(t, "a92027a4479650425a3efa41d853c1cbed0fedb8", job.SHA, "the same commit, not a new one")
@@ -150,7 +150,7 @@ func TestRedeployRequeuesTheRecordedCommit(t *testing.T) {
 // audiences need different words for it.
 func TestRedeployWithoutAnyDeploy(t *testing.T) {
 	withTempAppData(t)
-	err := RedeployApp("PO", "never", "admin")
+	err := RedeployApp("PO", "never", "admin", true)
 	require.Error(t, err)
 	assert.Contains(t, AdminError(err), "기록된 커밋")
 	assert.Contains(t, DepartmentSafeError("ctx", err), "배포된 적이 없")
@@ -231,5 +231,34 @@ func TestOnlyServingStatesSurviveABuildFailure(t *testing.T) {
 		}))
 		failBuild("PO", "app", ReasonInstallFailed, "pip said no", prior)
 		assert.Equal(t, want, LoadAppState("PO", "app").Actual, "prior %q", prior)
+	}
+}
+
+// A department may rebuild the commit already deployed. The interesting case
+// is the one where the commit was never the problem: a package the build was
+// refused for has since been approved, and the same commit now builds.
+func TestDepartmentMayRedeploy(t *testing.T) {
+	withTempAppData(t)
+	require.NoError(t, MutateAppState("PO", "app", func(st *AppState) bool {
+		st.Actual, st.Reason = AppStateFailed, ReasonPackageDenied
+		st.SHA = "a42245e516e4"
+		return true
+	}))
+
+	saved := deployQueue
+	deployQueue = make(chan deployJob, 1)
+	t.Cleanup(func() { deployQueue = saved })
+
+	require.NoError(t, RedeployApp("PO", "app", "staff", false))
+	assert.Equal(t, "a42245e516e4", (<-deployQueue).SHA)
+}
+
+// Pressing it twice is duplication, not urgency — the deploy in flight is
+// already rebuilding this commit.
+func TestRedeployRefusedWhileOneIsInFlight(t *testing.T) {
+	for _, busy := range []string{AppStateQueued, AppStateBuilding, AppStateActivating} {
+		ok, why := (&AppState{Actual: busy, SHA: "x"}).CanTransition("redeploy", false)
+		assert.False(t, ok, busy)
+		assert.NotEmpty(t, why)
 	}
 }

@@ -242,7 +242,7 @@ func AdminAppControl(ctx *context.Context) {
 	case "rollback":
 		err = RollbackApp(owner, name, actor)
 	case "redeploy":
-		err = RedeployApp(owner, name, actor)
+		err = RedeployApp(owner, name, actor, true)
 	case "remove":
 		err = RemoveApp(owner, name, actor)
 	default:

@@ -211,9 +211,25 @@ func (c *AppsConfig) EffectiveSettings(owner, repo string) AppSettings {
 // Base packages are always on it: the platform chose them, so requiring an
 // admin to approve them again would be approving their own decision.
 func (s AppSettings) AllowedPackages() []string {
-	out := append([]string{}, s.Dependencies.Allow...)
-	out = append(out, s.Dependencies.AllowExtra...)
-	return append(out, BasePackageNames(s.BasePackages)...)
+	all := append([]string{}, s.Dependencies.Allow...)
+	all = append(all, s.Dependencies.AllowExtra...)
+	all = append(all, BasePackageNames(s.BasePackages)...)
+
+	// Deduplicated because the lists genuinely overlap: a package approved
+	// for a department before it joined the base set is in both, and the
+	// sidebar was showing "fastapi, uvicorn, pydantic, fastapi, uvicorn,
+	// pydantic" to the people this panel exists for.
+	seen := make(map[string]bool, len(all))
+	out := make([]string, 0, len(all))
+	for _, name := range all {
+		key := normalizePackageName(name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, name)
+	}
+	return out
 }
 
 // IsEnabled reports whether the app should be deployed at all. Unset means

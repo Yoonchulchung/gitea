@@ -83,6 +83,8 @@ func AppControl(ctx *context.Context) {
 		err = RestartAppAs(owner, name, actor, isAdmin)
 	case "rollback":
 		err = RollbackApp(owner, name, actor)
+	case "redeploy":
+		err = RedeployApp(owner, name, actor, isAdmin)
 	default:
 		ctx.HTTPError(http.StatusBadRequest, "unknown action")
 		return

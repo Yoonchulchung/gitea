@@ -393,6 +393,11 @@ func (st *AppState) CanTransition(action string, isAdmin bool) (bool, string) {
 	if st.IsSwapping() && action != "suspend" && action != "stop" {
 		return false, "새 버전으로 교체하는 중입니다 — 잠시 뒤 다시 시도해 주세요"
 	}
+	// A second deploy while one is already queued or building is duplication,
+	// not urgency — the one in flight is already rebuilding this commit.
+	if action == "redeploy" && st.IsBusy() {
+		return false, "이미 배포가 진행 중입니다 — 끝난 뒤 다시 시도해 주세요"
+	}
 	switch action {
 	case "start", "restart", "rollback", "redeploy":
 		if st.Actual == AppStateSuspended {

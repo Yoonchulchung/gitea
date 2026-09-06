@@ -183,3 +183,14 @@ export function initCompanyConfirmForms() {
     });
   }
 }
+
+// Log viewers open at the bottom.
+//
+// The newest lines are the ones anyone came for — a crash loop writes the
+// same traceback dozens of times, and landing at the top means scrolling
+// past all of it to reach what just happened.
+export function initCompanyLogScroll() {
+  for (const el of document.querySelectorAll<HTMLElement>('.company-log')) {
+    el.scrollTop = el.scrollHeight;
+  }
+}

@@ -130,6 +130,9 @@
 				{{with .Cause}}{{if .At}}
 					<span class="text-grey tw-text-12 tw-font-normal" data-tooltip-content="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</span>
 				{{end}}{{end}}
+				{{if and $.CompanyApp.Running $.CompanyApp.StartedAt}}
+					<span class="text-grey tw-text-12 tw-font-normal" data-tooltip-content="{{DateUtils.AbsoluteShort $.CompanyApp.StartedAt}}">{{DateUtils.TimeSince $.CompanyApp.StartedAt}} 시작</span>
+				{{end}}
 				<span class="company-app-state {{$.CompanyApp.Status}}">{{$.CompanyApp.StatusLabel}}</span>
 			</span>
 		</div>

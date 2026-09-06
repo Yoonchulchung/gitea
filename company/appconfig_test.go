@@ -169,3 +169,34 @@ apps:
 	assert.Contains(t, cfg.EffectiveSettings("PO", "other").AllowedPackages(), "fastapi",
 		"the pin is stripped for allowlist comparison")
 }
+
+// The lists genuinely overlap — a package approved for a department before
+// it joined the base set is in both — and the sidebar was showing
+// "fastapi, uvicorn, pydantic, fastapi, uvicorn, pydantic" to the very
+// people the panel exists for.
+func TestAllowedPackagesAreDeduplicated(t *testing.T) {
+	cfg, err := ParseAppsConfig([]byte(`
+defaults:
+  basePackages: [fastapi, uvicorn, pydantic]
+  dependencies:
+    allow: [fastapi]
+apps:
+  PO/app:
+    dependencies:
+      allowExtra: [FastAPI, uvicorn, openpyxl]
+`))
+	require.NoError(t, err)
+
+	got := cfg.EffectiveSettings("PO", "app").AllowedPackages()
+	assert.Len(t, got, 4, "got %v", got)
+	assert.Subset(t, got, []string{"uvicorn", "pydantic", "openpyxl"})
+	// Spelling differences are the same package to pip, so they are one entry
+	// here too.
+	count := 0
+	for _, p := range got {
+		if normalizePackageName(p) == "fastapi" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+}
