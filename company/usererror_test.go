@@ -136,3 +136,23 @@ func TestNoReleaseSpeaksToBothAudiences(t *testing.T) {
 	assert.NotContains(t, AdminError(errNoRelease), "Deploy Request")
 	assert.Contains(t, AdminError(errNoRelease), "승인")
 }
+
+// An app's own output names the server's paths — a Python traceback prints
+// the absolute location of the venv and of the release tree, both inside the
+// directory the sandbox exists to hide. A department reading its own logs
+// must not be handed that.
+func TestLogRedactionKeepsTracebacksReadable(t *testing.T) {
+	prev := setting.AppDataPath
+	setting.AppDataPath = "/Users/someone/gitea/data"
+	t.Cleanup(func() { setting.AppDataPath = prev })
+
+	line := `  File "/Users/someone/gitea/data/company-apps/96462367fd540a84/venvs/831e275f/lib/python3.14/site-packages/uvicorn/server.py", line 81, in serve`
+	got := RedactServerPaths(line)
+
+	assert.NotContains(t, got, "/Users/someone")
+	assert.NotContains(t, got, "gitea/data")
+	// Still a traceback: the file, the line and the function are what makes
+	// one useful, and none of them are the server's business to hide.
+	assert.Contains(t, got, "uvicorn/server.py")
+	assert.Contains(t, got, "line 81, in serve")
+}

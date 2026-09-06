@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"gitea.dev/modules/log"
@@ -130,18 +131,24 @@ func RedactServerPaths(text string) string {
 	// Only paths that actually point into this instance are worth hiding;
 	// "/usr/lib/python3" tells nobody anything they could not guess, and
 	// blanking every slash-separated token would mangle package names.
-	sensitive := []string{setting.AppDataPath, setting.AppWorkPath, setting.CustomPath}
+	// Longest first: AppDataPath usually sits inside AppWorkPath, and
+	// replacing the shorter one first would leave the tail of the longer.
+	sensitive := []string{setting.AppDataPath, setting.CustomPath, setting.AppWorkPath}
+	slices.SortFunc(sensitive, func(a, b string) int { return len(b) - len(a) })
 	for _, root := range sensitive {
 		if root == "" {
 			continue
 		}
-		text = strings.ReplaceAll(text, root, "…")
+		// A named marker rather than an ellipsis: a traceback with
+		// "<앱데이터>/company-apps/…/uvicorn/server.py" still reads as a path,
+		// which is most of what makes a traceback useful.
+		text = strings.ReplaceAll(text, root, "<앱데이터>")
 	}
 	// Anything still absolute and pointing at a home directory is redacted
 	// wholesale: those are the paths that vary per install and leak layout.
 	return absolutePathPattern.ReplaceAllStringFunc(text, func(match string) string {
 		if strings.HasPrefix(match, "/home/") || strings.HasPrefix(match, "/Users/") || strings.HasPrefix(match, "/root/") {
-			return "…"
+			return "<서버경로>"
 		}
 		return match
 	})

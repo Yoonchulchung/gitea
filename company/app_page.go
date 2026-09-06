@@ -221,6 +221,18 @@ func AppLogs(ctx *context.Context) {
 	}
 	lines, truncated, err := ReadAppLogs(owner, name, query)
 
+	// The app's own output, so it names the server's paths — a Python
+	// traceback prints the absolute location of the venv and of the release
+	// tree, both of which sit inside the directory the sandbox exists to
+	// hide. Redacted for a department; an admin's log view leaves them
+	// alone, because there the paths are the point.
+	//
+	// After the search, not before: someone looking for a package name still
+	// matches against what the app actually wrote.
+	for i := range lines {
+		lines[i].Text = RedactServerPaths(lines[i].Text)
+	}
+
 	ctx.Data["Title"] = "앱 로그"
 	ctx.Data["App"] = LoadAppState(owner, name)
 	ctx.Data["Lines"] = lines
