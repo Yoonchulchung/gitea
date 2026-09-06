@@ -148,6 +148,21 @@ func WorkspaceAI(ctx *context.Context) {
 	}
 
 	systemPrompt := fmt.Sprintf(tplWorkspaceAISystemPrompt, branch)
+
+	// What the app will actually run on, only for repositories that are
+	// deployed — a plain document repository has no runtime to describe, and
+	// the paragraph would be noise.
+	//
+	// Given as text rather than as a tool the model can call: it edits files
+	// for someone who cannot read what it produces, so a way to run commands
+	// on the server would make "the assistant decided to" a route to
+	// everything the sandbox prevents — and the sandbox does not cover
+	// Gitea's own process. The values come from probes the platform already
+	// ran (company/platformenv.go).
+	if _, deployed := LookupApp(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name); deployed {
+		systemPrompt += DescribePlatformEnvironment(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name).AIContext()
+	}
+
 	if activeContent, ok := openFiles[req.ActivePath]; req.ActivePath != "" && ok {
 		systemPrompt += fmt.Sprintf(activeFileContextTemplate, req.ActivePath, activeContent)
 	}

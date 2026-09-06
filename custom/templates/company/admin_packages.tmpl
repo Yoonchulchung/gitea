@@ -42,6 +42,7 @@
 				<strong>버전은 고정하지 않는 편이 안전합니다.</strong>
 				고정한 버전의 휠이 이 서버의 파이썬보다 오래되면 <strong>모든 앱이 한꺼번에 빌드 실패</strong>합니다.
 				{{if .PythonOK}}<br>이 서버의 파이썬: <code>{{.PythonDetail}}</code>{{else}}<br><strong>파이썬을 사용할 수 없습니다 — 어떤 앱도 빌드되지 않습니다.</strong> {{.PythonDetail}}{{end}}
+				<br><span class="tw-text-12">이 값은 AI 어시스턴트에게도 그대로 전달되어, 이 서버에서 설치되지 않는 버전을 제안하지 않도록 합니다.</span>
 			</div>
 		</div>
 
