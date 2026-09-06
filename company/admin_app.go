@@ -354,7 +354,7 @@ func AdminApprovePackages(ctx *context.Context) {
 		return
 	}
 	names := slices.Clone(ctx.Req.Form["package"])
-	extra, problems := ParseBasePackages(ctx.FormString("extra"))
+	extra, problems := ParseBasePackages(ctx.Locale, ctx.FormString("extra"))
 	if len(problems) > 0 {
 		ctx.Flash.Error(strings.Join(problems, " / "))
 		ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo)

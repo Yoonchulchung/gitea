@@ -239,9 +239,9 @@ func summarizeInstallFailure(message string) string {
 		}
 	}
 	if len(errs) == 0 {
-		return "requirements.txt 의 패키지 이름과 버전을 확인해 주세요."
+		return platformLocale().TrString("company.cause.check_requirements")
 	}
-	return strings.Join(errs, "\n") + "\nrequirements.txt 를 고친 뒤 다시 배포해 주세요."
+	return strings.Join(errs, "\n") + "\n" + platformLocale().TrString("company.cause.fix_and_redeploy")
 }
 
 // installErrorLines caps how much of a failed build reaches the department.

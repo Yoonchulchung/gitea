@@ -169,6 +169,22 @@ func AdminErrorL(l translation.Locale, err error) string {
 	return err.Error()
 }
 
+// platformLocale is the language for text the platform composes with no
+// reader in front of it — a build worker's failure message, a watchdog's
+// note. Those are shown to someone later, so English would be wrong for a
+// Korean instance and Korean wrong for an English one; the instance's own
+// configured language is the only answer available at that point.
+//
+// Distinct from Error(), which stays English: that goes to the log, and a log
+// line whose language depends on configuration is one an operator cannot
+// grep.
+func platformLocale() translation.Locale {
+	if len(setting.Langs) > 0 && setting.Langs[0] != "" {
+		return translation.NewLocale(setting.Langs[0])
+	}
+	return translation.NewLocale("en-US")
+}
+
 // absolutePathPattern matches a unix path deep enough to be a real location
 // on this server rather than an incidental "/" in prose.
 var absolutePathPattern = regexp.MustCompile(`(?:/[\w.@+-]+){2,}/?`)

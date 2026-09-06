@@ -96,7 +96,7 @@ func runPreflight(ctx *context.Context, repo *repo_model.Repository) PreflightRe
 	}
 
 	if _, errs := ParseRequirements(requirements); len(errs) > 0 {
-		fail(tr("company.preflight.requirements_shape"), formatRequirementErrors(errs, settings.BasePackages))
+		fail(tr("company.preflight.requirements_shape"), formatRequirementErrors(ctx.Locale, errs, settings.BasePackages))
 		result.Summary = summarize(ctx, result.Deployable, nil)
 		return result
 	}

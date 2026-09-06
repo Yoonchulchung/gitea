@@ -23,6 +23,7 @@ import (
 	"gitea.dev/modules/json"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/process"
+	"gitea.dev/modules/translation"
 	"gitea.dev/modules/util"
 )
 
@@ -283,7 +284,7 @@ func buildRelease(ctx context.Context, job deployJob, p appPaths, release string
 	}
 	reqs, reqErrs := ParseRequirements(string(body))
 	if len(reqErrs) > 0 {
-		return &packagesDeniedError{message: formatRequirementErrors(reqErrs, settings.BasePackages)}
+		return &packagesDeniedError{message: formatRequirementErrors(platformLocale(), reqErrs, settings.BasePackages)}
 	}
 	if denied := DeniedPackages(reqs, settings.AllowedPackages()); len(denied) > 0 {
 		return &packagesDeniedError{message: formatDeniedPackages(denied)}
@@ -504,7 +505,10 @@ func installIntoVenv(ctx context.Context, venv string, reqs []Requirement, setti
 		// Deploy Request has to offer for approval, and re-extracting them
 		// from a sentence later would be guessing at our own message.
 		return &packagesDeniedError{
-			message:  "이 패키지들이 의존성으로 필요한데 아직 승인되지 않았습니다: " + strings.Join(extra, ", "),
+			// platformLocale, not English: this is stored and shown to a
+			// department later, and the build worker has no reader whose
+			// language it could use instead (company/usererror.go).
+			message:  platformLocale().TrString("company.err.deps_unapproved", strings.Join(extra, ", ")),
 			packages: extra,
 		}
 	}
@@ -780,18 +784,18 @@ func (e *packagesDeniedError) Error() string { return e.message }
 // is to delete the line, not to find a version for it. Telling someone to pin
 // a package that is already installed sends them to look up a version number
 // they then have to keep correct forever, for nothing.
-func formatRequirementErrors(errs []RequirementError, basePackages []string) string {
+func formatRequirementErrors(l translation.Locale, errs []RequirementError, basePackages []string) string {
 	provided := make(map[string]bool, len(basePackages))
 	for _, name := range BasePackageNames(basePackages) {
 		provided[normalizePackageName(name)] = true
 	}
 	lines := make([]string, 0, len(errs))
 	for _, e := range errs {
-		reason := e.Reason
+		reason := l.TrString(e.Reason, e.Args...)
 		if provided[normalizePackageName(e.Text)] {
-			reason = fmt.Sprintf("%q — 플랫폼이 이미 설치해 주는 패키지입니다. 이 줄은 지워 주세요.", e.Text)
+			reason = l.TrString("company.req.already_provided", e.Text)
 		}
-		lines = append(lines, fmt.Sprintf("requirements.txt %d번째 줄: %s", e.Line, reason))
+		lines = append(lines, l.TrString("company.req.at_line", e.Line, reason))
 	}
 	return strings.Join(lines, "\n")
 }

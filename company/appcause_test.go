@@ -39,7 +39,10 @@ func TestSummarizeInstallFailure(t *testing.T) {
 	assert.LessOrEqual(t, len(strings.Split(got, "\n")), installErrorLines+1)
 	assert.NotContains(t, got, "Ignored the following", "pip labels this ERROR but it is not the failure")
 	assert.NotContains(t, got, "\n\n", "a blank line inside a sidebar panel is wasted space")
-	assert.Contains(t, got, "requirements.txt")
+	// The next step is appended as a key: this runs in the build worker, which
+	// has no reader, so it renders in the instance's own language rather than
+	// the reader's (company/usererror.go on platformLocale).
+	assert.Contains(t, got, "company.cause.fix_and_redeploy")
 }
 
 func TestSummarizeInstallFailureWithoutErrorLines(t *testing.T) {
@@ -47,7 +50,7 @@ func TestSummarizeInstallFailureWithoutErrorLines(t *testing.T) {
 	// process, a network drop. The department still needs a next step rather
 	// than an empty box.
 	got := summarizeInstallFailure("Killed\n")
-	assert.Contains(t, got, "requirements.txt")
+	assert.Equal(t, "company.cause.check_requirements", got)
 	assert.NotContains(t, got, "Killed", "raw build output is admin-only")
 }
 

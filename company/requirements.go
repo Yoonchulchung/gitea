@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"gitea.dev/modules/translation"
 )
 
 // requirements.txt is written by department staff and fed straight to pip,
@@ -45,20 +47,20 @@ var requirementPrefixDenied = []struct {
 	prefix string
 	reason string
 }{
-	{"-e", "editable installs (-e) are not allowed"},
-	{"--editable", "editable installs are not allowed"},
-	{"-r", "including other requirements files (-r) is not allowed"},
-	{"--requirement", "including other requirements files is not allowed"},
-	{"-i", "changing the package index (-i) is not allowed"},
-	{"--index-url", "changing the package index is not allowed"},
-	{"--extra-index-url", "adding a package index is not allowed"},
-	{"--find-links", "adding a package source (--find-links) is not allowed"},
-	{"-f", "adding a package source (-f) is not allowed"},
-	{"--trusted-host", "trusting an extra host is not allowed"},
-	{"git+", "installing straight from a git repository is not allowed"},
-	{"http://", "installing from a URL is not allowed"},
-	{"https://", "installing from a URL is not allowed"},
-	{"file://", "installing from a local path is not allowed"},
+	{"-e", "company.req.no_editable"},
+	{"--editable", "company.req.no_editable"},
+	{"-r", "company.req.no_include"},
+	{"--requirement", "company.req.no_include"},
+	{"-i", "company.req.no_index"},
+	{"--index-url", "company.req.no_index"},
+	{"--extra-index-url", "company.req.no_index"},
+	{"--find-links", "company.req.no_find_links"},
+	{"-f", "company.req.no_find_links"},
+	{"--trusted-host", "company.req.no_trusted_host"},
+	{"git+", "company.req.no_git"},
+	{"http://", "company.req.no_url"},
+	{"https://", "company.req.no_url"},
+	{"file://", "company.req.no_local_path"},
 }
 
 // Requirement is one accepted dependency.
@@ -70,14 +72,20 @@ type Requirement struct {
 
 // RequirementError explains one rejected line in language a non-developer
 // can act on. Line is 1-based so it matches what an editor shows.
+//
+// The explanation is a locale key rather than a sentence: the same error is
+// shown on the deploy form, where the reader's language is known, and stored
+// by the build worker, where it is not (company/usererror.go).
 type RequirementError struct {
 	Line   int
 	Text   string
 	Reason string
+	Args   []any
 }
 
 func (e RequirementError) Error() string {
-	return fmt.Sprintf("line %d (%q): %s", e.Line, e.Text, e.Reason)
+	return fmt.Sprintf("line %d (%q): %s", e.Line, e.Text,
+		translation.NewLocale("en-US").TrString(e.Reason, e.Args...))
 }
 
 // normalizePackageName applies PEP 503 normalization so the allowlist can't
@@ -140,14 +148,15 @@ func ParseRequirements(content string) ([]Requirement, []RequirementError) {
 		}
 
 		if !validRequirement.MatchString(text) {
-			errs = append(errs, RequirementError{Line: line, Text: text, Reason: shapeProblem(text)})
+			reason, args := shapeProblem(text)
+			errs = append(errs, RequirementError{Line: line, Text: text, Reason: reason, Args: args})
 			continue
 		}
 		name, version, _ := strings.Cut(text, "==")
 		reqs = append(reqs, Requirement{Name: normalizePackageName(name), Version: version, Raw: text})
 	}
 	if err := scanner.Err(); err != nil {
-		errs = append(errs, RequirementError{Reason: "could not read requirements.txt: " + err.Error()})
+		errs = append(errs, RequirementError{Reason: "company.req.unreadable", Args: []any{err.Error()}})
 	}
 	return reqs, errs
 }
@@ -163,22 +172,22 @@ var bareName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // required form at someone who plainly knows what a version is.
 var rangeOperator = regexp.MustCompile(`[><~!]=?|===`)
 
-// shapeProblem says which mistake this line is, in the reader's language.
+// shapeProblem says which mistake this line is, as a key and its arguments.
 //
 // One message for every malformed line told a non-developer with six bare
 // names the same sentence six times and named none of them, which is how
 // "fastapi" and "-e ." come to look like the same problem.
-func shapeProblem(text string) string {
+func shapeProblem(text string) (string, []any) {
 	switch {
 	case bareName.MatchString(text):
-		return fmt.Sprintf("%q — 설치할 버전을 함께 적어 주세요 (예: %s==1.2.3)", text, text)
+		return "company.req.needs_version", []any{text, text}
 	case rangeOperator.MatchString(text):
 		name, _, _ := strings.Cut(strings.FieldsFunc(text, func(r rune) bool {
 			return strings.ContainsRune("><~!= ", r)
 		})[0], "[")
-		return fmt.Sprintf("%q — 버전 범위는 쓸 수 없습니다. 설치할 버전 하나를 지정해 주세요 (예: %s==1.2.3)", text, name)
+		return "company.req.no_ranges", []any{text, name}
 	default:
-		return fmt.Sprintf("%q — 한 줄에 패키지 하나를 %q 형태로 적어 주세요", text, "이름==버전")
+		return "company.req.one_per_line", []any{text}
 	}
 }
 
@@ -208,9 +217,9 @@ func DeniedPackages(reqs []Requirement, allowed []string) []Requirement {
 // failure this list exists to prevent.
 var validBasePackage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*(?:==[A-Za-z0-9][A-Za-z0-9.!+*_-]*)?$`)
 
-// ParseBasePackages reads the admin-managed list of packages installed into
-// every app, one per line, and reports every bad entry rather than the first.
-func ParseBasePackages(content string) (packages, problems []string) {
+// ParseBasePackages reads the admin-managed list. The locale is the caller's
+// because this runs inside an admin's own request.
+func ParseBasePackages(l translation.Locale, content string) (packages, problems []string) {
 	seen := map[string]bool{}
 	for i, raw := range strings.Split(content, "\n") {
 		line := strings.TrimSpace(raw)
@@ -226,7 +235,7 @@ func ParseBasePackages(content string) (packages, problems []string) {
 		denied := false
 		for _, d := range requirementPrefixDenied {
 			if strings.HasPrefix(strings.ToLower(line), d.prefix) {
-				problems = append(problems, fmt.Sprintf("%d번째 줄: %s", i+1, d.reason))
+				problems = append(problems, l.TrString("company.req.line_prefix", i+1, l.TrString(d.reason)))
 				denied = true
 				break
 			}
@@ -235,13 +244,13 @@ func ParseBasePackages(content string) (packages, problems []string) {
 			continue
 		}
 		if !validBasePackage.MatchString(line) {
-			problems = append(problems, fmt.Sprintf("%d번째 줄 %q — 이름 또는 이름==버전 형태여야 합니다", i+1, line))
+			problems = append(problems, l.TrString("company.req.base_shape", i+1, line))
 			continue
 		}
 		name, _, _ := strings.Cut(line, "==")
 		key := normalizePackageName(name)
 		if seen[key] {
-			problems = append(problems, fmt.Sprintf("%d번째 줄 %q — 이미 위에 있습니다", i+1, name))
+			problems = append(problems, l.TrString("company.req.duplicate", i+1, name))
 			continue
 		}
 		seen[key] = true

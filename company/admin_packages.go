@@ -88,7 +88,7 @@ func AdminPackages(ctx *context.Context) {
 // Committed to apps.yml rather than stored anywhere else, so the change is a
 // commit authored by the admin who made it.
 func AdminSetBasePackages(ctx *context.Context) {
-	packages, problems := ParseBasePackages(ctx.FormString("packages"))
+	packages, problems := ParseBasePackages(ctx.Locale, ctx.FormString("packages"))
 	if len(problems) > 0 {
 		ctx.Flash.Error(strings.Join(problems, " / "))
 		ctx.Redirect(setting.AppSubURL + "/-/admin/company-packages")
