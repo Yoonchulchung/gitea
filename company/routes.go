@@ -79,6 +79,7 @@ func RegisterAdminRoutes(m *web.Router) {
 		// Before the {verb} catch-all below, which would otherwise swallow it.
 		m.Post("/approve-packages", AdminApprovePackages)
 		m.Post("/deploy-version", AdminDeployVersion)
+		m.Post("/network", AdminSetNetwork)
 		m.Get("/metrics", AdminAppMetrics)
 		m.Post("/{verb}", AdminAppControl)
 	})

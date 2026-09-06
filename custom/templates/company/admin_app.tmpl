@@ -152,6 +152,95 @@
 		     same for every app and is not this app's decision; the approved list
 		     is what an admin granted to this one, and is the only part worth
 		     reviewing here. */}}
+		{{/* The other side of the approval flow. A department asks to widen
+		     inbound and can only ask for outbound; this is an admin closing
+		     something that should not have been open, or opening it without
+		     waiting for a request to be written. Removal matters more than
+		     addition — an approval flow that can only add is a ratchet, and "we
+		     approved that by mistake" has to have an answer. */}}
+		<h4 class="ui top attached header tw-mt-4">접근 · 통신 정책</h4>
+		<div class="ui attached segment">
+			<form method="post" action="{{.AdminAppLink}}/network" class="ui form">
+				{{.CsrfTokenHtml}}
+				<input type="hidden" name="what" value="access">
+				<div class="tw-mb-1"><strong>들어오는 접근 (inbound)</strong></div>
+				<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
+					<select name="access">
+						{{range .AccessOptions}}
+							<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}} — {{.Explain}}</option>
+						{{end}}
+					</select>
+					<button class="ui button">적용</button>
+				</div>
+				<div class="text-grey tw-text-12 tw-mt-1">
+					부서가 스스로 좁힐 수 있지만 넓히려면 승인이 필요합니다. 여기서는 관리자가 양쪽 다 바로 정합니다.
+				</div>
+			</form>
+
+			<div class="tw-mt-4"><strong>나가는 통신 (outbound)</strong></div>
+			<div class="text-grey tw-text-12 tw-mt-1">
+				{{if eq .NetworkMode "open"}}
+					<span class="company-app-state failed">제한 없음</span>
+					이 앱은 어디로든 연결할 수 있습니다. 예외 설정이며, 아래에서 특정 주소만 허용하도록 좁힐 수 있습니다.
+				{{else if eq .NetworkMode "broker"}}
+					아래 주소로만 연결할 수 있습니다. 그 외에는 모두 차단됩니다.
+				{{else}}
+					지금은 외부 통신이 모두 차단되어 있습니다. 주소를 추가하면 그 주소만 열립니다.
+				{{end}}
+			</div>
+			{{if .OutboundRules}}
+				<table class="ui very basic table tw-text-13">
+					<tbody>
+						{{range .OutboundRules}}
+							<tr>
+								<td class="tw-font-mono">{{.Host}}</td>
+								<td class="tw-w-32">{{if .Methods}}{{StringUtils.Join .Methods ", "}}{{else}}GET{{end}}</td>
+								<td class="tw-w-24">
+									<form method="post" action="{{$.AdminAppLink}}/network"
+										data-company-confirm="{{.Host}} 로의 통신을 차단합니다. 이 주소를 쓰는 기능이 동작하지 않게 됩니다. 계속할까요?">
+										{{$.CsrfTokenHtml}}
+										<input type="hidden" name="what" value="outbound-remove">
+										<input type="hidden" name="host" value="{{.Host}}">
+										<button class="ui tiny basic red button">차단</button>
+									</form>
+								</td>
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			{{end}}
+			<form method="post" action="{{.AdminAppLink}}/network" class="ui form tw-mt-2">
+				{{.CsrfTokenHtml}}
+				<input type="hidden" name="what" value="outbound-add">
+				<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
+					<input type="text" name="host" class="tw-flex-1" autocomplete="off"
+						placeholder="주소만 입력 (예: erp.internal.company.com)">
+					<select name="methods">
+						<option value="GET">읽기만 (GET)</option>
+						<option value="GET,POST">읽기와 보내기 (GET, POST)</option>
+					</select>
+					<button class="ui button">허용</button>
+				</div>
+			</form>
+
+			<div class="tw-mt-4"><strong>파일 다운로드</strong></div>
+			<form method="post" action="{{.AdminAppLink}}/network" class="tw-flex tw-items-center tw-gap-2 tw-mt-1 tw-flex-wrap">
+				{{.CsrfTokenHtml}}
+				<input type="hidden" name="what" value="download">
+				{{if .DownloadAllowed}}
+					<span class="company-app-state running">허용됨</span>
+					<button class="ui tiny basic red button">차단하기</button>
+				{{else}}
+					<span class="company-app-state failed">차단됨</span>
+					<input type="hidden" name="allow" value="1">
+					<button class="ui tiny basic button">허용하기</button>
+				{{end}}
+				<span class="text-grey tw-text-12">
+					화면에 보이는 것은 막지 못합니다 — 막히는 것은 다운로드 버튼과 대량 반출입니다.
+				</span>
+			</form>
+		</div>
+
 		<h4 class="ui top attached header tw-mt-4">설치 가능한 패키지</h4>
 		<div class="ui attached segment">
 			<div class="tw-mb-2">

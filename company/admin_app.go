@@ -185,6 +185,10 @@ func AdminApp(ctx *context.Context) {
 	// these are dependencies no department can name, so there is no form they
 	// could raise to ask for them.
 	ctx.Data["MissingPackages"] = st.MissingPackages
+	ctx.Data["AccessOptions"] = accessOptionsFor(settings.Access, AccessPublic)
+	ctx.Data["OutboundRules"] = settings.Network.Allow
+	ctx.Data["NetworkMode"] = settings.Network.Mode
+	ctx.Data["DownloadAllowed"] = settings.Download.Policy == "allow"
 	ctx.Data["EnvNames"] = envNames
 	ctx.Data["EnvVersion"] = envVersion
 	ctx.Data["EnvError"] = envErr
@@ -362,4 +366,100 @@ func AdminDeployVersion(ctx *context.Context) {
 		ctx.Flash.Success("그 버전으로 배포를 시작했습니다. 빌드와 상태 확인이 끝나면 반영됩니다.")
 	}
 	ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo + "/history")
+}
+
+// AdminSetNetwork applies an admin's direct inbound/outbound change.
+//
+// Deliberately one handler with an explicit verb rather than four routes: the
+// four operations differ only in which field they touch, and a shared entry
+// point keeps the audit line and the redirect from drifting apart between
+// them.
+func AdminSetNetwork(ctx *context.Context) {
+	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")
+	back := setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo
+
+	var (
+		subject string
+		mutate  func(*AppSettings)
+	)
+	switch ctx.FormString("what") {
+	case "access":
+		access := ctx.FormString("access")
+		if _, known := accessRank[access]; !known {
+			ctx.Flash.Error("알 수 없는 접근 범위입니다.")
+			ctx.Redirect(back)
+			return
+		}
+		subject, mutate = "set access to "+access, setAccess(access)
+
+	case "outbound-add":
+		host := strings.TrimSpace(ctx.FormString("host"))
+		if !validOutboundHost(host) {
+			ctx.Flash.Error("호스트 이름이 올바르지 않습니다. 주소만 적어 주세요 (예: erp.internal.company.com).")
+			ctx.Redirect(back)
+			return
+		}
+		methods := parseMethods(ctx.FormString("methods"))
+		subject, mutate = "allow outbound to "+host, addOutbound(host, methods)
+
+	case "outbound-remove":
+		host := strings.TrimSpace(ctx.FormString("host"))
+		subject, mutate = "withdraw outbound to "+host, removeOutbound(host)
+
+	case "download":
+		allow := ctx.FormString("allow") != ""
+		subject, mutate = "block file downloads", setDownload(false)
+		if allow {
+			subject, mutate = "allow file downloads", setDownload(true)
+		}
+
+	default:
+		ctx.HTTPError(http.StatusBadRequest, "unknown action")
+		return
+	}
+
+	if err := SetAppNetworkPolicy(ctx, ctx.Doer, owner, repo, subject, mutate); err != nil {
+		ctx.Flash.Error(AdminError(err))
+	} else {
+		// Inbound and download take effect on the next request; outbound is
+		// read when the app starts, so it does not.
+		ctx.Flash.Success("정책을 변경했습니다. 외부 통신 변경은 앱을 재시작해야 적용됩니다.")
+	}
+	ctx.Redirect(back)
+}
+
+// validOutboundHost accepts a hostname and nothing else.
+//
+// A scheme, a path or a wildcard would be silently ignored by the broker
+// while reading on this screen as though it had been applied, which is worse
+// than refusing it.
+func validOutboundHost(host string) bool {
+	if host == "" || len(host) > 253 {
+		return false
+	}
+	for _, r := range host {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.' || r == '-':
+		default:
+			return false
+		}
+	}
+	return !strings.HasPrefix(host, ".") && !strings.HasPrefix(host, "-")
+}
+
+// parseMethods normalises the HTTP methods an outbound rule allows.
+func parseMethods(raw string) []string {
+	var out []string
+	for part := range strings.SplitSeq(raw, ",") {
+		if method := strings.ToUpper(strings.TrimSpace(part)); method != "" {
+			out = append(out, method)
+		}
+	}
+	if len(out) == 0 {
+		// Least privilege by default: reading is what almost every internal
+		// integration needs, and writing is a separate decision.
+		return []string{"GET"}
+	}
+	return out
 }

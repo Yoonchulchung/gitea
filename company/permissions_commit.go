@@ -75,6 +75,16 @@ func ApplyPermissionsOnMerge(ctx context.Context, doer *user_model.User, owner, 
 // commits the result. Re-reads on every attempt so a concurrent approval by
 // another admin is merged with rather than overwritten.
 func commitPermissionUpdate(ctx context.Context, doer *user_model.User, owner, repo string, requests []PermissionRequest, attempt int) error {
+	return commitAppPolicy(ctx, doer, owner, repo, requests, nil, "", attempt)
+}
+
+// commitAppPolicy is the one path that writes an app's block in apps.yml.
+//
+// Approvals and an admin's direct edits go through the same function on
+// purpose: both are policy changes, both land as a commit authored by the
+// person who made them, and having a second writer would mean two ways for
+// the file and what is in force to disagree.
+func commitAppPolicy(ctx context.Context, doer *user_model.User, owner, repo string, requests []PermissionRequest, mutate func(*AppSettings), subject string, attempt int) error {
 	centralOwner, centralName, err := centralDeployOwnerName()
 	if err != nil {
 		return err
@@ -101,6 +111,9 @@ func commitPermissionUpdate(ctx context.Context, doer *user_model.User, owner, r
 	}
 	updated := ApplyApprovedPermissions(*entry, requests)
 	current.Apps[key] = &updated
+	if mutate != nil {
+		mutate(&updated)
+	}
 
 	body, err := yaml.Marshal(current)
 	if err != nil {
@@ -114,6 +127,11 @@ func commitPermissionUpdate(ctx context.Context, doer *user_model.User, owner, r
 		operation = "create"
 	}
 	message := fmt.Sprintf("chore(apps): approve permissions for %s\n\nApproved by %s.", key, doer.Name)
+	if subject != "" {
+		// Named for what actually changed: there is no request to look up
+		// later, so the commit message is the whole record of why.
+		message = fmt.Sprintf("chore(apps): %s for %s\n\nChanged directly by %s.", subject, key, doer.Name)
+	}
 	if attempt > 0 {
 		message += fmt.Sprintf("\n\n(retry %d after a concurrent update)", attempt)
 	}
@@ -323,5 +341,71 @@ func clearMissingPackages(owner, repo string, approved []string) {
 		return true
 	}); err != nil {
 		log.Error("company: %s/%s: clearing approved packages: %v", owner, repo, err)
+	}
+}
+
+// SetAppNetworkPolicy applies an admin's direct change to what an app may
+// reach, inbound or outbound.
+//
+// The department decides how narrow their app's inbound access is and asks to
+// widen it; outbound they can only ask for. This is the other side of that —
+// an admin closing something that should not have been open, or opening
+// something without waiting for a request to be written. Removal matters more
+// than addition: an approval flow that can only ever add is a ratchet, and
+// "we approved that by mistake" has to have an answer.
+func SetAppNetworkPolicy(ctx context.Context, doer *user_model.User, owner, repo, subject string, mutate func(*AppSettings)) error {
+	var lastErr error
+	for attempt := range commitRetries {
+		if lastErr = commitAppPolicy(ctx, doer, owner, repo, nil, mutate, subject, attempt); lastErr == nil {
+			return nil
+		}
+	}
+	return lastErr
+}
+
+// setAccess replaces the inbound access mode.
+func setAccess(access string) func(*AppSettings) {
+	return func(s *AppSettings) { s.Access = access }
+}
+
+// addOutbound allows one host, switching the app out of "no network" if that
+// is where it was.
+func addOutbound(host string, methods []string) func(*AppSettings) {
+	return func(s *AppSettings) {
+		if s.Network.Mode != NetworkOpen {
+			s.Network.Mode = NetworkBroker
+		}
+		for i, rule := range s.Network.Allow {
+			if strings.EqualFold(rule.Host, host) {
+				s.Network.Allow[i].Methods = methods // re-approving replaces, never duplicates
+				return
+			}
+		}
+		s.Network.Allow = append(s.Network.Allow, AppNetworkRule{Host: host, Methods: methods})
+	}
+}
+
+// removeOutbound withdraws one host, and closes the app's network entirely
+// when it was the last one — leaving broker mode with an empty list would
+// read on the admin screen as "outbound is on" while nothing is reachable.
+func removeOutbound(host string) func(*AppSettings) {
+	return func(s *AppSettings) {
+		s.Network.Allow = slices.DeleteFunc(s.Network.Allow, func(rule AppNetworkRule) bool {
+			return strings.EqualFold(rule.Host, host)
+		})
+		if len(s.Network.Allow) == 0 && s.Network.Mode == NetworkBroker {
+			s.Network.Mode = NetworkNone
+		}
+	}
+}
+
+// setDownload allows or blocks handing files to a browser.
+func setDownload(allow bool) func(*AppSettings) {
+	return func(s *AppSettings) {
+		if allow {
+			s.Download.Policy = "allow"
+			return
+		}
+		s.Download.Policy = "block"
 	}
 }

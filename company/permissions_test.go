@@ -295,3 +295,54 @@ func TestResolveFailureSummaryKeepsTheTail(t *testing.T) {
 	assert.NotContains(t, got, "[notice]")
 	assert.NotContains(t, got, "Collecting a", "only the tail is worth showing")
 }
+
+// An approval flow that can only ever add is a ratchet, and "we approved that
+// by mistake" has to have an answer.
+func TestOutboundRulesCanBeAddedReplacedAndWithdrawn(t *testing.T) {
+	s := AppSettings{Network: AppNetwork{Mode: NetworkNone}}
+
+	addOutbound("erp.internal", []string{"GET"})(&s)
+	assert.Equal(t, NetworkBroker, s.Network.Mode, "adding a host opens the broker")
+	require.Len(t, s.Network.Allow, 1)
+
+	// Re-approving the same host replaces its methods rather than listing it
+	// twice, which would leave two rules disagreeing about what is allowed.
+	addOutbound("ERP.Internal", []string{"GET", "POST"})(&s)
+	require.Len(t, s.Network.Allow, 1)
+	assert.Equal(t, []string{"GET", "POST"}, s.Network.Allow[0].Methods)
+
+	// Withdrawing the last host closes the network: broker mode with an empty
+	// list reads on the admin screen as "outbound is on" while nothing is
+	// actually reachable.
+	removeOutbound("erp.internal")(&s)
+	assert.Empty(t, s.Network.Allow)
+	assert.Equal(t, NetworkNone, s.Network.Mode)
+
+	// "Unrestricted" is an explicit exception and is not downgraded by adding
+	// a host to it.
+	open := AppSettings{Network: AppNetwork{Mode: NetworkOpen}}
+	addOutbound("a.internal", nil)(&open)
+	assert.Equal(t, NetworkOpen, open.Network.Mode)
+}
+
+// A scheme, a path or a wildcard would be ignored by the broker while reading
+// on the admin screen as though it had been applied.
+func TestOutboundHostMustBeAHostname(t *testing.T) {
+	for _, host := range []string{"erp.internal.company.com", "erp", "a-b.example.com"} {
+		assert.True(t, validOutboundHost(host), host)
+	}
+	for _, host := range []string{
+		"", "https://erp.internal", "erp.internal/api", "*.internal",
+		"erp.internal:8080", ".internal", "-erp.internal", "erp internal",
+	} {
+		assert.False(t, validOutboundHost(host), host)
+	}
+}
+
+// Least privilege by default: reading is what almost every internal
+// integration needs, and writing is a separate decision.
+func TestParseMethodsDefaultsToReadOnly(t *testing.T) {
+	assert.Equal(t, []string{"GET"}, parseMethods(""))
+	assert.Equal(t, []string{"GET"}, parseMethods("  ,  "))
+	assert.Equal(t, []string{"GET", "POST"}, parseMethods("get, post"))
+}
