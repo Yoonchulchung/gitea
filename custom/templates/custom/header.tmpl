@@ -121,6 +121,19 @@
    a fact rather than as a field inviting a change that would not be saved. */
 /* The time each line arrived. Dimmed and fixed-width so the eye runs down the
    messages and reaches for the times only when connecting one to a deploy. */
+/* Inline sparkline: one polyline per list row, no chart library. Stroked
+   rather than filled so a flat line still reads as a line. */
+.company-sparkline {
+	width: 72px;
+	height: 20px;
+	vertical-align: middle;
+}
+.company-sparkline polyline {
+	fill: none;
+	stroke: var(--color-primary);
+	stroke-width: 1.5;
+	vector-effect: non-scaling-stroke;
+}
 /* The row for a deploy that has not finished. Tinted rather than badged alone:
    it is the only row whose outcome is still unknown, and someone scanning the
    table should not have to read the status column to notice it. */

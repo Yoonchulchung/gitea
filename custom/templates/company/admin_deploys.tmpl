@@ -12,6 +12,15 @@
 			</div>
 		{{end}}
 
+		{{/* "Is the platform all right" — the question the list below cannot
+		     answer without reading every row. */}}
+		<div class="company-kpis">
+			<div class="company-kpi"><b>{{.CountTotal}}</b><span>{{ctx.Locale.Tr "company.admin.kpi_apps"}}</span></div>
+			<div class="company-kpi"><b>{{.CountRunning}}</b><span>{{ctx.Locale.Tr "company.admin.kpi_running"}}</span></div>
+			<div class="company-kpi"><b>{{printf "%.1f" .Fleet.ErrorRate}}%</b><span>{{ctx.Locale.Tr "company.admin.kpi_error_rate"}}</span></div>
+			<div class="company-kpi"><b>{{.Fleet.P95}}<small>ms</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_p95"}}</span></div>
+		</div>
+
 		{{if .Attention}}
 			{{/* Only rendered when there is something to act on. A section that
 			     is always present stops being read — see docs/company/app-platform.md
@@ -59,6 +68,7 @@
 						<th>앱</th>
 						<th class="tw-w-1/6">배포</th>
 						<th class="tw-w-1/6">헬스</th>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_requests"}}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -92,9 +102,20 @@
 								     stale one, so always show when it was taken. */}}
 								{{if .State.Health.CheckedAt}}<span class="text-grey">· {{DateUtils.TimeSince .State.Health.CheckedAt}}</span>{{end}}
 							</td>
+							{{/* The shape, not just the number: "1.2k" cannot say whether
+							     that is normal for this app, and a spike is what someone
+							     scanning this page is looking for. */}}
+							<td class="tw-text-13">
+								{{if .Sparkline}}
+									{{template "company/sparkline" dict "Points" .Sparkline}}
+									<span class="text-grey tw-ml-1">{{.Requests}}</span>
+								{{else}}
+									<span class="text-grey">—</span>
+								{{end}}
+							</td>
 						</tr>
 					{{else}}
-						<tr><td colspan="4" class="text-grey">아직 부서 저장소가 없습니다.</td></tr>
+						<tr><td colspan="5" class="text-grey">아직 부서 저장소가 없습니다.</td></tr>
 					{{end}}
 				</tbody>
 			</table>

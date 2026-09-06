@@ -1,0 +1,10 @@
+{{/* An inline SVG sparkline. No chart library: this is one polyline per row on
+     a list page, and mounting chart.js for each would cost more than the
+     information is worth — the per-app page has the real charts.
+
+     `.Points` is the polyline attribute, computed in Go (sparklinePoints):
+     template arithmetic here would put a division by zero one empty series
+     away from a blank page. */}}
+<svg class="company-sparkline" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true">
+	<polyline points="{{.Points}}"/>
+</svg>

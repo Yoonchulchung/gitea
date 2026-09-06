@@ -4316,5 +4316,10 @@
   "company.flash.host_opened": "All of %s is now open (the rule is per host, not per page).",
   "company.evidence.internal": "This looks like an internal address",
   "company.evidence.internal_bare": "This looks like an internal address (no domain)",
-  "company.evidence.external": "This looks like an internet address — approving lets this app send data outside the company"
+  "company.evidence.external": "This looks like an internet address — approving lets this app send data outside the company",
+  "company.admin.kpi_apps": "apps",
+  "company.admin.kpi_running": "running",
+  "company.admin.kpi_error_rate": "error rate",
+  "company.admin.kpi_p95": "p95 response",
+  "company.admin.col_requests": "requests (24h)"
 }

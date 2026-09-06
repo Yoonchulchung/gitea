@@ -158,3 +158,23 @@ func TestUnmeasuredResourcesAreNotReportedAsZero(t *testing.T) {
 	})
 	assert.True(t, measured.ResourcesMeasured)
 }
+
+// A number cannot say whether 1.2k requests is normal for an app; a shape
+// can, which is why the list carries one. The maths lives in Go because a
+// division by zero in a template is a blank page at render time.
+func TestSparklineMapsCountsOntoTheViewBox(t *testing.T) {
+	// Peak reaches the top (y=1), zero sits on the baseline (y=19), and x
+	// spans the full width.
+	assert.Equal(t, "0.0,19.0 50.0,1.0 100.0,10.0", sparklinePoints([]int{0, 10, 5}))
+
+	// A flat series still draws a line — "no traffic" is information, and a
+	// row with no line reads as broken.
+	assert.Equal(t, "0.0,19.0 100.0,19.0", sparklinePoints([]int{0, 0}))
+	assert.Equal(t, "0.0,1.0 100.0,1.0", sparklinePoints([]int{7, 7}))
+
+	// One bucket is drawn as a segment rather than dividing by zero.
+	assert.Equal(t, "0.0,1.0 100.0,1.0", sparklinePoints([]int{3}))
+
+	// Nothing at all renders nothing, and the template shows a dash instead.
+	assert.Empty(t, sparklinePoints(nil))
+}
