@@ -175,7 +175,12 @@ func checkMemoryLimit(owner, repo string, rssBytes int64, settings AppSettings) 
 		st.Message = "the app was stopped for using more than its " +
 			strconv.Itoa(settings.Limits.MemoryMB) + " MB memory limit"
 		// Written by us, about a limit the department can see anyway.
-		st.UserMessage = "한도 " + strconv.Itoa(settings.Limits.MemoryMB) + "MB 를 넘겨 중지되었습니다."
+		// A key plus its argument rather than a sentence: this is stored in
+		// the state file and rendered later, possibly for a reader whose
+		// language is not the one the watchdog happened to run in.
+		st.UserMessage = ""
+		st.UserMessageKey = "company.sample.oom_stopped"
+		st.UserMessageArg = settings.Limits.MemoryMB
 		// Desired stays "running": the department did not switch this off, the
 		// platform did, and they should be able to start it again after
 		// fixing the cause or getting the limit raised.
@@ -321,7 +326,7 @@ func diskUsageMB(p appPaths) int {
 // looking at before treating a blank as information.
 func ResourceSamplingAvailable() (bool, string) {
 	if runtime.GOOS != "linux" {
-		return false, "이 서버에서는 앱의 메모리·CPU 사용량을 측정할 수 없습니다 (/proc 이 없는 운영체제)."
+		return false, "company.sample.unavailable"
 	}
 	return true, ""
 }

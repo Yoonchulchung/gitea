@@ -157,8 +157,12 @@ export function initCompanyAppCharts() {
 
   const points = parseJSON<Point[]>(root.getAttribute('data-points'), []);
   const annotations = parseJSON<Annotation[]>(root.getAttribute('data-annotations'), []);
+  // Series names and the empty state come from the template: this script has
+  // no locale of its own, and the same data-* route already carries the
+  // points and annotations.
+  const text = (name: string) => root.getAttribute(`data-i18n-${name}`) ?? name;
   if (!points.length) {
-    root.textContent = '아직 표시할 지표가 없습니다. 앱에 요청이 들어오면 여기에 그래프가 나타납니다.';
+    root.textContent = text('empty');
     return;
   }
 
@@ -170,19 +174,19 @@ export function initCompanyAppCharts() {
   const charts: Record<string, {datasets: any[]}> = {
     requests: {
       datasets: [
-        {label: '요청', data: at('requests'), borderColor: chartJsColors.commits, tension: 0.3, pointRadius: 0},
-        {label: '5xx', data: at('errors'), borderColor: chartJsColors.deletions, tension: 0.3, pointRadius: 0},
+        {label: text('requests'), data: at('requests'), borderColor: chartJsColors.commits, tension: 0.3, pointRadius: 0},
+        {label: text('errors'), data: at('errors'), borderColor: chartJsColors.deletions, tension: 0.3, pointRadius: 0},
       ],
     },
     resources: {
       datasets: [
-        {label: '메모리 MB', data: at('memMB'), borderColor: chartJsColors.deletions, tension: 0.3, pointRadius: 0},
-        {label: 'CPU %', data: at('cpu'), borderColor: chartJsColors.commits, tension: 0.3, pointRadius: 0},
+        {label: text('memory'), data: at('memMB'), borderColor: chartJsColors.deletions, tension: 0.3, pointRadius: 0},
+        {label: text('cpu'), data: at('cpu'), borderColor: chartJsColors.commits, tension: 0.3, pointRadius: 0},
       ],
     },
     latency: {
       datasets: [
-        {label: 'p95 ms', data: at('p95'), borderColor: chartJsColors.commits, tension: 0.3, pointRadius: 0},
+        {label: text('p95'), data: at('p95'), borderColor: chartJsColors.commits, tension: 0.3, pointRadius: 0},
       ],
     },
   };

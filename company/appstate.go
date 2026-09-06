@@ -147,6 +147,12 @@ type AppState struct {
 	Reason      string `json:"reason,omitempty"`
 	Message     string `json:"message,omitempty"`
 	UserMessage string `json:"userMessage,omitempty"`
+	// The translated form of UserMessage. Written where the message is
+	// composed far from any request — the watchdog has no reader and so no
+	// language — and resolved when it is finally shown. UserMessage stays for
+	// text an admin typed, which is theirs and not ours to translate.
+	UserMessageKey string `json:"userMessageKey,omitempty"`
+	UserMessageArg any    `json:"userMessageArg,omitempty"`
 
 	// EnvVersion is bumped whenever environment variables are saved.
 	// EnvVersionRunning is what the live process was started with. When they

@@ -37,6 +37,10 @@ type AppCause struct {
 	// DetailText is verbatim content — a package name, an admin's reason.
 	// Never log output.
 	DetailText string
+	// DetailArg is the argument for Detail when its key takes one. A single
+	// value rather than a slice because a template cannot spread one: passing
+	// []any{192} to Tr formats "%d" as "[192]".
+	DetailArg any
 	// Action and ActionLabel (a locale key) point at the one thing that
 	// fixes it. Empty when the fix is in the department's own code, where no
 	// button helps.
@@ -107,9 +111,14 @@ func departmentCause(st *AppState) *AppCause {
 		}
 	case ReasonOOM:
 		return &AppCause{
-			Summary:     "company.app.cause.oom",
-			AdminHint:   "company.app.cause.oom.admin",
-			DetailText:  st.UserMessage,
+			Summary:   "company.app.cause.oom",
+			AdminHint: "company.app.cause.oom.admin",
+			// The watchdog writes a key here: it runs with no reader and so no
+			// language of its own.
+			Detail:     st.UserMessageKey,
+			DetailArg:  st.UserMessageArg,
+			DetailText: st.UserMessage,
+
 			Action:      "deploy",
 			ActionLabel: "company.app.cause.oom.action",
 		}

@@ -86,7 +86,7 @@
 					{{if .AdminHint}}<div class="tw-mt-1">{{ctx.Locale.Tr .AdminHint}}</div>{{end}}
 					{{if or .Detail .DetailText}}
 						<div class="tw-text-13 tw-mt-2 text-grey">{{ctx.Locale.Tr "company.adminapp.dept_sees"}}
-							{{if .Detail}}<div class="company-app-cause-line">{{ctx.Locale.Tr .Detail}}</div>{{end}}
+							{{if .Detail}}<div class="company-app-cause-line">{{ctx.Locale.Tr .Detail .DetailArg}}</div>{{end}}
 							{{range StringUtils.Split .DetailText "\n"}}<div class="company-app-cause-line">{{.}}</div>{{end}}
 						</div>
 					{{end}}
@@ -148,7 +148,13 @@
 		<div class="ui attached segment company-charts"
 			data-points="{{.ChartPoints}}"
 			data-annotations="{{.ChartAnnotations}}"
-			data-memory-limit="{{.MemoryLimitMB}}">
+			data-memory-limit="{{.MemoryLimitMB}}"
+			data-i18n-empty="{{ctx.Locale.Tr "company.chart.empty"}}"
+			data-i18n-requests="{{ctx.Locale.Tr "company.chart.requests"}}"
+			data-i18n-errors="{{ctx.Locale.Tr "company.chart.errors"}}"
+			data-i18n-memory="{{ctx.Locale.Tr "company.chart.memory"}}"
+			data-i18n-cpu="{{ctx.Locale.Tr "company.chart.cpu"}}"
+			data-i18n-p95="{{ctx.Locale.Tr "company.chart.p95"}}">
 			<div class="company-chart"><h5>{{ctx.Locale.Tr "company.adminapp.chart_requests"}}</h5><div class="company-chart-canvas"><canvas data-chart="requests"></canvas></div></div>
 			<div class="company-chart"><h5>{{ctx.Locale.Tr "company.adminapp.chart_resources"}}</h5><div class="company-chart-canvas"><canvas data-chart="resources"></canvas></div></div>
 			<div class="company-chart"><h5>{{ctx.Locale.Tr "company.adminapp.chart_latency"}}</h5><div class="company-chart-canvas"><canvas data-chart="latency"></canvas></div></div>

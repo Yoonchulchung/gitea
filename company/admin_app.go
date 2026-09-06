@@ -68,14 +68,14 @@ type chartAnnotation struct {
 // buildChartData renders the payload as JSON text for embedding in a page;
 // buildChartPayload returns the same values for an endpoint that marshals
 // them itself.
-func buildChartData(buckets []MetricsBucket, st *AppState) (string, string) {
-	points, annotations := buildChartPayload(buckets, st)
+func buildChartData(ctx *context.Context, buckets []MetricsBucket, st *AppState) (string, string) {
+	points, annotations := buildChartPayload(ctx, buckets, st)
 	pointsJSON, _ := json.Marshal(points)
 	annotationsJSON, _ := json.Marshal(annotations)
 	return string(pointsJSON), string(annotationsJSON)
 }
 
-func buildChartPayload(buckets []MetricsBucket, st *AppState) ([]chartPoint, []chartAnnotation) {
+func buildChartPayload(ctx *context.Context, buckets []MetricsBucket, st *AppState) ([]chartPoint, []chartAnnotation) {
 	points := make([]chartPoint, 0, len(buckets))
 	for _, b := range buckets {
 		points = append(points, chartPoint{
@@ -94,25 +94,28 @@ func buildChartPayload(buckets []MetricsBucket, st *AppState) ([]chartPoint, []c
 		if label == "" {
 			continue
 		}
-		annotations = append(annotations, chartAnnotation{T: h.At * 1000, Label: label, Bad: bad})
+		// Resolved here rather than in the chart script, which has no locale.
+		annotations = append(annotations, chartAnnotation{T: h.At * 1000, Label: ctx.Locale.TrString(label), Bad: bad})
 	}
 	return points, annotations
 }
 
-// historyLabel names an event for the chart. Returns "" for events not worth
-// a line — a chart striped with markers is as unreadable as one with none.
+// historyLabel names an event for the chart, as a locale key. Returns ""
+// for events not worth a line — a chart striped with markers is as
+// unreadable as one with none. The template resolves the key, because the
+// chart script has no locale of its own.
 func historyLabel(h AppHistoryEntry) (string, bool) {
 	switch {
 	case h.Reason == ReasonRolledBack:
-		return "롤백", true
+		return "company.chart.event.rolled_back", true
 	case h.Reason == ReasonOOM:
-		return "메모리 초과로 중지", true
+		return "company.chart.event.oom", true
 	case h.Status == AppStateFailed:
-		return "배포 실패", true
+		return "company.chart.event.failed", true
 	case h.Status == AppStateSuspended:
-		return "관리자 정지", true
+		return "company.chart.event.suspended", true
 	case h.Status == AppStateRunning && h.SHA != "":
-		return "배포", false
+		return "company.chart.event.deployed", false
 	default:
 		return "", false
 	}
@@ -149,7 +152,7 @@ func AdminApp(ctx *context.Context) {
 	since, window := windowFor(ctx.FormString("range"))
 	buckets := LoadMetrics(st.Owner, st.Repo, since)
 	summary := SummarizeMetrics(buckets)
-	points, annotations := buildChartData(buckets, st)
+	points, annotations := buildChartData(ctx, buckets, st)
 
 	settings := SettingsFor(st.Owner, st.Repo)
 	sandboxed, sandboxDetail := SandboxStatus()
@@ -177,7 +180,10 @@ func AdminApp(ctx *context.Context) {
 	ctx.Data["LimitsDetail"] = limitsDetail
 	// Whether the host can measure usage at all, as opposed to whether any
 	// sample happens to exist yet — a blank means different things.
-	ctx.Data["ResourceSamplingAvailable"], ctx.Data["ResourceSamplingWhy"] = ResourceSamplingAvailable()
+	samplingOK, samplingWhy := ResourceSamplingAvailable()
+	ctx.Data["ResourceSamplingAvailable"] = samplingOK
+	// A key, resolved here: the sampler runs with no reader and so no language.
+	ctx.Data["ResourceSamplingWhy"] = ctx.Locale.TrString(samplingWhy)
 	// What this app may install, split by where the permission came from: the
 	// platform's own stack is the same for everyone and is not this app's
 	// decision, while allowExtra is what an admin approved for this app
@@ -308,7 +314,7 @@ func AdminAppMetrics(ctx *context.Context) {
 	since, _ := windowFor(ctx.FormString("range"))
 	st := LoadAppState(owner, name)
 	buckets := LoadMetrics(owner, name, since)
-	points, annotations := buildChartPayload(buckets, st)
+	points, annotations := buildChartPayload(ctx, buckets, st)
 	summary := SummarizeMetrics(buckets)
 
 	ctx.JSON(http.StatusOK, map[string]any{

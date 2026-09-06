@@ -4485,5 +4485,18 @@
   "company.admin.nav_packages": "Package management",
   "company.admin.nav_activity": "Activity log",
   "company.feed.added": "added to %[1]s %[2]s",
-  "company.feed.edited": "edited in %[1]s %[2]s"
+  "company.feed.edited": "edited in %[1]s %[2]s",
+  "company.sample.unavailable": "This server cannot measure an app's memory or CPU usage (its OS has no /proc).",
+  "company.sample.oom_stopped": "Stopped for going over the %dMB limit.",
+  "company.chart.empty": "No metrics to show yet. A graph appears here once the app starts receiving requests.",
+  "company.chart.requests": "requests",
+  "company.chart.errors": "5xx",
+  "company.chart.memory": "memory MB",
+  "company.chart.cpu": "CPU %",
+  "company.chart.p95": "p95 ms",
+  "company.chart.event.rolled_back": "rolled back",
+  "company.chart.event.oom": "stopped, out of memory",
+  "company.chart.event.failed": "deploy failed",
+  "company.chart.event.suspended": "suspended by admin",
+  "company.chart.event.deployed": "deployed"
 }

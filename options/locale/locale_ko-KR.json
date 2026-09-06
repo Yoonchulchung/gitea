@@ -4437,5 +4437,18 @@
   "company.admin.nav_packages": "패키지 관리",
   "company.admin.nav_activity": "활동 기록",
   "company.feed.added": "%[1]s에 추가 %[2]s",
-  "company.feed.edited": "%[1]s에 편집 %[2]s"
+  "company.feed.edited": "%[1]s에 편집 %[2]s",
+  "company.sample.unavailable": "이 서버에서는 앱의 메모리·CPU 사용량을 측정할 수 없습니다 (/proc 이 없는 운영체제).",
+  "company.sample.oom_stopped": "한도 %dMB 를 넘겨 중지되었습니다.",
+  "company.chart.empty": "아직 표시할 지표가 없습니다. 앱에 요청이 들어오면 여기에 그래프가 나타납니다.",
+  "company.chart.requests": "요청",
+  "company.chart.errors": "5xx",
+  "company.chart.memory": "메모리 MB",
+  "company.chart.cpu": "CPU %",
+  "company.chart.p95": "p95 ms",
+  "company.chart.event.rolled_back": "롤백",
+  "company.chart.event.oom": "메모리 초과로 중지",
+  "company.chart.event.failed": "배포 실패",
+  "company.chart.event.suspended": "관리자 정지",
+  "company.chart.event.deployed": "배포"
 }
