@@ -29,26 +29,49 @@ import (
 // for one, and everything else becomes a generic sentence plus a log line an
 // administrator can read.
 
-// userError marks a message written to be shown to a department. Anything
-// not wrapped in one is treated as internal.
-type userError struct{ msg string }
+// userError marks a message written to be shown to a person rather than
+// logged, and records who it was written for.
+//
+// Being safe to show is not the same as being addressed to the reader.
+// "Press Deploy Request and an administrator will approve it" is perfectly
+// safe, and useless to the administrator who would be doing the approving —
+// so the two audiences get their own sentences whenever the advice differs.
+type userError struct {
+	staff string
+	admin string // falls back to staff when the advice is the same for both
+}
 
-func (e *userError) Error() string { return e.msg }
+func (e *userError) Error() string { return e.staff }
 
-// userErrorf builds an error whose text is safe for a non-administrator.
-// Use it only for sentences a non-developer can act on — never to wrap an
-// error that came from the filesystem, git, or an external command.
+// userErrorf builds an error whose text suits either audience. Use it only
+// for sentences a non-developer can act on — never to wrap an error that
+// came from the filesystem, git, or an external command.
 func userErrorf(format string, a ...any) error {
-	return &userError{msg: fmt.Sprintf(format, a...)}
+	return &userError{staff: fmt.Sprintf(format, a...)}
+}
+
+// audienceError builds an error that says different things to a department
+// and to an administrator, because the thing each of them should do next is
+// different.
+func audienceError(staff, admin string) error {
+	return &userError{staff: staff, admin: admin}
+}
+
+func asUserError(err error) (*userError, bool) {
+	if err == nil {
+		return nil, false
+	}
+	u := new(*userError)
+	if errors.As(err, u) {
+		return *u, true
+	}
+	return nil, false
 }
 
 // userMessage returns the department-safe text of err, if it has any.
 func userMessage(err error) (string, bool) {
-	if err == nil {
-		return "", false
-	}
-	if u := new(*userError); errors.As(err, u) {
-		return (*u).Error(), true
+	if u, ok := asUserError(err); ok {
+		return u.staff, true
 	}
 	return "", false
 }
@@ -67,6 +90,25 @@ func DepartmentSafeError(context string, err error) string {
 	}
 	log.Error("company: %s: %v", context, err)
 	return "처리 중 문제가 발생했습니다. 관리자에게 문의해 주세요."
+}
+
+// AdminError returns the message for an administrator.
+//
+// Nothing is withheld — an admin gets the raw error when there is no written
+// sentence — but where one audience's advice would be wrong for the other,
+// the admin's version is used. Telling an operator to press "Deploy Request"
+// describes the department's job, not theirs.
+func AdminError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if u, ok := asUserError(err); ok {
+		if u.admin != "" {
+			return u.admin
+		}
+		return u.staff
+	}
+	return err.Error()
 }
 
 // absolutePathPattern matches a unix path deep enough to be a real location

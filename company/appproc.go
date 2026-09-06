@@ -34,8 +34,14 @@ import (
 // errNoRelease means start was pressed before any deploy ever succeeded —
 // a different situation from an app that is broken, and the only one the
 // department fixes by deploying rather than by editing code.
-var errNoRelease = userErrorf("아직 실행할 수 있는 버전이 없습니다. " +
-	"오른쪽 위 [Deploy Request] 에서 배포를 요청하면, 관리자 승인 뒤 앱이 자동으로 시작됩니다.")
+var errNoRelease = audienceError(
+	"아직 실행할 수 있는 버전이 없습니다. 오른쪽 위 [Deploy Request] 에서 배포를 요청하면, "+
+		"관리자 승인 뒤 앱이 자동으로 시작됩니다.",
+	// The admin does not press Deploy Request — the department does, and the
+	// admin approves it. Telling an operator to do the requester's job is
+	// worse than telling them nothing.
+	"빌드된 릴리스가 없어 시작할 수 없습니다. 이 부서의 배포 요청을 승인하면 자동으로 빌드·기동됩니다. "+
+		"직전 배포가 실패했다면 아래 원문과 로그를 확인해 주세요.")
 
 const (
 	// stopGracePeriod is how long a process gets to finish in-flight
@@ -394,7 +400,9 @@ func (s *appSupervisor) Start() error {
 func (s *appSupervisor) startProcess() (int, error) {
 	settings := SettingsFor(s.owner, s.repo)
 	if !settings.IsEnabled() {
-		return 0, userErrorf("관리자가 이 앱을 비활성화했습니다")
+		return 0, audienceError(
+			"관리자가 이 앱을 비활성화했습니다",
+			"apps.yml 에서 이 앱이 enabled: false 로 되어 있습니다")
 	}
 	appEnv, envVer, err := LoadAppEnv(s.owner, s.repo)
 	if err != nil {

@@ -106,3 +106,33 @@ func TestInstallFailureSummaryRedactsPaths(t *testing.T) {
 	assert.NotContains(t, got, "/srv/gitea/data")
 	assert.Contains(t, got, "pydantic-core==2.14.1", "the actionable half survives")
 }
+
+// Safe to show is not the same as addressed to the reader. An administrator
+// told to press "Deploy Request" has been handed the department's job.
+func TestAudienceErrorSeparatesTheTwoVoices(t *testing.T) {
+	err := audienceError("배포 요청을 해주세요", "부서의 배포 요청을 승인해 주세요")
+
+	assert.Equal(t, "배포 요청을 해주세요", DepartmentSafeError("ctx", err))
+	assert.Equal(t, "부서의 배포 요청을 승인해 주세요", AdminError(err))
+}
+
+func TestAdminErrorFallsBack(t *testing.T) {
+	// Advice that suits both audiences is written once.
+	shared := userErrorf("변수 이름이 비어 있습니다")
+	assert.Equal(t, "변수 이름이 비어 있습니다", AdminError(shared))
+	assert.Equal(t, "변수 이름이 비어 있습니다", DepartmentSafeError("ctx", shared))
+
+	// Nothing is withheld from an admin: an unwritten error arrives whole,
+	// paths and all, which is exactly what they need.
+	raw := errors.New("readlink /srv/gitea/data/company-apps/x/current: no such file")
+	assert.Equal(t, raw.Error(), AdminError(raw))
+	assert.NotContains(t, DepartmentSafeError("ctx", raw), "/srv")
+}
+
+// The message that prompted the split: an admin pressing start on an app
+// with nothing built must not be told to file a deploy request.
+func TestNoReleaseSpeaksToBothAudiences(t *testing.T) {
+	assert.Contains(t, DepartmentSafeError("ctx", errNoRelease), "Deploy Request")
+	assert.NotContains(t, AdminError(errNoRelease), "Deploy Request")
+	assert.Contains(t, AdminError(errNoRelease), "승인")
+}

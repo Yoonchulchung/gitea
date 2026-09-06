@@ -53,7 +53,9 @@ func RollbackApp(owner, repo, actor string) error {
 	if _, err := os.Stat(previous); err != nil {
 		// A release directory that has been cleaned up would otherwise fail
 		// after the app is already stopped, leaving it down.
-		return userErrorf("이전 버전의 파일이 서버에 더 이상 없습니다")
+		return audienceError(
+			"이전 버전의 파일이 서버에 더 이상 없습니다",
+			"이전 릴리스 디렉터리가 없습니다 — 릴리스 GC 로 정리되었을 수 있습니다. 재배포가 필요합니다")
 	}
 
 	s := supervisorFor(owner, repo)

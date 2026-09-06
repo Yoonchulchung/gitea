@@ -63,9 +63,16 @@
 					<strong>{{with .Cause}}{{.Summary}}{{end}}</strong>
 					<code class="tw-text-12">{{.App.Reason}}</code>
 				</div>
-				{{with .Cause}}{{if .Detail}}
-					<div class="tw-text-13 tw-mt-1">부서에 보이는 안내: {{.Detail}}</div>
-				{{end}}{{end}}
+				{{with .Cause}}
+					{{/* What the operator should do comes first — it is their page.
+					     What the department is being told comes second and is
+					     labelled, because their question will be about that
+					     sentence rather than about the log. */}}
+					{{if .AdminHint}}<div class="tw-mt-1">{{.AdminHint}}</div>{{end}}
+					{{if .Detail}}
+						<div class="tw-text-13 tw-mt-2 text-grey">부서에 보이는 안내: {{.Detail}}</div>
+					{{end}}
+				{{end}}
 				{{if .App.Message}}
 					{{/* Admin-only by definition — this is the half that can carry
 					     absolute paths and build output (company/usererror.go). */}}

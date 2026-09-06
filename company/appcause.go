@@ -31,6 +31,9 @@ type AppCause struct {
 	// the fix is in the department's own code, where no button helps.
 	Action      string
 	ActionLabel string
+	// AdminHint is what an *operator* should do about this, which is often
+	// not what the department should do. Empty where the two are the same.
+	AdminHint string
 }
 
 // DepartmentCause explains an app's current problem, or returns nil when
@@ -43,7 +46,8 @@ func DepartmentCause(st *AppState) *AppCause {
 	switch st.Reason {
 	case ReasonInstallFailed:
 		return &AppCause{
-			Summary: "필요한 패키지를 설치하지 못했습니다",
+			Summary:   "필요한 패키지를 설치하지 못했습니다",
+			AdminHint: "부서가 requirements.txt 를 고쳐 다시 배포해야 합니다. 관리자가 할 일은 없습니다.",
 			// Never st.Message: that is the raw pip output, which runs to
 			// dozens of lines of download progress and is admin-only by
 			// design. What a department needs is the one line naming the
@@ -56,6 +60,7 @@ func DepartmentCause(st *AppState) *AppCause {
 	case ReasonPackageDenied:
 		return &AppCause{
 			Summary:     "아직 승인되지 않은 패키지가 있습니다",
+			AdminHint:   "이 부서의 배포 요청을 승인하면 apps.yml 에 패키지가 추가되고 자동으로 재배포됩니다.",
 			Detail:      st.UserMessage,
 			Action:      "deploy",
 			ActionLabel: "패키지 승인 요청하기",
@@ -63,14 +68,16 @@ func DepartmentCause(st *AppState) *AppCause {
 	case ReasonOOM:
 		return &AppCause{
 			Summary:     "메모리를 한도보다 많이 사용해 중지되었습니다",
+			AdminHint:   "지표의 메모리 최대치를 한도와 비교해 상향 여부를 판단하세요. 평균이 아니라 피크가 근거입니다.",
 			Detail:      st.UserMessage,
 			Action:      "deploy",
 			ActionLabel: "메모리 한도 상향 요청하기",
 		}
 	case ReasonHealthTimeout:
 		return &AppCause{
-			Summary: "앱이 시작된 뒤 응답하지 않았습니다",
-			Detail:  "main.py 의 app 이 정상적으로 뜨는지, 시작하자마자 오류로 종료되지 않는지 확인해 주세요.",
+			Summary:   "앱이 시작된 뒤 응답하지 않았습니다",
+			AdminHint: "로그에 기동 직후 예외가 있는지 확인하세요. 이전 버전이 있었다면 자동으로 롤백되어 서비스는 유지됩니다.",
+			Detail:    "main.py 의 app 이 정상적으로 뜨는지, 시작하자마자 오류로 종료되지 않는지 확인해 주세요.",
 		}
 	case ReasonCrashLoop:
 		return &AppCause{
@@ -88,8 +95,9 @@ func DepartmentCause(st *AppState) *AppCause {
 		}
 	case ReasonSandboxUnavailable:
 		return &AppCause{
-			Summary: "서버 설정 문제로 앱을 안전하게 실행할 수 없습니다",
-			Detail:  "부서에서 고칠 수 있는 문제가 아닙니다. 관리자에게 문의해 주세요.",
+			Summary:   "서버 설정 문제로 앱을 안전하게 실행할 수 없습니다",
+			AdminHint: "docs/company/sandboxcheck/preflight.sh 로 호스트를 확인하세요. 격리 없이 띄우려면 [company] ALLOW_UNSANDBOXED_APPS 를 명시적으로 켜야 합니다.",
+			Detail:    "부서에서 고칠 수 있는 문제가 아닙니다. 관리자에게 문의해 주세요.",
 		}
 	case ReasonSecretError:
 		return &AppCause{
@@ -108,7 +116,8 @@ func DepartmentCause(st *AppState) *AppCause {
 		// failed one keeps its own reason (company/appproc.go), because that
 		// is the thing to fix and this sentence is not.
 		return &AppCause{
-			Summary: "아직 배포되지 않았습니다",
+			Summary:   "아직 배포되지 않았습니다",
+			AdminHint: "부서가 배포 요청을 올리면 승인 후 자동으로 빌드·기동됩니다. 관리자가 먼저 할 일은 없습니다.",
 			Detail: "코드를 올린 뒤 [배포 요청]을 하면, 관리자 승인과 빌드가 끝나는 대로 " +
 				"앱이 자동으로 시작됩니다.",
 			Action: "deploy", ActionLabel: "배포 요청하기",
