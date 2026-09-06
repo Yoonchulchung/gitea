@@ -417,16 +417,17 @@ func AppHistory(ctx *context.Context) {
 		attempts[i].Summary = RedactServerPaths(attempts[i].Summary)
 	}
 	running := CurrentRelease(owner, name)
-	markCurrent(attempts, running.SHA)
+	st := LoadAppState(owner, name)
+	attempts = withLiveState(attempts, st, running.SHA)
 
 	page := max(ctx.FormInt("page"), 1)
 	const perPage = 20
 	start := min((page-1)*perPage, len(attempts))
 	end := min(start+perPage, len(attempts))
 
-	st := LoadAppState(owner, name)
 	ctx.Data["Title"] = "배포 이력"
 	ctx.Data["App"] = st
+	ctx.Data["StatusLabel"] = departmentStatusLabel(st)
 	ctx.Data["Attempts"] = attempts[start:end]
 	ctx.Data["TotalAttempts"] = len(attempts)
 	ctx.Data["Page"] = context.NewPagerBuilder(ctx).TotalCount(int64(len(attempts))).PerPageLimit(perPage).CurPage(page).Build()

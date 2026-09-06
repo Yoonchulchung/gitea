@@ -121,6 +121,10 @@
    a fact rather than as a field inviting a change that would not be saved. */
 /* The time each line arrived. Dimmed and fixed-width so the eye runs down the
    messages and reaches for the times only when connecting one to a deploy. */
+/* The row for a deploy that has not finished. Tinted rather than badged alone:
+   it is the only row whose outcome is still unknown, and someone scanning the
+   table should not have to read the status column to notice it. */
+.company-attempt-live > td { background: var(--color-warning-bg); }
 .company-log-time {
 	color: var(--color-text-light-3);
 	user-select: none;

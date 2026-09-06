@@ -5,6 +5,7 @@
 
 		<h2 class="tw-flex tw-items-center tw-gap-3">
 			배포 이력
+			<span class="company-app-state {{.App.Actual}}">{{.StatusLabel}}</span>
 			<span class="text-grey tw-text-13">{{.TotalAttempts}}건</span>
 			<div class="tw-flex-1"></div>
 			<a class="ui basic button" href="{{.AppLink}}">앱 관리로</a>
@@ -26,10 +27,14 @@
 				</thead>
 				<tbody>
 					{{range .Attempts}}
-						<tr>
+						<tr{{if .InProgress}} class="company-attempt-live"{{end}}>
 							<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
 							<td>
-								{{if .Failed}}
+								{{/* A deploy that has not finished has no build-log entry yet,
+								     so without this row the page implies nothing is happening. */}}
+								{{if .InProgress}}
+									<span class="company-app-state building">{{.State}}</span>
+								{{else if .Failed}}
 									<span class="company-app-state failed">실패</span>
 								{{else}}
 									<span class="company-app-state running">성공</span>
@@ -38,9 +43,13 @@
 							{{/* Which one is live is not "the newest": a failed deploy
 							     leaves the previous version running, and a rollback puts
 							     an older one back. */}}
+							{{/* "Running" and "latest" are different rows after a failed
+							     deploy or a rollback, and that difference is usually what
+							     someone came here to find. */}}
 							<td class="tw-font-mono">
 								{{if .SHA}}{{ShortSha .SHA}}{{else}}<span class="text-grey">—</span>{{end}}
 								{{if .Current}}<span class="ui green mini label tw-ml-1">실행 중</span>{{end}}
+								{{if .Latest}}<span class="ui blue mini label tw-ml-1">최신</span>{{end}}
 							</td>
 							{{/* Server paths are stripped for this audience — see
 							     company/app_page.go. Text nodes, never innerHTML. */}}

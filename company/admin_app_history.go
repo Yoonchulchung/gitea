@@ -14,6 +14,7 @@ import (
 
 	"gitea.dev/modules/setting"
 	"gitea.dev/modules/templates"
+	"gitea.dev/modules/util"
 	"gitea.dev/services/context"
 )
 
@@ -44,6 +45,58 @@ type deployAttempt struct {
 	// necessarily the newest attempt: a failed deploy leaves the previous
 	// version running, and a rollback puts an older one back.
 	Current bool
+	// Latest marks the most recent attempt. Separate from Current for the same
+	// reason: after a failed deploy or a rollback they are different rows, and
+	// that difference is usually the thing being looked for.
+	Latest bool
+	// InProgress marks a deploy that is happening now. It has no build-log
+	// entry yet — the header is written when the build finishes — so without
+	// this a queued or building deploy is invisible here and the page implies
+	// nothing is happening.
+	InProgress bool
+	// State is the app's own status word for the row in progress.
+	State string
+}
+
+// deployInProgress returns the row for a deploy that has not finished, or
+// nothing when none is running.
+func deployInProgress(st *AppState) (deployAttempt, bool) {
+	switch st.Actual {
+	case AppStateQueued, AppStateBuilding, AppStateActivating:
+		return deployAttempt{
+			At: st.UpdatedAt, SHA: util.TruncateRunes(st.SHA, 12),
+			InProgress: true, State: departmentStatusLabel(st),
+			Summary: inProgressDetail(st.Actual),
+		}, true
+	default:
+		return deployAttempt{}, false
+	}
+}
+
+// inProgressDetail says which part is happening, because the three take very
+// different amounts of time and "배포 중" for eight minutes reads as stuck.
+func inProgressDetail(state string) string {
+	switch state {
+	case AppStateQueued:
+		return "차례를 기다리는 중입니다"
+	case AppStateBuilding:
+		return "패키지를 설치하는 중입니다 — 몇 분 걸릴 수 있습니다"
+	default:
+		return "새 버전으로 교체하고 상태를 확인하는 중입니다"
+	}
+}
+
+// withLiveState puts the in-progress deploy at the top and marks the newest
+// finished attempt.
+func withLiveState(attempts []deployAttempt, st *AppState, runningSHA string) []deployAttempt {
+	markCurrent(attempts, runningSHA)
+	if len(attempts) > 0 {
+		attempts[0].Latest = true // sorted newest first
+	}
+	if row, ok := deployInProgress(st); ok {
+		attempts = append([]deployAttempt{row}, attempts...)
+	}
+	return attempts
 }
 
 // markCurrent flags the attempt that built what is running.
@@ -74,9 +127,8 @@ func AdminAppHistory(ctx *context.Context) {
 	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")
 	st := LoadAppState(owner, repo)
 
-	attempts := readDeployAttempts(appPathsFor(owner, repo))
 	running := CurrentRelease(owner, repo)
-	markCurrent(attempts, running.SHA)
+	attempts := withLiveState(readDeployAttempts(appPathsFor(owner, repo)), st, running.SHA)
 
 	// Paged: an app that has been redeployed weekly for a year has fifty of
 	// these, and the page exists precisely for the ones that are not recent.
@@ -92,6 +144,7 @@ func AdminAppHistory(ctx *context.Context) {
 	ctx.Data["Page"] = context.NewPagerBuilder(ctx).TotalCount(int64(len(attempts))).PerPageLimit(perPage).CurPage(page).Build()
 	ctx.Data["HistoryRows"] = describeHistory(st.History)
 	ctx.Data["Running"] = running
+	ctx.Data["StatusLabel"] = departmentStatusLabel(st)
 	ctx.Data["AdminAppLink"] = setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo
 	ctx.HTML(http.StatusOK, tplAdminAppHistory)
 }

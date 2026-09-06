@@ -6,6 +6,7 @@ package company
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -134,4 +135,33 @@ func TestDeployVersionRefusesWhatItCannotDo(t *testing.T) {
 	// rather than a unit test. What matters is that it is checked before a
 	// build starts, so the failure is "that version is no longer there" rather
 	// than a message about git from inside a build.
+}
+
+// A deploy that is queued or building has no build-log entry yet — the header
+// is written when it finishes — so without a row of its own the history page
+// implies nothing is happening while a deploy is underway.
+func TestHistoryShowsADeployStillInFlight(t *testing.T) {
+	finished := []deployAttempt{{At: 100, SHA: "bbbbbbbbbbbb"}, {At: 50, SHA: "aaaaaaaaaaaa"}}
+
+	rows := withLiveState(slices.Clone(finished),
+		&AppState{Actual: AppStateBuilding, SHA: "cccccccccccccccc", UpdatedAt: 200}, "aaaaaaaaaaaadddd")
+
+	require.Len(t, rows, 3)
+	assert.True(t, rows[0].InProgress)
+	assert.Equal(t, "cccccccccccc", rows[0].SHA, "shortened to match how the log records it")
+	assert.Contains(t, rows[0].Summary, "설치")
+
+	// "Running" and "latest" are different rows whenever a deploy failed or an
+	// older version was put back, and that difference is what someone came to
+	// find.
+	assert.True(t, rows[1].Latest, "the newest finished attempt")
+	assert.False(t, rows[1].Current)
+	assert.True(t, rows[2].Current, "an older release is what is actually serving")
+
+	// Nothing in flight: no synthetic row, and the newest attempt is still
+	// marked.
+	rows = withLiveState(slices.Clone(finished), &AppState{Actual: AppStateRunning}, "bbbbbbbbbbbbdddd")
+	require.Len(t, rows, 2)
+	assert.True(t, rows[0].Latest)
+	assert.True(t, rows[0].Current, "here they are the same row")
 }
