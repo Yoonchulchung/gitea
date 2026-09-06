@@ -172,8 +172,21 @@
   `kill(-1)`까지 할 수 있다는 것이 이 서버에서 실증됐다. 설계 문서의 주장이 추정이 아님
 - [ ] **샌드박스 실증 실행 (서버에서, 전부 `ok`여야 통과):**
   - [x] `./preflight.sh`
-  - [ ] `./run.sh /path/to/gitea /path/to/gitea/data` — **Gitea를 실행하는 계정으로**
-  - [ ] seccomp 단위 테스트: `go test -run 'Seccomp|HandledRights' ./company/`
+  - [x] `./run.sh` **1회차 (2026-09-06)** — 실제로 막히는 것이 확인된 항목:
+    `gitea.db` / `data/sessions/` / 전 부서 저장소 / `app.ini` / `/etc/shadow` /
+    `/usr` 쓰기 / **릴리스 트리 쓰기**(자기 코드 덮어쓰기 = 영속 백도어) /
+    TCP·IPv6·raw·netlink·UDP·DNS·`curl` / `/proc` 나열 / Gitea `environ` /
+    ptrace / Gitea에 시그널 / **`RLIMIT_DATA` 초과 할당(`MemoryError`)**
+  - [x] "막히면 안 되는 것" 6개 전부 통과 — **파이썬이 정상 동작한다.**
+    자기 디렉터리 쓰기 / `/proc/self` / unix 소켓 / `ssl` / `/etc/passwd` / `getpass.getuser()`
+  - [x] Gitea 환경변수 유출 0건
+  - [x] **실패 1건 → 수정함**: `kill(-1)`이 뚫렸다. `pid_t`는 32비트이고 x86-64는 레지스터
+    상위 절반을 미정의로 두므로, glibc가 `-1`을 `edi`에 넣으면 **제로 확장**되어 커널이
+    보는 `args[0]`은 `0x00000000FFFFFFFF`다. 상위 워드만 검사하던 필터가 그대로 통과시켰다.
+    **단위 테스트가 `^uint64(0)`(부호 확장)만 검사해서 실제 경우를 놓쳤다** — 두 형태 모두
+    검사하도록 추가. 이제 음수 pid 전체를 거부한다(`killpg` 불가는 감수)
+  - [ ] `./run.sh` **2회차** — 위 수정 반영한 바이너리로 재실행
+  - [ ] seccomp 단위 테스트 (아직 한 번도 실행된 적 없음)
   - [ ] 실제 토이 앱 배포 후 `subprocess` 다중 자식 → 프로세스 그룹 종료로 고아 0인지 (Landlock에는 PID 네임스페이스가 없어 여기가 bwrap보다 약한 유일한 지점)
 
 ## 5. 모니터링

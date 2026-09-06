@@ -102,10 +102,25 @@ func TestSeccompFilterDenies(t *testing.T) {
 	})
 
 	t.Run("signalling Gitea", func(t *testing.T) {
-		// kill(-1, SIGKILL) reaches every process this user owns. One line of
-		// Python would take the whole platform down with it.
+		// kill(-1) reaches every process this user owns. One line of Python
+		// would take the whole platform down with it.
+		//
+		// Both register forms, because they are not interchangeable and the
+		// first version of this filter only handled the second one: pid_t is
+		// 32 bits and x86-64 leaves the upper half undefined, so glibc's
+		// zero-extended form is what actually reaches the kernel. Testing
+		// only the sign-extended value passed while the real case went
+		// straight through.
 		assert.Equal(t, seccompDenyPerm,
-			runFilter(t, filter, call(unix.SYS_KILL, ^uint64(0), uint64(unix.SIGKILL))))
+			runFilter(t, filter, call(unix.SYS_KILL, 0x00000000ffffffff, uint64(unix.SIGKILL))),
+			"zero-extended -1, which is what glibc actually produces")
+		assert.Equal(t, seccompDenyPerm,
+			runFilter(t, filter, call(unix.SYS_KILL, ^uint64(0), uint64(unix.SIGKILL))),
+			"sign-extended -1")
+		// A process group, e.g. killpg.
+		assert.Equal(t, seccompDenyPerm,
+			runFilter(t, filter, call(unix.SYS_KILL, 0x00000000fffffc19, uint64(unix.SIGTERM))),
+			"negative pgid")
 		assert.Equal(t, seccompDenyPerm,
 			runFilter(t, filter, call(unix.SYS_KILL, giteaPID, uint64(unix.SIGTERM))))
 		assert.Equal(t, seccompDenyPerm,

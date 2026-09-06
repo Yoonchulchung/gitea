@@ -150,24 +150,33 @@ func socketFamilyRules() []unix.SockFilter {
 	return rules
 }
 
-// killRules stop an app from signalling Gitea.
+// killRules stop an app from signalling anything outside itself.
 //
-// Only two cases are refused: the exact "everything I own" broadcast, and
-// Gitea's own pid. Signalling other pids stays allowed because an app
-// managing its own worker processes is normal, and blocking that would break
-// working apps to close a hole the attacker can barely reach anyway — with
-// /proc denied by Landlock, an app cannot discover another process's pid to
-// aim at.
+// Every negative pid is refused, not just -1: kill(-1) reaches every process
+// this account owns, Gitea included, and kill(-pgid) reaches a whole process
+// group. Gitea's own pid is refused by name on top of that.
+//
+// The cost is that an app cannot signal its own process *group* — killpg is
+// unavailable, though signalling each child by pid still works. That is a
+// small price for closing a hole one line of Python could otherwise use to
+// take the platform down.
+//
+// A negative pid has to be recognised in two forms. pid_t is 32 bits, and
+// x86-64 leaves the upper half of a register holding a 32-bit argument
+// undefined: glibc moves -1 into edi, which zero-extends, so the kernel
+// reports args[0] as 0x00000000FFFFFFFF — high word zero. A sign-extending
+// caller reports 0xFFFFFFFFFFFFFFFF instead. Checking only the high word,
+// as this did at first, lets the ordinary glibc case straight through.
 func killRules(giteaPID int) []unix.SockFilter {
 	var rules []unix.SockFilter
 	for _, nr := range []uintptr{unix.SYS_KILL, unix.SYS_TGKILL} {
 		block := []unix.SockFilter{
 			stmt(bpfLD|bpfW|bpfABS, argHigh(0)),
-			// A negative pid arrives as a sign-extended 64-bit value, so a
-			// non-zero high word means "process group" or "everything".
-			jump(bpfJMP|bpfJGT|bpfK, 0, 0, 1),
+			jump(bpfJMP|bpfJGT|bpfK, 0, 0, 1), // sign-extended negative
 			stmt(bpfRET|bpfK, seccompDenyPerm),
 			stmt(bpfLD|bpfW|bpfABS, argLow(0)),
+			jump(bpfJMP|bpfJGT|bpfK, 0x7fffffff, 0, 1), // zero-extended negative
+			stmt(bpfRET|bpfK, seccompDenyPerm),
 			jump(bpfJMP|bpfJEQ|bpfK, uint32(giteaPID), 0, 1), //nolint:gosec // a pid always fits in 32 bits
 			stmt(bpfRET|bpfK, seccompDenyPerm),
 			stmt(bpfLD|bpfW|bpfABS, seccompOffsetNR),
