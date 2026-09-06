@@ -44,7 +44,16 @@ var sandboxProbe = sync.OnceValues(func() (string, error) {
 	// Presence isn't enough: several distributions ship bwrap but disable
 	// unprivileged user namespaces, and then every sandboxed start fails at
 	// runtime instead of here, where it can be reported clearly.
-	out, err := exec.Command(path, "--unshare-all", "--ro-bind", "/usr", "/usr", "--", "/bin/true").CombinedOutput()
+	//
+	// --unshare-user, not --unshare-all. The latter expands to
+	// --unshare-user-*try*, which continues silently when the user namespace
+	// cannot be created — so a host with namespaces disabled either fails
+	// somewhere unrelated (the loopback setup, on Ubuntu 24.04) or, worse,
+	// succeeds while isolating nothing. Demanding the namespace outright is
+	// what makes this probe answer the question it is actually asking.
+	out, err := exec.Command(path,
+		"--unshare-user", "--unshare-pid", "--unshare-net",
+		"--ro-bind", "/usr", "/usr", "--", "/usr/bin/true").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("bubblewrap cannot create a sandbox (unprivileged user namespaces may be disabled): %v: %s",
 			err, strings.TrimSpace(string(out)))

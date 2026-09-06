@@ -16,7 +16,8 @@
   만들어 보게 짠 것이 이걸 기동 시점에 잡아준다.
   → 아래 **0-A. 샌드박스 대안 결정**
 - [x] ~~`prlimit --version`~~ — **불필요해짐.** Landlock 경로에서는 헬퍼가 자기 자신에게 `setrlimit`을 건다. bubblewrap 경로에서만 쓰이며 없어도 fail-open이다
-- [ ] `pip download --no-deps --dest /tmp/x requests` — PyPI 접근 (실패 시 사내 미러 필요)
+- [x] PyPI 접근 — **가능함 (2026-09-06)**. 막혀 있었다면 `pip install`이 전부 실패해
+  빌드 단계가 통째로 성립하지 않았을 것이므로, 남아 있던 위험 중 가장 컸다
 - [ ] `uname -r` 기록 (커널 버전 — user namespace 관련)
 
 ## 0-A. 샌드박스 대안 결정 (⚠ 다른 모든 것의 전제 — 미해결)
@@ -57,7 +58,22 @@
     - [ ] ⚠ **미실행** — 리눅스 전용 빌드라 macOS에서 돌릴 수 없다. 타입체크·크로스컴파일만 확인됨
   - [ ] 실기 검증 (아래 "샌드박스 실증" 항목 전체) — 리눅스 서버 필요
 
-- [x] 진단: 커널 `6.8.0-136-generic` (Ubuntu 24.04 계열) — Landlock ABI 4 사용 가능
+- [x] 진단 (2026-09-06, 배포 서버에서 `preflight.sh`):
+  - 커널 `6.8.0-136-generic` (Ubuntu 24.04 계열)
+  - **Landlock: filesystem + network (ABI 4+)** — TCP bind/connect 제한을 커널이 해 준다
+  - **`landlock lsm enabled: yes`** — LSM 목록에 실제로 올라와 있다. 커널에 컴파일만 되고
+    활성화되지 않은 경우가 있어 이 줄이 없으면 위 판정은 의미가 없다
+  - ⚠ 다만 `preflight.sh`는 커널 버전으로 **추론**할 뿐 `landlock_create_ruleset`을 실제로
+    호출하지 않는다. 확정은 `run.sh`(또는 Gitea 기동 시 `landlockProbe`)에서 난다
+  - **bubblewrap: 사용 불가.** `--unshare-user`로 직접 시험하면
+    `bwrap: setting up uid map: Permission denied` — `unshare -Ur`와 같은 원인이다.
+    - 처음에 `--unshare-all`로 시험했을 때 `loopback: FAILED RTM_NEWADDR`가 나와
+      "네임스페이스는 만들어졌다"고 오판했다. **`--unshare-all`은 `--unshare-user-try`로
+      확장되고, `-try`는 실패해도 조용히 넘어간다** — 그래서 userns 없이 진행하다가
+      관계없는 지점에서 터진 것이다
+    - → `sandboxProbe`와 `preflight.sh`를 `--unshare-user`(하드 실패)로 수정했다.
+      고치지 않았다면 **격리 없이 성공하는 호스트를 "bubblewrap 가능"으로 오판**할 수 있었다
+  - **결론: Landlock + seccomp 단독.** 이미 구현·테스트 완료
 
 ## 1. 기반 정리 (기능 변화 없음, 독립 가치)
 

@@ -33,10 +33,15 @@ echo "=== isolation: bubblewrap (preferred) ==="
 if command -v bwrap >/dev/null 2>&1; then
 	say "bwrap" "$(command -v bwrap)"
 	say "setuid" "$(ls -l "$(command -v bwrap)" | cut -c1-10)"
-	if bwrap --unshare-all --ro-bind /usr /usr -- /bin/true 2>/dev/null; then
+	# --unshare-user, not --unshare-all: the latter expands to
+	# --unshare-user-try, which carries on silently when the namespace cannot
+	# be created and then fails somewhere misleading (loopback setup) or
+	# succeeds while isolating nothing.
+	bwrap_test="bwrap --unshare-user --unshare-pid --unshare-net --ro-bind /usr /usr -- /usr/bin/true"
+	if $bwrap_test 2>/dev/null; then
 		say "sandbox creation" "WORKS — bubblewrap will be used"
 	else
-		say "sandbox creation" "FAILS: $(bwrap --unshare-all --ro-bind /usr /usr -- /bin/true 2>&1 | head -1)"
+		say "sandbox creation" "FAILS: $($bwrap_test 2>&1 | head -1)"
 	fi
 else
 	say "bwrap" "not installed"
