@@ -24,8 +24,24 @@ import (
 func withTempAppData(t *testing.T) {
 	t.Helper()
 	prev := setting.AppDataPath
-	setting.AppDataPath = t.TempDir()
-	t.Cleanup(func() { setting.AppDataPath = prev })
+	// Not t.TempDir(): its name carries the test's own name, and an app socket
+	// lives several directories below it — which on macOS overruns sun_path's
+	// 104 bytes and fails with a bind error naming neither the path nor the
+	// limit. See TestSocketPathFitsInSunPath.
+	// Rooted at /tmp rather than at the default: on macOS the default is
+	// /var/folders/<long>/T, and an app socket several directories below that
+	// is already past the limit before the test has done anything.
+	base := "/tmp"
+	if _, err := os.Stat(base); err != nil {
+		base = ""
+	}
+	dir, err := os.MkdirTemp(base, "co")
+	require.NoError(t, err)
+	setting.AppDataPath = dir
+	t.Cleanup(func() {
+		setting.AppDataPath = prev
+		_ = os.RemoveAll(dir)
+	})
 }
 
 func TestAppKeyAvoidsCollisions(t *testing.T) {

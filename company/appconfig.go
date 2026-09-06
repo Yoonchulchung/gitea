@@ -113,6 +113,17 @@ type AppSettings struct {
 	Network      AppNetwork      `yaml:"network"`
 	Download     AppDownload     `yaml:"download"`
 	Dependencies AppDependencies `yaml:"dependencies"`
+	Security     AppSecurity     `yaml:"security"`
+}
+
+// AppSecurity is the platform's response filtering for one app.
+//
+// Headers is a plain map rather than a field per header on purpose: a new
+// security header should be deployable by editing policy, not by changing
+// this struct, rebuilding Gitea and asking every department to redeploy. An
+// empty value removes a platform default for an app it breaks.
+type AppSecurity struct {
+	Headers map[string]string `yaml:"headers"`
 }
 
 // AppsConfig is the whole file.
@@ -151,6 +162,12 @@ func (c *AppsConfig) EffectiveSettings(owner, repo string) AppSettings {
 	apply := func(s *AppSettings) {
 		if s == nil {
 			return
+		}
+		for name, value := range s.Security.Headers {
+			if out.Security.Headers == nil {
+				out.Security.Headers = map[string]string{}
+			}
+			out.Security.Headers[name] = value
 		}
 		if s.Enabled != nil {
 			out.Enabled = s.Enabled

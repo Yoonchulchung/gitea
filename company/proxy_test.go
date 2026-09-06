@@ -6,6 +6,7 @@ package company
 import (
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -172,65 +173,173 @@ func TestLocationHeaderGetsTheMountPrefixBack(t *testing.T) {
 		"/x?a=b":                        prefix + "/x?a=b",
 		prefix + "/docs":                prefix + "/docs", // already right: --root-path's output
 		prefix:                          prefix,
-		"docs":                          "docs",                                   // relative; the browser resolves it under the prefix
-		"https://example.com/docs":      "https://example.com/docs",               // somewhere else, on purpose
-		"//example.com/docs":            "//example.com/docs",                     // protocol-relative, so also off-host
-		"/apps/PO/Test_FastAPI_Other/x": prefix + "/apps/PO/Test_FastAPI_Other/x", // a different app is not "under" this one
+		"docs":                          "docs",                     // relative; resolved under the prefix by the browser
+		"https://example.com/docs":      "https://example.com/docs", // somewhere else, on purpose
+		"//example.com/docs":            "//example.com/docs",       // protocol-relative, so also off-host
+		"/apps/PO/Test_FastAPI_Other/x": prefix + "/apps/PO/Test_FastAPI_Other/x",
 	}
 	for in, want := range cases {
-		assert.Equal(t, want, prefixPath(prefix, in), in)
+		assert.Equal(t, want, prefixDocumentURL(prefix, in), in)
 	}
 }
 
-// An app setting Path=/ has its cookie sent to Gitea itself and to every other
-// department's app on this host.
-func TestCookiePathIsScopedToTheApp(t *testing.T) {
-	const prefix = "/apps/PO/Test_FastAPI"
-	assert.Equal(t, "session=abc; Path="+prefix+"/; HttpOnly",
-		prefixCookiePath(prefix, "session=abc; Path=/; HttpOnly"))
-	// The attribute name is normalised on the way out; it is case-insensitive.
-	assert.Equal(t, "session=abc; Path="+prefix+"/sub",
-		prefixCookiePath(prefix, "session=abc; path=/sub"))
-	// Already scoped: left exactly as it is.
-	assert.Equal(t, "session=abc; Path="+prefix+"/",
-		prefixCookiePath(prefix, "session=abc; Path="+prefix+"/"))
-	// No Path at all defaults to the directory of whichever request set it,
-	// which is narrower than the app and varies per page.
-	assert.Equal(t, "session=abc; Path="+prefix+"/",
-		prefixCookiePath(prefix, "session=abc"))
-}
-
-// The whole header set, as ModifyResponse sees it.
-func TestRewriteMountedPathsHandlesEveryCookie(t *testing.T) {
-	resp := &http.Response{Header: http.Header{}}
-	resp.Header.Set("Location", "/docs")
-	resp.Header.Add("Set-Cookie", "a=1; Path=/")
-	resp.Header.Add("Set-Cookie", "b=2")
-	rewriteMountedPaths("/apps/PO/app", resp)
-
-	assert.Equal(t, "/apps/PO/app/docs", resp.Header.Get("Location"))
-	assert.Equal(t, []string{"a=1; Path=/apps/PO/app/", "b=2; Path=/apps/PO/app/"},
-		resp.Header.Values("Set-Cookie"))
-}
-
-// "app" is a name this proxy invented for the transport; it resolves to
-// nothing in a browser, so it must never appear in a redirect.
-func TestInternalHostNeverReachesTheBrowser(t *testing.T) {
+// A host no browser can reach is the app naming itself as it was reachable
+// somewhere else. 0.0.0.0 is not an address you connect to, and a loopback
+// address is the viewer's own machine — so the path is the only part that can
+// ever be right.
+//
+// This is also why the platform is not tied to a port: the result is always a
+// path, so it holds whether the instance answers on 3000, 6000 or 443.
+func TestUnreachableAndSameHostURLsBecomeAppPaths(t *testing.T) {
 	const prefix = "/apps/PO/app"
-	cases := map[string]string{
-		"http://app/apps/PO/app/docs": "/apps/PO/app/docs",
-		"http://app/docs":             "/docs",
-		"http://app":                  "/",
-		"https://app/x":               "/x",
-		"http://appstore.example/x":   "http://appstore.example/x", // a real host that merely starts with "app"
-		"http://example.com/app/x":    "http://example.com/app/x",
+	cases := []struct{ in, sameHost, want string }{
+		{"http://app/docs", "", prefix + "/docs"},
+		{"http://0.0.0.0:3000/items", "", prefix + "/items"},
+		{"http://localhost:8000/items?q=1", "", prefix + "/items?q=1"},
+		{"http://127.0.0.1/x#top", "", prefix + "/x#top"},
+		{"http://app", "", prefix + "/"},
+		// The instance's own address, whatever port or scheme it answers on.
+		{"http://gitea.internal:6000/docs", "gitea.internal:6000", prefix + "/docs"},
+		{"https://gitea.internal/docs", "gitea.internal:443", prefix + "/docs"},
+		{"http://gitea.internal:6000" + prefix + "/docs", "gitea.internal:6000", prefix + "/docs"},
+		// A different host is a deliberate link elsewhere and is left alone.
+		{"https://example.com/docs", "gitea.internal:6000", "https://example.com/docs"},
+		// A real host that merely starts like the placeholder.
+		{"http://appstore.example/x", "", "http://appstore.example/x"},
+		{"mailto:a@b.c", "", "mailto:a@b.c"},
 	}
-	for in, want := range cases {
-		assert.Equal(t, want, stripInternalHost(in), in)
+	for _, c := range cases {
+		assert.Equal(t, c.want, prefixDocumentURLFor(prefix, c.sameHost, c.in), c.in)
 	}
+}
 
+// An app writes href="/docs" because that is what works when it is run
+// locally. Under a mount prefix it goes to Gitea instead, and a non-developer
+// has no reason to know that "/docs" and "docs" differ here.
+func TestHTMLRootRelativeURLsGetThePrefix(t *testing.T) {
+	const prefix = "/apps/PO/app"
+	got := string(rewriteHTML(prefix, "", []byte(
+		`<a href="/docs">d</a><form action="/items/"><img src="/static/x.png" srcset="/a.png 1x, /b.png 2x"></form>`)))
+
+	assert.Contains(t, got, `href="/apps/PO/app/docs"`)
+	assert.Contains(t, got, `action="/apps/PO/app/items/"`)
+	assert.Contains(t, got, `src="/apps/PO/app/static/x.png"`)
+	// Spacing between candidates is preserved as written.
+	assert.Contains(t, got, `srcset="/apps/PO/app/a.png 1x, /apps/PO/app/b.png 2x"`)
+}
+
+// Everything the rewrite must not touch. Getting one of these wrong breaks a
+// page, which is worse than the broken link it was fixing.
+func TestHTMLRewriteLeavesEverythingElseAlone(t *testing.T) {
+	const prefix = "/apps/PO/app"
+	for _, doc := range []string{
+		`<a href="docs">relative, already correct</a>`,
+		`<a href="./docs">relative</a>`,
+		`<a href="#top">fragment</a>`,
+		`<a href="https://example.com/docs">absolute</a>`,
+		`<a href="//example.com/docs">protocol-relative</a>`,
+		`<a href="mailto:a@b.c">scheme</a>`,
+		`<p>go to /docs for the API</p>`, // prose, not a URL
+		`<script>fetch("/api/items")</script>`,
+		`<a href="/apps/PO/app/docs">already mounted</a>`,
+	} {
+		assert.Equal(t, doc, string(rewriteHTML(prefix, "", []byte(doc))), doc)
+	}
+}
+
+// A value already carrying the prefix is ambiguous and is read as
+// already-mounted — see prefixDocumentURL. Pinned because the alternative
+// reading would double every link a framework builds.
+func TestHTMLRewriteTreatsPrefixedURLsAsAlreadyMounted(t *testing.T) {
+	const prefix = "/apps/PO/app"
+	assert.Equal(t, prefix+"/items", prefixDocumentURL(prefix, prefix+"/items"))
+	assert.Equal(t, prefix, prefixDocumentURL(prefix, prefix))
+
+	// A different app whose name merely starts the same is not this one, and
+	// its path is prefixed like any other.
+	assert.Equal(t, prefix+"/apps/PO/app-two/items", prefixDocumentURL(prefix, "/apps/PO/app-two/items"))
+	// Case-sensitive: repository names differing only in case are different
+	// repositories.
+	assert.Equal(t, prefix+"/apps/po/app/items", prefixDocumentURL(prefix, "/apps/po/app/items"))
+}
+
+// Only HTML, only uncompressed, and the length has to follow the body — a
+// stale Content-Length truncates the page in the browser.
+func TestHTMLRewriteScopeAndContentLength(t *testing.T) {
+	const prefix = "/apps/PO/app"
+	body := `<a href="/docs">d</a>`
+
+	resp := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}
+	resp.Header.Set("Content-Type", "text/html; charset=utf-8")
+	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	rewriteHTMLBody(prefix, resp)
+
+	out, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(out), prefix+"/docs")
+	assert.Equal(t, strconv.Itoa(len(out)), resp.Header.Get("Content-Length"))
+	assert.Equal(t, int64(len(out)), resp.ContentLength)
+
+	// JSON is not rewritten: "/docs" in a payload is data, not a link.
+	jsonResp := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"u":"/docs"}`))}
+	jsonResp.Header.Set("Content-Type", "application/json")
+	rewriteHTMLBody(prefix, jsonResp)
+	out, err = io.ReadAll(jsonResp.Body)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"u":"/docs"}`, string(out))
+
+	// Compressed: decoding, rewriting and re-encoding trades a link for a
+	// class of bugs that corrupt whole pages.
+	gz := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}
+	gz.Header.Set("Content-Type", "text/html")
+	gz.Header.Set("Content-Encoding", "gzip")
+	rewriteHTMLBody(prefix, gz)
+	out, err = io.ReadAll(gz.Body)
+	require.NoError(t, err)
+	assert.Equal(t, body, string(out))
+}
+
+// Department apps are written by people who are not web developers. The
+// headers that matter here protect the platform and the other departments, so
+// the proxy — the one place every response passes through — supplies them.
+func TestSecurityHeadersAreSuppliedByDefault(t *testing.T) {
 	resp := &http.Response{Header: http.Header{}}
-	resp.Header.Set("Location", "http://app/docs")
-	rewriteMountedPaths(prefix, resp)
-	assert.Equal(t, prefix+"/docs", resp.Header.Get("Location"))
+	resp.Header.Set("Server", "uvicorn")
+	applySecurityHeaders(AppSettings{}, resp)
+
+	assert.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"))
+	assert.Equal(t, "SAMEORIGIN", resp.Header.Get("X-Frame-Options"))
+	assert.Equal(t, "same-origin", resp.Header.Get("Referrer-Policy"))
+	assert.Empty(t, resp.Header.Get("Server"), "the software and its version pick the exploit to try")
+}
+
+// An app that set the header has thought about it; overriding that would break
+// a page to enforce a default.
+func TestAppsOwnSecurityHeaderIsKept(t *testing.T) {
+	resp := &http.Response{Header: http.Header{}}
+	resp.Header.Set("X-Frame-Options", "DENY")
+	applySecurityHeaders(AppSettings{}, resp)
+	assert.Equal(t, "DENY", resp.Header.Get("X-Frame-Options"))
+}
+
+// The half that makes a security change deployable: policy wins over both the
+// default and the app, reaches every app on the next request, and needs no
+// department to rebuild anything.
+func TestPolicyHeadersWinAndCanRemoveADefault(t *testing.T) {
+	resp := &http.Response{Header: http.Header{}}
+	resp.Header.Set("X-Frame-Options", "DENY")
+	applySecurityHeaders(AppSettings{Security: AppSecurity{Headers: map[string]string{
+		"X-Frame-Options":         "SAMEORIGIN",
+		"Content-Security-Policy": "default-src 'self'",
+		"Referrer-Policy":         "", // turn a default off for an app it breaks
+		"Bad\r\nName":             "injected",
+	}}}, resp)
+
+	assert.Equal(t, "SAMEORIGIN", resp.Header.Get("X-Frame-Options"))
+	assert.Equal(t, "default-src 'self'", resp.Header.Get("Content-Security-Policy"))
+	assert.Empty(t, resp.Header.Get("Referrer-Policy"))
+	// A header name carrying a newline would let one line of policy inject a
+	// second header entirely.
+	assert.Empty(t, resp.Header.Get("Bad"))
+	assert.False(t, validHeaderName("Bad\r\nName"))
 }

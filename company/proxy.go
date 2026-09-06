@@ -248,8 +248,11 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
+			settings := SettingsFor(ref.Owner, ref.Repo)
 			rewriteMountedPaths(prefix, resp)
-			return applyDownloadPolicy(ref, SettingsFor(ref.Owner, ref.Repo), resp)
+			rewriteHTMLBody(prefix, resp)
+			applySecurityHeaders(settings, resp)
+			return applyDownloadPolicy(ref, settings, resp)
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			if r.Context().Err() != nil {
@@ -422,8 +425,12 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter 
 // something their code knows or should have to. So the proxy that imposed the
 // prefix is what puts it back.
 func rewriteMountedPaths(prefix string, resp *http.Response) {
+	sameHost := ""
+	if resp.Request != nil {
+		sameHost = resp.Request.Host
+	}
 	if location := resp.Header.Get("Location"); location != "" {
-		if rewritten := prefixPath(prefix, stripInternalHost(location)); rewritten != location {
+		if rewritten := prefixDocumentURLFor(prefix, sameHost, location); rewritten != location {
 			resp.Header.Set("Location", rewritten)
 		}
 	}
@@ -446,26 +453,6 @@ func rewriteMountedPaths(prefix string, resp *http.Response) {
 	}
 }
 
-// prefixPath prepends the mount prefix to a root-relative path.
-//
-// Left alone: absolute URLs (the app is naming somewhere else on purpose),
-// relative paths (the browser resolves those against the current URL, which
-// already carries the prefix), and anything already under the prefix — which
-// is what --root-path produces, so the common case is untouched.
-func prefixPath(prefix, location string) string {
-	if !strings.HasPrefix(location, "/") || strings.HasPrefix(location, "//") {
-		return location // relative, or protocol-relative and therefore off-host
-	}
-	path, query, hasQuery := strings.Cut(location, "?")
-	if path == prefix || strings.HasPrefix(path, prefix+"/") {
-		return location
-	}
-	if hasQuery {
-		return prefix + path + "?" + query
-	}
-	return prefix + path
-}
-
 // prefixCookiePath rewrites a Set-Cookie's Path attribute, adding one when the
 // cookie has none — the default would be the directory of whichever request
 // happened to set it, which is narrower than the app and changes per page.
@@ -476,7 +463,7 @@ func prefixCookiePath(prefix, cookie string) string {
 		if !found || !strings.EqualFold(name, "path") {
 			continue
 		}
-		parts[i] = " Path=" + prefixPath(prefix, value)
+		parts[i] = " Path=" + prefixDocumentURL(prefix, value)
 		return strings.Join(parts, ";")
 	}
 	return cookie + "; Path=" + prefix + "/"
@@ -486,27 +473,6 @@ func prefixCookiePath(prefix, cookie string) string {
 // goes to the app's unix socket regardless, so the value is arbitrary — but it
 // must never reach a browser, because it resolves to nothing.
 const internalAppHost = "app"
-
-// stripInternalHost reduces an absolute URL naming the internal host to the
-// path part, so the prefix logic can treat it like any other local redirect.
-//
-// Belt and braces: the Host header now carries the real hostname, so an app
-// building a redirect from it produces the right URL on its own. This catches
-// what that does not — a response constructed before the header was consulted,
-// or an app that hardcoded the value it saw.
-func stripInternalHost(location string) string {
-	for _, scheme := range []string{"http://", "https://"} {
-		if rest, ok := strings.CutPrefix(location, scheme+internalAppHost); ok {
-			if rest == "" {
-				return "/"
-			}
-			if strings.HasPrefix(rest, "/") {
-				return rest
-			}
-		}
-	}
-	return location
-}
 
 // requestScheme reports how the visitor reached Gitea.
 //
