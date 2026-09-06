@@ -47,10 +47,17 @@ const (
 // AppLimits are enforced with rlimits, not cgroups — cgroups need root and
 // this platform has none. See docs/company/app-platform-impl.md §6.
 type AppLimits struct {
-	// MemoryMB caps the address space/data segment. Generous by default:
-	// numpy and friends reserve far more virtual memory than they use, and
-	// a tight limit kills healthy apps in a way that looks like a random
-	// crash. Tightened from observed usage, not guessed up front.
+	// MemoryMB caps the heap (RLIMIT_DATA). Sized for what a plain FastAPI
+	// app actually uses — interpreter, uvicorn, pydantic and starlette come
+	// to roughly 90 MB resident — rather than for the heaviest app anyone
+	// might ever write.
+	//
+	// The default matters more than it looks: this is a shared host with no
+	// disk or memory quota of its own, and dozens of departments. A generous
+	// default multiplied by thirty apps oversubscribes the machine, and then
+	// the kernel picks which one dies rather than the platform. Raising it is
+	// a per-app decision an admin makes from the recorded peak, which is why
+	// the dashboard shows peak next to limit.
 	MemoryMB  int `yaml:"memoryMB"`
 	Processes int `yaml:"processes"`
 	OpenFiles int `yaml:"openFiles"`
@@ -115,7 +122,7 @@ func builtinDefaults() AppSettings {
 		Install:    []string{"pip install --only-binary=:all: -r requirements.txt"},
 		Start:      "uvicorn main:app --uds ${SOCKET} --root-path ${ROOT_PATH}",
 		HealthPath: "/health",
-		Limits:     AppLimits{MemoryMB: 512, Processes: 64, OpenFiles: 4096, TmpMB: 64},
+		Limits:     AppLimits{MemoryMB: 192, Processes: 64, OpenFiles: 4096, TmpMB: 64},
 		Network:    AppNetwork{Mode: NetworkNone},
 		Download:   AppDownload{Policy: "block", MaxResponseBytes: 5 << 20},
 	}

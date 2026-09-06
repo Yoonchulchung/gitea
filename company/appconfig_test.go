@@ -106,3 +106,26 @@ func TestBrokenConfigKeepsLastGood(t *testing.T) {
 	_, _, loadErr := AppsConfigSnapshot()
 	assert.Error(t, loadErr, "but the failure is visible to admins")
 }
+
+// The default is a shared host's budget, not one app's comfort: dozens of
+// departments deploy here and there is no memory quota underneath. A
+// generous default multiplied by thirty apps oversubscribes the machine, and
+// then the kernel chooses which one dies rather than the platform.
+func TestDefaultMemoryFitsManyAppsOnOneHost(t *testing.T) {
+	cfg, err := ParseAppsConfig([]byte(""))
+	require.NoError(t, err)
+	limit := cfg.EffectiveSettings("PO", "app").Limits.MemoryMB
+
+	// Comfortably above what a plain FastAPI app resides at (~90 MB), and
+	// low enough that thirty of them are not a promise the host cannot keep.
+	assert.GreaterOrEqual(t, limit, 128, "too tight for CPython + pydantic's compiled core")
+	assert.LessOrEqual(t, limit*30, 8*1024, "thirty apps must fit in a modest host")
+}
+
+// The limit is a heap limit but the watchdog can only see resident memory,
+// which also counts the interpreter and its shared libraries. Comparing them
+// directly would make the watchdog fire before the limit it is enforcing.
+func TestWatchdogAllowsForResidentOverhead(t *testing.T) {
+	assert.Greater(t, memoryWatchdogHeadroom, 1.0,
+		"RSS legitimately exceeds the heap by the size of the mapped runtime")
+}

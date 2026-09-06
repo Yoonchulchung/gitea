@@ -126,12 +126,23 @@ func sampleApp(owner, repo string) {
 	checkMemoryLimit(owner, repo, usage.rssBytes, settings)
 }
 
+// memoryWatchdogHeadroom is how far over the configured limit resident memory
+// may sit before the watchdog acts.
+//
+// The limit is a heap limit — RLIMIT_DATA — but the watchdog can only see
+// VmRSS, and resident memory also counts the interpreter and every shared
+// library mapped into the process, which the heap limit does not. Comparing
+// the two directly makes the watchdog fire first every time and kills apps
+// that are comfortably inside the limit they were given. The headroom is the
+// size of that runtime, generously rounded.
+const memoryWatchdogHeadroom = 1.5
+
 // checkMemoryLimit stops an app that stays over its limit.
 func checkMemoryLimit(owner, repo string, rssBytes int64, settings AppSettings) {
-	limit := int64(settings.Limits.MemoryMB) << 20
-	if limit <= 0 {
+	if settings.Limits.MemoryMB <= 0 {
 		return
 	}
+	limit := int64(float64(int64(settings.Limits.MemoryMB)<<20) * memoryWatchdogHeadroom)
 	key := appKey(owner, repo)
 
 	sampleStateMu.Lock()
