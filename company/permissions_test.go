@@ -149,3 +149,29 @@ func TestPermissionFileIsNotListedAsAnApp(t *testing.T) {
 	require.Len(t, states, 1)
 	assert.Equal(t, "PO", states[0].Owner)
 }
+
+// The whole point of resolving the tree: an admin approving jinja2 must be
+// approving MarkupSafe in the same click, or the build refuses a package
+// nobody was ever asked about and the next request hits the layer below it.
+func TestPackageRequestsSeparateNamedFromPulledIn(t *testing.T) {
+	resolved := []resolvedPackage{
+		{Name: "Jinja2", Version: "3.1.6", Direct: true},
+		{Name: "MarkupSafe", Version: "3.0.3"},
+		{Name: "fastapi", Version: "0.141.1", Direct: true},
+	}
+	got := packageRequests(resolved, []string{"fastapi"})
+
+	require.Len(t, got, 2, "an already-allowed package is not a request")
+	assert.Equal(t, "Jinja2", got[0].Value)
+	assert.NotContains(t, got[0].Evidence, "의존성입니다")
+	assert.Equal(t, "MarkupSafe", got[1].Value)
+	assert.Contains(t, got[1].Evidence, "의존성입니다",
+		"an admin cannot tell on their own that this name is in no file the department wrote")
+}
+
+// Names are needed whether or not the line is well-formed: shape is enforced
+// elsewhere, and a missing version does not make the package unasked-for.
+func TestNamedPackagesReadsUnpinnedAndPinnedAlike(t *testing.T) {
+	got := namedPackages("jinja2\npydantic-settings==2.15.0\n# comment\nhttpx>=0.27  # inline\n\n")
+	assert.Equal(t, map[string]bool{"jinja2": true, "pydantic-settings": true, "httpx": true}, got)
+}

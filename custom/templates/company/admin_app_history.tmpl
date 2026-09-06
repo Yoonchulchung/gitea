@@ -1,0 +1,59 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-app-history")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header tw-flex tw-items-center tw-gap-2">
+			<a href="{{.AdminAppLink}}">{{.App.Owner}}/{{.App.Repo}}</a>
+			<span class="text-grey">/ 배포 이력</span>
+			<div class="tw-flex-1"></div>
+			<span class="text-grey tw-text-13">{{.TotalAttempts}}건</span>
+		</h4>
+		<div class="ui attached segment">
+			{{/* Read from the build log's own headers, which are written by the
+			     deploy itself — so this cannot drift from what happened. It
+			     reaches back as far as the logs are kept, not as far as the app
+			     has existed. */}}
+			<p class="text-grey tw-text-13 tw-mt-0">
+				배포를 시도할 때마다 남는 기록입니다. 로그가 보관된 기간까지 거슬러 올라갑니다.
+				{{if .Running.SHA}}지금 실행 중인 버전은 <span class="tw-font-mono">{{ShortSha .Running.SHA}}</span> 입니다.{{end}}
+			</p>
+			<table class="ui very basic table tw-text-13">
+				<thead>
+					<tr>
+						<th class="tw-w-1/6">언제</th>
+						<th class="tw-w-24">결과</th>
+						<th class="tw-w-1/6">버전</th>
+						<th>내용</th>
+					</tr>
+				</thead>
+				<tbody>
+					{{range .Attempts}}
+						<tr>
+							<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
+							<td>
+								{{if .Failed}}
+									<span class="company-app-state failed">실패</span>
+								{{else}}
+									<span class="company-app-state running">성공</span>
+								{{end}}
+							</td>
+							<td class="tw-font-mono">{{if .SHA}}{{ShortSha .SHA}}{{else}}<span class="text-grey">—</span>{{end}}</td>
+							{{/* The build log is the app's own output and an admin screen,
+							     so paths are left alone here — see company/applogs.go. */}}
+							<td>{{if .Summary}}{{.Summary}}{{else}}<span class="text-grey">—</span>{{end}}</td>
+						</tr>
+					{{else}}
+						<tr><td colspan="4" class="text-grey">아직 배포한 적이 없습니다.</td></tr>
+					{{end}}
+				</tbody>
+			</table>
+		</div>
+		{{template "base/paginate" .}}
+
+		{{/* State changes, not deploys: who stopped it, when it was rolled back.
+		     Capped at ten by the state file, which is why it is a panel here
+		     rather than a second paged table. */}}
+		<h4 class="ui top attached header tw-mt-4">최근 상태 변경</h4>
+		<div class="ui attached table segment">
+			{{template "company/history_table" dict "Rows" .HistoryRows "Raw" true}}
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}

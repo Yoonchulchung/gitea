@@ -207,35 +207,10 @@
 
 		<h3>최근 이력</h3>
 		<div class="ui segment">
-			{{/* Column headers, and words instead of state-machine vocabulary:
-			     without them the reader is looking at three anonymous columns of
-			     "activating / rolled_back" and cannot tell what happened. */}}
-			<table class="ui very basic table tw-text-13">
-				<thead>
-					<tr>
-						<th class="tw-w-1/5">언제</th>
-						<th class="tw-w-1/6">무엇을</th>
-						<th>내용</th>
-						<th class="tw-w-1/6">누가</th>
-						<th class="tw-w-1/6">버전</th>
-					</tr>
-				</thead>
-				<tbody>
-					{{range .HistoryRows}}
-						<tr>
-							<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
-							<td>{{.What}}</td>
-							<td>{{if .Detail}}{{.Detail}}{{else}}<span class="text-grey">—</span>{{end}}</td>
-							{{/* Blank when the platform did it rather than a person; saying
-							     so is clearer than an empty cell. */}}
-							<td>{{if .Actor}}{{.Actor}}{{else}}<span class="text-grey">자동</span>{{end}}</td>
-							<td class="tw-font-mono">{{if .SHA}}{{ShortSha .SHA}}{{else}}<span class="text-grey">—</span>{{end}}</td>
-						</tr>
-					{{else}}
-						<tr><td colspan="5" class="text-grey">아직 이력이 없습니다.</td></tr>
-					{{end}}
-				</tbody>
-			</table>
+			{{/* Words instead of state-machine vocabulary — see
+			     custom/templates/company/history_table.tmpl. No raw codes here:
+			     "rolled_back" tells a non-developer nothing. */}}
+			{{template "company/history_table" dict "Rows" .HistoryRows}}
 
 		</div>
 	</div>

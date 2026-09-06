@@ -171,6 +171,14 @@ func AdminApp(ctx *context.Context) {
 	ctx.Data["SandboxDetail"] = sandboxDetail
 	ctx.Data["LimitsEnforced"] = limitsOK
 	ctx.Data["LimitsDetail"] = limitsDetail
+	// What this app may install, split by where the permission came from: the
+	// platform's own stack is the same for everyone and is not this app's
+	// decision, while allowExtra is what an admin approved for this app
+	// specifically and is the list worth reviewing.
+	ctx.Data["HistoryRows"] = describeHistory(st.History)
+	ctx.Data["BasePackages"] = settings.BasePackages
+	ctx.Data["SharedAllow"] = settings.Dependencies.Allow
+	ctx.Data["ApprovedExtra"] = settings.Dependencies.AllowExtra
 	ctx.Data["EnvNames"] = envNames
 	ctx.Data["EnvVersion"] = envVersion
 	ctx.Data["EnvError"] = envErr

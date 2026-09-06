@@ -1,0 +1,35 @@
+{{/* One history table for the department screen, the admin app page and the
+     deploy-history page, so the same event is never described three ways.
+
+     Rows are historyRow (company/app_page.go), already translated. `Raw` adds
+     the underlying state and reason codes, which an admin needs to match a
+     line against the logs and the source and a non-developer does not. */}}
+<table class="ui very basic table tw-text-13">
+	<thead>
+		<tr>
+			<th class="tw-w-1/5">언제</th>
+			<th class="tw-w-1/6">무엇을</th>
+			<th>내용</th>
+			<th class="tw-w-1/6">누가</th>
+			<th class="tw-w-1/6">버전</th>
+		</tr>
+	</thead>
+	<tbody>
+		{{range .Rows}}
+			<tr>
+				<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
+				<td>{{.What}}{{if $.Raw}}{{if .Status}} <span class="text-grey tw-text-12">{{.Status}}</span>{{end}}{{end}}</td>
+				<td>
+					{{if .Detail}}{{.Detail}}{{else}}<span class="text-grey">—</span>{{end}}
+					{{if $.Raw}}{{if .Reason}}<span class="text-grey tw-text-12 tw-ml-1">{{.Reason}}</span>{{end}}{{end}}
+				</td>
+				{{/* Blank when the platform did it rather than a person; saying so
+				     is clearer than an empty cell. */}}
+				<td>{{if .Actor}}{{.Actor}}{{else}}<span class="text-grey">자동</span>{{end}}</td>
+				<td class="tw-font-mono">{{if .SHA}}{{ShortSha .SHA}}{{else}}<span class="text-grey">—</span>{{end}}</td>
+			</tr>
+		{{else}}
+			<tr><td colspan="5" class="text-grey">아직 이력이 없습니다.</td></tr>
+		{{end}}
+	</tbody>
+</table>

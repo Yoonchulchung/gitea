@@ -36,11 +36,24 @@ func orgOwnedRepoIDs() *builder.Builder {
 // inside the existing "/-/admin" group, so it inherits that group's
 // adminReq middleware; no separate access check is needed here.
 func AdminActivity(ctx *context.Context) {
+	// Paged rather than a fixed tail. This feed covers every department at
+	// once, so on a busy instance the interesting entry is as likely to be
+	// two hundred rows down as at the top, and a page that only ever shows
+	// the newest hundred cannot reach it at all.
+	page := max(ctx.FormInt("page"), 1)
+	const perPage = 50
+
+	total, err := db.GetEngine(ctx).In("repo_id", orgOwnedRepoIDs()).Count(&activities_model.Action{})
+	if err != nil {
+		ctx.ServerError("count cross-department activity", err)
+		return
+	}
+
 	var actions []*activities_model.Action
 	if err := db.GetEngine(ctx).
 		In("repo_id", orgOwnedRepoIDs()).
 		Desc("created_unix").
-		Limit(100).
+		Limit(perPage, (page-1)*perPage).
 		Find(&actions); err != nil {
 		ctx.ServerError("list cross-department activity", err)
 		return
@@ -61,5 +74,6 @@ func AdminActivity(ctx *context.Context) {
 
 	ctx.Data["Title"] = "Cross-department activity"
 	ctx.Data["Actions"] = actions
+	ctx.Data["Page"] = context.NewPagerBuilder(ctx).TotalCount(total).PerPageLimit(perPage).CurPage(page).Build()
 	ctx.HTML(http.StatusOK, tplAdminActivity)
 }

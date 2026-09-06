@@ -75,6 +75,7 @@ func RegisterAdminRoutes(m *web.Router) {
 	m.Group("/company-deploys/{owner}/{repo}", func() {
 		m.Get("", AdminApp)
 		m.Get("/logs", AdminAppLogs)
+		m.Get("/history", AdminAppHistory)
 		m.Get("/metrics", AdminAppMetrics)
 		m.Post("/{verb}", AdminAppControl)
 	})

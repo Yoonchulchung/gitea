@@ -220,6 +220,11 @@ type historyRow struct {
 	What   string
 	Detail string
 	SHA    string
+	// Status and Reason are the untranslated codes. Shown only on admin
+	// screens, where they are what matches a line against the logs and the
+	// source; a department reading them learns nothing.
+	Status string
+	Reason string
 }
 
 func describeHistory(entries []AppHistoryEntry) []historyRow {
@@ -229,6 +234,8 @@ func describeHistory(entries []AppHistoryEntry) []historyRow {
 			At: e.At, Actor: e.Actor, SHA: e.SHA,
 			What:   historyStatusLabel(e.Status),
 			Detail: historyReasonLabel(e.Reason),
+			Status: e.Status,
+			Reason: e.Reason,
 		})
 	}
 	return rows

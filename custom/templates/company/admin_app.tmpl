@@ -16,6 +16,7 @@
 				<a class="ui tiny basic button" href="{{.AppURL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} 앱 열기</a>
 				<a class="ui tiny basic button" href="{{.AdminAppLink}}/logs">{{svg "octicon-log" 14}} 로그</a>
 				{{if .AppRepo}}<a class="ui tiny basic button" href="{{.AppRepo.Link}}">{{svg "octicon-repo" 14}} 저장소</a>{{end}}
+				<a class="ui tiny basic button" href="{{.AdminAppLink}}/history">{{svg "octicon-history" 14}} 배포 이력</a>
 				<div class="tw-flex-1"></div>
 				{{if eq .App.Actual "running"}}
 					<form method="post" action="{{.AdminAppLink}}/restart">{{.CsrfTokenHtml}}<button class="ui tiny button">재시작</button></form>
@@ -147,22 +148,43 @@
 			{{end}}
 		</div>
 
-		<h4 class="ui top attached header">이력</h4>
+		{{/* Split by where the permission came from. The platform's stack is the
+		     same for every app and is not this app's decision; the approved list
+		     is what an admin granted to this one, and is the only part worth
+		     reviewing here. */}}
+		<h4 class="ui top attached header tw-mt-4">설치 가능한 패키지</h4>
+		<div class="ui attached segment">
+			<div class="tw-mb-2">
+				<span class="text-grey tw-text-13">플랫폼 기본</span>
+				<div class="tw-mt-1">
+					{{range .BasePackages}}<span class="ui basic label tw-mr-1">{{.}}</span>{{else}}<span class="text-grey">없음</span>{{end}}
+				</div>
+			</div>
+			{{if .SharedAllow}}
+				<div class="tw-mb-2">
+					<span class="text-grey tw-text-13">모든 앱에 허용</span>
+					<div class="tw-mt-1">{{range .SharedAllow}}<span class="ui basic label tw-mr-1">{{.}}</span>{{end}}</div>
+				</div>
+			{{end}}
+			<div>
+				<span class="text-grey tw-text-13">이 앱에 승인된 패키지</span>
+				<div class="tw-mt-1">
+					{{range .ApprovedExtra}}<span class="ui green basic label tw-mr-1">{{.}}</span>{{else}}<span class="text-grey">아직 승인된 것이 없습니다. 배포 요청을 승인하면 여기에 추가됩니다.</span>{{end}}
+				</div>
+			</div>
+			<div class="text-grey tw-text-12 tw-mt-3">
+				승인은 배포 요청을 머지할 때 이루어지고, 그 결과는 central-deploy 의 <code>.company/apps.yml</code> 커밋으로 남습니다.
+				<a href="{{AppSubUrl}}/-/admin/company-packages">패키지 관리</a>
+			</div>
+		</div>
+
+		<h4 class="ui top attached header">최근 이력</h4>
 		<div class="ui attached table segment">
-			<table class="ui very basic table">
-				<tbody>
-					{{range .App.History}}
-						<tr>
-							<td class="tw-w-1/6 tw-text-13">{{DateUtils.TimeSince .At}}</td>
-							<td class="tw-w-1/6">{{.Status}}</td>
-							<td class="tw-w-1/6 tw-text-13">{{.Actor}}</td>
-							<td class="tw-text-13">{{.Reason}}{{if .SHA}} <span class="text-grey">{{ShortSha .SHA}}</span>{{end}}</td>
-						</tr>
-					{{else}}
-						<tr><td class="text-grey">아직 이력이 없습니다.</td></tr>
-					{{end}}
-				</tbody>
-			</table>
+			{{/* Headers and plain words, as on the department screen — a column of
+			     bare "activating / rolled_back" says nothing on its own. The raw
+			     code stays beside it: this is the admin view, and the code is
+			     what matches the logs and the source. */}}
+			{{template "company/history_table" dict "Rows" .HistoryRows "Raw" true}}
 		</div>
 	</div>
 {{template "admin/layout_footer" .}}
