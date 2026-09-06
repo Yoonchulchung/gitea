@@ -64,13 +64,17 @@ func TestDynamicTrKeysComeFromOurOwnVocabulary(t *testing.T) {
 	// produce them. Everything these return is either a company.* constant or
 	// falls back through an escaped, HasKey-guarded path in the template.
 	trusted := map[string]bool{
-		".Summary": true, ".Detail": true, ".AdminHint": true, ".ActionLabel": true, // AppCause: keys by construction
+		// AppCause: keys by construction. .Summary is also deployAttempt.Summary
+		// on the history pages, where it is HasKey-guarded — a key while a deploy
+		// is in progress, the build log's own words once it has finished.
+		".Summary": true, ".Detail": true, ".AdminHint": true, ".ActionLabel": true,
 		".StatusLabel": true, "$.CompanyApp.StatusLabel": true, // departmentStatusLabel: constant set
 		".What":                 true,                                                    // historyStatusLabel: HasKey-guarded in history_table.tmpl
 		".DeployFormHeadingKey": true,                                                    // one of two constants in DeployForm
 		".Label":                true, ".Value": true, ".Reason": true, ".Explain": true, // PermissionRow/accessOption: keys by construction; stored request labels are HasKey-guarded
-		"$r.Label":  true, // admin_packages pending list: HasKey-guarded
-		".Evidence": true, // stored request evidence: HasKey-guarded
+		"$r.Label":   true, // admin_packages pending list: HasKey-guarded
+		".Evidence":  true, // stored request evidence: HasKey-guarded
+		".DetailKey": true, // PermissionRequest.DetailKey: written only by our own code, never from a form
 	}
 	for _, path := range companyTemplateRoots(t) {
 		body, err := os.ReadFile(path)

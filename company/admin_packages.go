@@ -64,7 +64,7 @@ func AdminPackages(ctx *context.Context) {
 	pythonOK, pythonDetail := PythonStatus()
 	centralOwner, centralName, _ := centralDeployOwnerName()
 
-	ctx.Data["Title"] = "패키지 관리"
+	ctx.Data["Title"] = ctx.Locale.TrString("company.title.packages")
 	ctx.Data["BasePackages"] = strings.Join(defaults.BasePackages, "\n")
 	ctx.Data["SharedAllow"] = defaults.Dependencies.Allow
 	ctx.Data["AppPackages"] = rows

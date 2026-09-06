@@ -42,7 +42,7 @@ func AppPage(ctx *context.Context) {
 
 	canWrite := ctx.Repo.Permission.CanWrite(unit.TypeCode)
 
-	ctx.Data["Title"] = "앱 관리"
+	ctx.Data["Title"] = ctx.Locale.TrString("company.title.app")
 	ctx.Data["App"] = st
 	ctx.Data["Settings"] = settings
 	ctx.Data["StatusLabel"] = departmentStatusLabel(st)
@@ -383,7 +383,7 @@ func AppLogs(ctx *context.Context) {
 		lines[i].Text = RedactServerPaths(lines[i].Text)
 	}
 
-	ctx.Data["Title"] = "앱 로그"
+	ctx.Data["Title"] = ctx.Locale.TrString("company.title.app_logs")
 	ctx.Data["App"] = LoadAppState(owner, name)
 	ctx.Data["Lines"] = lines
 	ctx.Data["Truncated"] = truncated
@@ -428,7 +428,7 @@ func AppHistory(ctx *context.Context) {
 	start := min((page-1)*perPage, len(attempts))
 	end := min(start+perPage, len(attempts))
 
-	ctx.Data["Title"] = "배포 이력"
+	ctx.Data["Title"] = ctx.Locale.TrString("company.title.deploy_history")
 	ctx.Data["App"] = st
 	ctx.Data["StatusLabel"] = departmentStatusLabel(st)
 	ctx.Data["Attempts"] = attempts[start:end]

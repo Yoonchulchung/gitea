@@ -71,8 +71,8 @@
 				{{range .}}
 					<div class="company-perm-review-item">
 						<div>
-							<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{.Detail}}
-							{{if .Evidence}}<div class="text-grey tw-text-12">{{if ctx.Locale.HasKey .Evidence}}{{ctx.Locale.Tr .Evidence}}{{else}}{{.Evidence}}{{end}}</div>{{end}}
+							<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{if .DetailKey}}{{ctx.Locale.Tr .DetailKey}}{{else}}{{.Detail}}{{end}}
+							{{if .Evidence}}<div class="text-grey tw-text-12">{{if ctx.Locale.HasKey .Evidence}}{{ctx.Locale.Tr .Evidence .EvidenceArg}}{{else}}{{.Evidence}}{{end}}</div>{{end}}
 							{{if .Reason}}<div class="tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.deploy.perm_reason" .Reason}}</div>{{end}}
 						</div>
 						{{/* Approval happens by merging the deploy request, which

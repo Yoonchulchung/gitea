@@ -149,7 +149,8 @@ func TestHistoryShowsADeployStillInFlight(t *testing.T) {
 	require.Len(t, rows, 3)
 	assert.True(t, rows[0].InProgress)
 	assert.Equal(t, "cccccccccccc", rows[0].SHA, "shortened to match how the log records it")
-	assert.Contains(t, rows[0].Summary, "설치")
+	assert.Equal(t, "company.progress.building", rows[0].Summary,
+		"a key: the reader's language is not known where this row is built")
 
 	// "Running" and "latest" are different rows whenever a deploy failed or an
 	// older version was put back, and that difference is what someone came to

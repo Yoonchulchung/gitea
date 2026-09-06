@@ -60,7 +60,10 @@
 							</td>
 							{{/* The build log is the app's own output and an admin screen,
 							     so paths are left alone here — see company/applogs.go. */}}
-							<td>{{if .Summary}}{{.Summary}}{{else}}<span class="text-grey">—</span>{{end}}</td>
+							{{/* Summary is a locale key for the in-progress row (built with no reader
+							     and so no language) and the build log's own words for a finished
+							     one. HasKey tells them apart. */}}
+							<td>{{if .Summary}}{{if ctx.Locale.HasKey .Summary}}{{ctx.Locale.Tr .Summary}}{{else}}{{.Summary}}{{end}}{{else}}<span class="text-grey">—</span>{{end}}</td>
 							<td>
 								{{/* Offered for failures too: what a build was refused for is
 								     usually policy, and policy has since changed — the package

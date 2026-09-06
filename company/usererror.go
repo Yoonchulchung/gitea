@@ -199,13 +199,13 @@ func RedactServerPaths(text string) string {
 		// A named marker rather than an ellipsis: a traceback with
 		// "<앱데이터>/company-apps/…/uvicorn/server.py" still reads as a path,
 		// which is most of what makes a traceback useful.
-		text = strings.ReplaceAll(text, root, "<앱데이터>")
+		text = strings.ReplaceAll(text, root, "<app-data>")
 	}
 	// Anything still absolute and pointing at a home directory is redacted
 	// wholesale: those are the paths that vary per install and leak layout.
 	return absolutePathPattern.ReplaceAllStringFunc(text, func(match string) string {
 		if strings.HasPrefix(match, "/home/") || strings.HasPrefix(match, "/Users/") || strings.HasPrefix(match, "/root/") {
-			return "<서버경로>"
+			return "<server-path>"
 		}
 		return match
 	})

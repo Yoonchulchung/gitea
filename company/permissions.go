@@ -56,8 +56,15 @@ type PermissionRequest struct {
 	// "the memory limit was reached 4 times last week". Without it an admin
 	// is approving on assertion alone.
 	Evidence string `json:"evidence,omitempty"`
-	Reason   string `json:"reason,omitempty"` // supplied by the requester
-	Decision string `json:"decision,omitempty"`
+	// EvidenceArg is the argument for Evidence when its key takes one. Stored
+	// with the request because the record outlives the request that made it,
+	// and is read later by whoever reviews it.
+	EvidenceArg any `json:"evidenceArg,omitempty"`
+	// DetailKey is Detail as a locale key, for items whose detail is a fixed
+	// sentence rather than data (a host, a package name and version).
+	DetailKey string `json:"detailKey,omitempty"`
+	Reason    string `json:"reason,omitempty"` // supplied by the requester
+	Decision  string `json:"decision,omitempty"`
 	// Methods applies to an outbound request: which HTTP methods the host may
 	// be reached with. Its own field because Value is the host and the two
 	// were previously squeezed into one string, where the methods were lost.
@@ -95,7 +102,7 @@ func DetectPermissionRequests(owner, repo, requirements, desiredAccess string) [
 			// The department did not type this into a form; it is what their
 			// own requirements.txt asks for. Saying so tells the admin the
 			// request is real rather than speculative.
-			Evidence: "requirements.txt 에 있으나 아직 승인되지 않았습니다",
+			Evidence: "company.evidence.in_requirements",
 		})
 	}
 
@@ -114,7 +121,7 @@ func DetectPermissionRequests(owner, repo, requirements, desiredAccess string) [
 			Value:    name,
 			Label:    "company.perm.kind.package",
 			Detail:   name,
-			Evidence: "직전 배포가 이 패키지에서 멈췄습니다 — 승인한 패키지가 필요로 하는 의존성입니다",
+			Evidence: "company.evidence.build_stopped",
 		})
 	}
 
@@ -139,11 +146,12 @@ func DetectPermissionRequests(owner, repo, requirements, desiredAccess string) [
 	if hits := memoryLimitHits(st); hits > 0 {
 		doubled := settings.Limits.MemoryMB * 2
 		out = append(out, PermissionRequest{
-			Kind:     PermKindMemory,
-			Value:    strconv.Itoa(doubled),
-			Label:    "company.perm.kind.memory",
-			Detail:   strconv.Itoa(settings.Limits.MemoryMB) + "MB → " + strconv.Itoa(doubled) + "MB",
-			Evidence: "최근 한도에 " + strconv.Itoa(hits) + "회 도달했습니다",
+			Kind:        PermKindMemory,
+			Value:       strconv.Itoa(doubled),
+			Label:       "company.perm.kind.memory",
+			Detail:      strconv.Itoa(settings.Limits.MemoryMB) + "MB → " + strconv.Itoa(doubled) + "MB",
+			Evidence:    "company.evidence.limit_hits",
+			EvidenceArg: hits,
 		})
 	}
 	return out

@@ -78,11 +78,11 @@ func deployInProgress(st *AppState) (deployAttempt, bool) {
 func inProgressDetail(state string) string {
 	switch state {
 	case AppStateQueued:
-		return "차례를 기다리는 중입니다"
+		return "company.progress.queued"
 	case AppStateBuilding:
-		return "패키지를 설치하는 중입니다 — 몇 분 걸릴 수 있습니다"
+		return "company.progress.building"
 	default:
-		return "새 버전으로 교체하고 상태를 확인하는 중입니다"
+		return "company.progress.activating"
 	}
 }
 
@@ -137,7 +137,7 @@ func AdminAppHistory(ctx *context.Context) {
 	start := min((page-1)*perPage, len(attempts))
 	end := min(start+perPage, len(attempts))
 
-	ctx.Data["Title"] = owner + "/" + repo + " 배포 이력"
+	ctx.Data["Title"] = ctx.Locale.TrString("company.title.app_history", owner+"/"+repo)
 	ctx.Data["App"] = st
 	ctx.Data["Attempts"] = attempts[start:end]
 	ctx.Data["TotalAttempts"] = len(attempts)

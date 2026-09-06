@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"gitea.dev/modules/translation"
+	"gitea.dev/services/context"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,7 +71,10 @@ defaults:
 		require.Len(t, got, 1)
 		assert.Equal(t, PermKindMemory, got[0].Kind)
 		assert.Equal(t, "1024", got[0].Value)
-		assert.Contains(t, got[0].Evidence, "2")
+		// The evidence has to be a fact, not an assertion: the count travels
+		// with the key so the sentence can be written in any language.
+		assert.Equal(t, "company.evidence.limit_hits", got[0].Evidence)
+		assert.Equal(t, 2, got[0].EvidenceArg)
 	})
 }
 
@@ -164,9 +170,9 @@ func TestPackageRequestsSeparateNamedFromPulledIn(t *testing.T) {
 
 	require.Len(t, got, 2, "an already-allowed package is not a request")
 	assert.Equal(t, "Jinja2", got[0].Value)
-	assert.NotContains(t, got[0].Evidence, "의존성입니다")
+	assert.Equal(t, "company.evidence.in_requirements", got[0].Evidence, "named by the department")
 	assert.Equal(t, "MarkupSafe", got[1].Value)
-	assert.Contains(t, got[1].Evidence, "의존성입니다",
+	assert.Equal(t, "company.evidence.transitive", got[1].Evidence,
 		"an admin cannot tell on their own that this name is in no file the department wrote")
 }
 
@@ -192,7 +198,7 @@ func TestMissingPackagesBecomeRequestable(t *testing.T) {
 	require.Len(t, got, 2)
 	for _, r := range got {
 		assert.Equal(t, PermKindPackage, r.Kind)
-		assert.Contains(t, r.Evidence, "직전 배포가 이 패키지에서 멈췄습니다")
+		assert.Equal(t, "company.evidence.build_stopped", r.Evidence)
 	}
 	assert.Equal(t, []string{"MarkupSafe", "python-dotenv"}, []string{got[0].Value, got[1].Value})
 }
@@ -253,10 +259,14 @@ func TestOutboundEvidenceSeparatesInternalFromInternet(t *testing.T) {
 }
 
 // Someone should not be asked to request access the app already has.
+//
+// The unrestricted case needs a locale (it is the one entry that is a word
+// rather than a host), so it is covered on the handler side; here the two
+// data cases are what matter.
 func TestAllowedOutboundHostsReportsWhatIsInForce(t *testing.T) {
-	assert.Empty(t, allowedOutboundHosts(AppSettings{Network: AppNetwork{Mode: NetworkNone}}))
-	assert.Equal(t, []string{"제한 없음"}, allowedOutboundHosts(AppSettings{Network: AppNetwork{Mode: NetworkOpen}}))
-	assert.Equal(t, []string{"erp.internal"}, allowedOutboundHosts(AppSettings{Network: AppNetwork{
+	ctx := &context.Context{Base: &context.Base{Locale: translation.MockLocale{}}}
+	assert.Empty(t, allowedOutboundHosts(ctx, AppSettings{Network: AppNetwork{Mode: NetworkNone}}))
+	assert.Equal(t, []string{"erp.internal"}, allowedOutboundHosts(ctx, AppSettings{Network: AppNetwork{
 		Mode: NetworkBroker, Allow: []AppNetworkRule{{Host: "erp.internal"}},
 	}}))
 }

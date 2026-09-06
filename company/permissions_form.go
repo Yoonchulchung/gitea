@@ -92,8 +92,8 @@ func requestedByHand(ctx *context.Context, repo *repo_model.Repository) []Permis
 			// Said as the consequence, because that is what an admin is
 			// approving — see docs/company/app-platform.md on what this control
 			// does and does not stop.
-			Detail: "앱이 파일을 내려받게 할 수 있습니다 (현재는 차단됨)",
-			Reason: reason,
+			DetailKey: "company.perm.download_detail",
+			Reason:    reason,
 		})
 	}
 
@@ -200,9 +200,11 @@ func SetDeployRequestPermissions(ctx *context.Context, owner, repo string, prID 
 
 // allowedOutboundHosts names what this app may already reach, so someone does
 // not request access it already has.
-func allowedOutboundHosts(settings AppSettings) []string {
+func allowedOutboundHosts(ctx *context.Context, settings AppSettings) []string {
 	if settings.Network.Mode == NetworkOpen {
-		return []string{"제한 없음"}
+		// The one entry that is a word rather than a host, so it is the one
+		// that needs translating — the rest of this list is data.
+		return []string{ctx.Locale.TrString("company.perm.outbound_unrestricted")}
 	}
 	hosts := make([]string, 0, len(settings.Network.Allow))
 	for _, rule := range settings.Network.Allow {

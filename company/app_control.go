@@ -146,7 +146,8 @@ func RemoveApp(owner, repo, actor string) error {
 		st.PID = 0
 		st.Reason = "removed"
 		st.Message = "removed from the platform by " + actor
-		st.UserMessage = "관리자가 이 앱을 플랫폼에서 제거했습니다"
+		st.UserMessage = ""
+		st.UserMessageKey = "company.app.removed"
 		st.Health = AppHealth{State: "unknown"}
 		st.AppendHistory(AppHistoryEntry{Status: AppStateStopped, Actor: actor, Reason: "removed"})
 		return true

@@ -52,6 +52,10 @@ type PreflightResult struct {
 }
 
 func runPreflight(ctx *context.Context, repo *repo_model.Repository) PreflightResult {
+	// Translated here rather than carried as keys: this report is built inside
+	// a request and shown once, so the reader's language is already known and
+	// there is nothing to store.
+	tr := ctx.Locale.TrString
 	settings := SettingsFor(repo.OwnerName, repo.Name)
 	result := PreflightResult{Deployable: true}
 
@@ -70,33 +74,33 @@ func runPreflight(ctx *context.Context, repo *repo_model.Repository) PreflightRe
 	// one failure a department cannot do anything about.
 	info, pythonErr := pythonProbe()
 	if pythonErr != nil {
-		fail("서버 파이썬", "서버에 파이썬이 준비되어 있지 않습니다. 부서에서 고칠 수 있는 문제가 아니니 관리자에게 알려 주세요.")
-		result.Summary = "서버 문제로 지금은 배포할 수 없습니다."
+		fail(tr("company.preflight.python"), tr("company.preflight.python_missing"))
+		result.Summary = tr("company.preflight.server_problem")
 		return result
 	}
-	ok("서버 파이썬", "Python "+info.Version+" 에서 실행됩니다.")
+	ok(tr("company.preflight.python"), tr("company.preflight.python_ok", info.Version))
 
 	// The start command runs `main:app`, so a missing main.py is the one part
 	// of the app contract that can be checked without running anything.
 	if readRepoFile(ctx, repo, "main.py") == "" {
-		fail("main.py", "저장소 최상위에 main.py 가 없습니다. 앱은 main.py 안의 app 을 실행합니다.")
+		fail(tr("company.preflight.main_py"), tr("company.preflight.main_py_missing"))
 	} else {
-		ok("main.py", "찾았습니다.")
+		ok(tr("company.preflight.main_py"), tr("company.preflight.main_py_ok"))
 	}
 
 	requirements := readRepoFile(ctx, repo, "requirements.txt")
 	if requirements == "" {
-		ok("requirements.txt", "없습니다 — 플랫폼이 제공하는 패키지만 사용합니다: "+joinOrDash(settings.BasePackages))
-		result.Summary = summarize(result.Deployable, nil)
+		ok(tr("company.preflight.requirements"), tr("company.preflight.requirements_none", joinOrDash(ctx, settings.BasePackages)))
+		result.Summary = summarize(ctx, result.Deployable, nil)
 		return result
 	}
 
 	if _, errs := ParseRequirements(requirements); len(errs) > 0 {
-		fail("requirements.txt 형식", formatRequirementErrors(errs, settings.BasePackages))
-		result.Summary = summarize(result.Deployable, nil)
+		fail(tr("company.preflight.requirements_shape"), formatRequirementErrors(errs, settings.BasePackages))
+		result.Summary = summarize(ctx, result.Deployable, nil)
 		return result
 	}
-	ok("requirements.txt 형식", "각 줄이 올바르게 적혀 있습니다.")
+	ok(tr("company.preflight.requirements_shape"), tr("company.preflight.requirements_shape_ok"))
 
 	// The expensive one, and the reason this exists: pip resolves the whole
 	// tree against this host's Python and says whether the versions asked for
@@ -104,14 +108,14 @@ func runPreflight(ctx *context.Context, repo *repo_model.Repository) PreflightRe
 	resolved, err := resolveDependencies(ctx, requirements, settings.BasePackages)
 	if err != nil {
 		if resolveErr, isResolve := err.(*resolveError); isResolve && !resolveErr.unreachable {
-			fail("패키지 버전", "요청한 버전들을 함께 설치할 수 없습니다.\n"+resolveFailureSummary(resolveErr.output))
+			fail(tr("company.preflight.versions"), tr("company.preflight.versions_conflict")+"\n"+resolveFailureSummary(resolveErr.output))
 		} else {
 			// The platform's problem, not theirs. Reported as unchecked rather
 			// than as a failure, because telling someone their code is broken
 			// when the index was briefly down is worse than saying nothing.
-			warn("패키지 버전", "지금은 확인할 수 없습니다 (패키지 저장소에 연결하지 못했습니다). 배포 요청은 그대로 제출할 수 있습니다.")
+			warn(tr("company.preflight.versions"), tr("company.preflight.versions_unchecked"))
 		}
-		result.Summary = summarize(result.Deployable, nil)
+		result.Summary = summarize(ctx, result.Deployable, nil)
 		return result
 	}
 
@@ -122,30 +126,30 @@ func runPreflight(ctx *context.Context, repo *repo_model.Repository) PreflightRe
 		// Not a failure: this is exactly what a deploy request is for. But the
 		// answer depends on someone else, and that is worth knowing before
 		// submitting rather than after waiting.
-		warn("패키지 승인", "설치는 가능하지만 아래 패키지는 관리자 승인이 필요합니다: "+joinOrDash(result.NeedsApproval))
+		warn(tr("company.preflight.approval"), tr("company.preflight.approval_needed", joinOrDash(ctx, result.NeedsApproval)))
 	} else {
-		ok("패키지 승인", "필요한 패키지가 모두 승인되어 있습니다.")
+		ok(tr("company.preflight.approval"), tr("company.preflight.approval_ok"))
 	}
-	ok("패키지 버전", "요청한 패키지를 이 서버의 파이썬에 설치할 수 있습니다.")
+	ok(tr("company.preflight.versions"), tr("company.preflight.versions_ok"))
 
-	result.Summary = summarize(result.Deployable, result.NeedsApproval)
+	result.Summary = summarize(ctx, result.Deployable, result.NeedsApproval)
 	return result
 }
 
-func summarize(deployable bool, needsApproval []string) string {
+func summarize(ctx *context.Context, deployable bool, needsApproval []string) string {
 	switch {
 	case !deployable:
-		return "지금 배포하면 실패합니다. 아래 항목을 고친 뒤 요청해 주세요."
+		return ctx.Locale.TrString("company.preflight.summary_fail")
 	case len(needsApproval) > 0:
-		return "코드는 문제없습니다. 관리자가 패키지를 승인하면 배포됩니다."
+		return ctx.Locale.TrString("company.preflight.summary_approval")
 	default:
-		return "배포할 수 있는 상태입니다."
+		return ctx.Locale.TrString("company.preflight.summary_ok")
 	}
 }
 
-func joinOrDash(items []string) string {
+func joinOrDash(ctx *context.Context, items []string) string {
 	if len(items) == 0 {
-		return "없음"
+		return ctx.Locale.TrString("company.preflight.none")
 	}
 	return strings.Join(items, ", ")
 }

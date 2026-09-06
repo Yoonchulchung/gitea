@@ -305,7 +305,7 @@ func ApproveAppPackages(ctx context.Context, doer *user_model.User, owner, repo 
 			Label:    "company.perm.kind.package",
 			Detail:   name,
 			Decision: "approve",
-			Reason:   "관리자가 직접 승인",
+			Reason:   "company.perm.approved_directly",
 		})
 	}
 	if len(requests) == 0 {

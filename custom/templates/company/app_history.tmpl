@@ -53,7 +53,10 @@
 							</td>
 							{{/* Server paths are stripped for this audience — see
 							     company/app_page.go. Text nodes, never innerHTML. */}}
-							<td>{{if .Summary}}{{.Summary}}{{else}}<span class="text-grey">—</span>{{end}}</td>
+							{{/* Summary is a locale key for the in-progress row (built with no reader
+							     and so no language) and the build log's own words for a finished
+							     one. HasKey tells them apart. */}}
+							<td>{{if .Summary}}{{if ctx.Locale.HasKey .Summary}}{{ctx.Locale.Tr .Summary}}{{else}}{{.Summary}}{{end}}{{else}}<span class="text-grey">—</span>{{end}}</td>
 						</tr>
 					{{else}}
 						<tr><td colspan="4" class="text-grey">{{ctx.Locale.Tr "company.history.empty"}}</td></tr>

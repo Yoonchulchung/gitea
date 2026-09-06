@@ -187,11 +187,11 @@ func packageRequests(resolved []resolvedPackage, allowed []string) []PermissionR
 		if allow[normalizePackageName(pkg.Name)] {
 			continue
 		}
-		evidence := "requirements.txt 에 있으나 아직 승인되지 않았습니다"
+		evidence := "company.evidence.in_requirements"
 		if !pkg.Direct {
 			// Said plainly, because it is the thing an admin cannot work out
 			// for themselves: this name is in no file the department wrote.
-			evidence = "직접 요청한 패키지가 필요로 하는 의존성입니다 (requirements.txt 에는 없습니다)"
+			evidence = "company.evidence.transitive"
 		}
 		out = append(out, PermissionRequest{
 			Kind:     PermKindPackage,

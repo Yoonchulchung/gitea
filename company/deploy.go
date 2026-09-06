@@ -228,7 +228,7 @@ func renderDeployForm(ctx *context.Context) {
 		ctx.Data["OpenRequestItems"] = LoadPermissionRequests(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name, open.ID)
 	}
 	ctx.Data["DownloadAllowed"] = deploySettings.Download.Policy == "allow"
-	ctx.Data["OutboundAllowed"] = allowedOutboundHosts(deploySettings)
+	ctx.Data["OutboundAllowed"] = allowedOutboundHosts(ctx, deploySettings)
 	ctx.Data["PermissionRequests"] = DetectPermissionRequests(
 		ctx.Repo.Repository.OwnerName, ctx.Repo.Repository.Name,
 		readRepoFile(ctx, ctx.Repo.Repository, "requirements.txt"), ctx.FormString("access"))
