@@ -124,6 +124,10 @@
 /* The dashboard's deployed-app panel. Sits under the repository list in the
    same sidebar column, so it takes that column's width and its own spacing
    rather than the list's. */
+/* One sidebar column holding both blocks. The wrapper is the 35% column;
+   repolist ships .flex-container-sidebar on its own root, which would
+   otherwise make it 35% *of* the column. */
+.company-dashboard-sidebar > #dashboard-repo-list { width: 100%; }
 .company-dashboard-apps { margin-top: 1em; }
 .company-dashboard-apps-head {
 	display: flex;

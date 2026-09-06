@@ -11,17 +11,21 @@
 				{{template "user/dashboard/guide" .}}
 			{{end}}
 		</div>
-		{{/* repolist already carries .flex-container-sidebar, so this sits
-		     beside it as a second sidebar block rather than wrapping it —
-		     nesting the class would give the column two widths.
+		{{/* Both blocks share one sidebar column. .flex-container-sidebar is
+		     `width: 35%`, so leaving it on each of them made them two columns
+		     side by side and the page three columns wide — the wrapper carries
+		     it now and repolist's own copy is widened to fill (see
+		     custom/header.tmpl).
 
 		     A repository is not an app: most never become one, and the ones
 		     that do say nothing in that list about whether they are up. "Is our
 		     thing running?" is the question people here ask most, and until now
 		     it took opening repositories one at a time to answer. See
 		     company/dashboard_apps.go. */}}
-		{{template "user/dashboard/repolist" .}}
-		{{template "company/dashboard_apps" .}}
+		<div class="flex-container-sidebar company-dashboard-sidebar">
+			{{template "user/dashboard/repolist" .}}
+			{{template "company/dashboard_apps" .}}
+		</div>
 	</div>
 </div>
 {{template "base/footer" .}}
