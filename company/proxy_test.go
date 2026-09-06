@@ -159,3 +159,78 @@ func TestAppRelativePathStripsMountPrefix(t *testing.T) {
 		assert.Equal(t, want, appRelativePath(in), in)
 	}
 }
+
+// --root-path covers the URLs an app builds for itself, which is why its own
+// links work. It does not cover a path written literally, and following one of
+// those takes the visitor out of the app entirely — into Gitea, where they get
+// a login page or a 404 for a page that exists.
+func TestLocationHeaderGetsTheMountPrefixBack(t *testing.T) {
+	const prefix = "/apps/PO/Test_FastAPI"
+	cases := map[string]string{
+		"/docs":                         prefix + "/docs",
+		"/":                             prefix + "/",
+		"/x?a=b":                        prefix + "/x?a=b",
+		prefix + "/docs":                prefix + "/docs", // already right: --root-path's output
+		prefix:                          prefix,
+		"docs":                          "docs",                                   // relative; the browser resolves it under the prefix
+		"https://example.com/docs":      "https://example.com/docs",               // somewhere else, on purpose
+		"//example.com/docs":            "//example.com/docs",                     // protocol-relative, so also off-host
+		"/apps/PO/Test_FastAPI_Other/x": prefix + "/apps/PO/Test_FastAPI_Other/x", // a different app is not "under" this one
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, prefixPath(prefix, in), in)
+	}
+}
+
+// An app setting Path=/ has its cookie sent to Gitea itself and to every other
+// department's app on this host.
+func TestCookiePathIsScopedToTheApp(t *testing.T) {
+	const prefix = "/apps/PO/Test_FastAPI"
+	assert.Equal(t, "session=abc; Path="+prefix+"/; HttpOnly",
+		prefixCookiePath(prefix, "session=abc; Path=/; HttpOnly"))
+	// The attribute name is normalised on the way out; it is case-insensitive.
+	assert.Equal(t, "session=abc; Path="+prefix+"/sub",
+		prefixCookiePath(prefix, "session=abc; path=/sub"))
+	// Already scoped: left exactly as it is.
+	assert.Equal(t, "session=abc; Path="+prefix+"/",
+		prefixCookiePath(prefix, "session=abc; Path="+prefix+"/"))
+	// No Path at all defaults to the directory of whichever request set it,
+	// which is narrower than the app and varies per page.
+	assert.Equal(t, "session=abc; Path="+prefix+"/",
+		prefixCookiePath(prefix, "session=abc"))
+}
+
+// The whole header set, as ModifyResponse sees it.
+func TestRewriteMountedPathsHandlesEveryCookie(t *testing.T) {
+	resp := &http.Response{Header: http.Header{}}
+	resp.Header.Set("Location", "/docs")
+	resp.Header.Add("Set-Cookie", "a=1; Path=/")
+	resp.Header.Add("Set-Cookie", "b=2")
+	rewriteMountedPaths("/apps/PO/app", resp)
+
+	assert.Equal(t, "/apps/PO/app/docs", resp.Header.Get("Location"))
+	assert.Equal(t, []string{"a=1; Path=/apps/PO/app/", "b=2; Path=/apps/PO/app/"},
+		resp.Header.Values("Set-Cookie"))
+}
+
+// "app" is a name this proxy invented for the transport; it resolves to
+// nothing in a browser, so it must never appear in a redirect.
+func TestInternalHostNeverReachesTheBrowser(t *testing.T) {
+	const prefix = "/apps/PO/app"
+	cases := map[string]string{
+		"http://app/apps/PO/app/docs": "/apps/PO/app/docs",
+		"http://app/docs":             "/docs",
+		"http://app":                  "/",
+		"https://app/x":               "/x",
+		"http://appstore.example/x":   "http://appstore.example/x", // a real host that merely starts with "app"
+		"http://example.com/app/x":    "http://example.com/app/x",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, stripInternalHost(in), in)
+	}
+
+	resp := &http.Response{Header: http.Header{}}
+	resp.Header.Set("Location", "http://app/docs")
+	rewriteMountedPaths(prefix, resp)
+	assert.Equal(t, prefix+"/docs", resp.Header.Get("Location"))
+}

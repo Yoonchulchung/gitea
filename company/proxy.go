@@ -216,8 +216,12 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 			IdleConnTimeout:       proxyIdleConnTimeout,
 		},
 		Rewrite: func(r *httputil.ProxyRequest) {
-			r.SetURL(&url.URL{Scheme: "http", Host: "app"})
-			r.Out.Host = "app"
+			r.SetURL(&url.URL{Scheme: "http", Host: internalAppHost})
+			// The real Host, not the internal one. The transport ignores it —
+			// every connection goes to the app's socket — but the app builds
+			// absolute redirects from it, and "app" is a name this proxy
+			// invented that resolves to nothing in a browser.
+			r.Out.Host = r.In.Host
 			// --root-path tells the app what prefix to *build* URLs with; it
 			// does not remove that prefix from what arrives. Forwarding the
 			// mounted path unchanged makes every app answer its own 404.
@@ -231,7 +235,9 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 			// The app is told where it is mounted so it can build absolute
 			// URLs that survive the prefix.
 			r.Out.Header.Set("X-Forwarded-Prefix", prefix)
-			r.Out.Header.Set("X-Forwarded-Proto", "http")
+			// The scheme the visitor actually used, so an app behind TLS does
+			// not redirect them back to plain http.
+			r.Out.Header.Set("X-Forwarded-Proto", requestScheme(r.In))
 			// Identity is only forwarded when the app actually requires
 			// sign-in. Sending it to a public app would invite it to trust a
 			// header that, for a public app, means nothing.
@@ -242,6 +248,7 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
+			rewriteMountedPaths(prefix, resp)
 			return applyDownloadPolicy(ref, SettingsFor(ref.Owner, ref.Repo), resp)
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -401,3 +408,116 @@ func (r *statusRecorder) Flush() {
 }
 
 func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
+// rewriteMountedPaths puts the mount prefix back on paths the app sends out.
+//
+// The app is told where it is mounted (--root-path) and uses that for URLs it
+// builds itself, which is why its own links work. That does not cover a path
+// written literally — a RedirectResponse("/docs"), Starlette's trailing-slash
+// redirect, a Location on a 201 — and those arrive as "/docs", which is not
+// this app at all. Following one takes the visitor out of the app and into
+// Gitea, where they get a login page or a 404 for a page that exists.
+//
+// The department cannot fix this: the prefix is the platform's choice, not
+// something their code knows or should have to. So the proxy that imposed the
+// prefix is what puts it back.
+func rewriteMountedPaths(prefix string, resp *http.Response) {
+	if location := resp.Header.Get("Location"); location != "" {
+		if rewritten := prefixPath(prefix, stripInternalHost(location)); rewritten != location {
+			resp.Header.Set("Location", rewritten)
+		}
+	}
+
+	// Cookie paths for the same reason, and one more: an app setting Path=/
+	// has its cookie sent to Gitea itself and to every other department's app
+	// on this host. Scoping it to the app's own prefix keeps it where it
+	// belongs and out of everything else.
+	cookies := resp.Header.Values("Set-Cookie")
+	if len(cookies) == 0 {
+		return
+	}
+	rewritten := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		rewritten = append(rewritten, prefixCookiePath(prefix, cookie))
+	}
+	resp.Header.Del("Set-Cookie")
+	for _, cookie := range rewritten {
+		resp.Header.Add("Set-Cookie", cookie)
+	}
+}
+
+// prefixPath prepends the mount prefix to a root-relative path.
+//
+// Left alone: absolute URLs (the app is naming somewhere else on purpose),
+// relative paths (the browser resolves those against the current URL, which
+// already carries the prefix), and anything already under the prefix — which
+// is what --root-path produces, so the common case is untouched.
+func prefixPath(prefix, location string) string {
+	if !strings.HasPrefix(location, "/") || strings.HasPrefix(location, "//") {
+		return location // relative, or protocol-relative and therefore off-host
+	}
+	path, query, hasQuery := strings.Cut(location, "?")
+	if path == prefix || strings.HasPrefix(path, prefix+"/") {
+		return location
+	}
+	if hasQuery {
+		return prefix + path + "?" + query
+	}
+	return prefix + path
+}
+
+// prefixCookiePath rewrites a Set-Cookie's Path attribute, adding one when the
+// cookie has none — the default would be the directory of whichever request
+// happened to set it, which is narrower than the app and changes per page.
+func prefixCookiePath(prefix, cookie string) string {
+	parts := strings.Split(cookie, ";")
+	for i, part := range parts {
+		name, value, found := strings.Cut(strings.TrimSpace(part), "=")
+		if !found || !strings.EqualFold(name, "path") {
+			continue
+		}
+		parts[i] = " Path=" + prefixPath(prefix, value)
+		return strings.Join(parts, ";")
+	}
+	return cookie + "; Path=" + prefix + "/"
+}
+
+// internalAppHost is the placeholder the transport is handed. Every connection
+// goes to the app's unix socket regardless, so the value is arbitrary — but it
+// must never reach a browser, because it resolves to nothing.
+const internalAppHost = "app"
+
+// stripInternalHost reduces an absolute URL naming the internal host to the
+// path part, so the prefix logic can treat it like any other local redirect.
+//
+// Belt and braces: the Host header now carries the real hostname, so an app
+// building a redirect from it produces the right URL on its own. This catches
+// what that does not — a response constructed before the header was consulted,
+// or an app that hardcoded the value it saw.
+func stripInternalHost(location string) string {
+	for _, scheme := range []string{"http://", "https://"} {
+		if rest, ok := strings.CutPrefix(location, scheme+internalAppHost); ok {
+			if rest == "" {
+				return "/"
+			}
+			if strings.HasPrefix(rest, "/") {
+				return rest
+			}
+		}
+	}
+	return location
+}
+
+// requestScheme reports how the visitor reached Gitea.
+//
+// From the instance's own configured URL, not from the request's
+// X-Forwarded-Proto: that header is client-supplied on the way in — it is in
+// forwardedHeadersToStrip for exactly that reason — and taking it here would
+// let a caller decide what scheme the app builds its URLs with. req.TLS still
+// counts, since Gitea terminated that connection itself.
+func requestScheme(req *http.Request) string {
+	if req.TLS != nil || strings.HasPrefix(setting.AppURL, "https://") {
+		return "https"
+	}
+	return "http"
+}
