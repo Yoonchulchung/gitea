@@ -140,10 +140,7 @@ func ParseRequirements(content string) ([]Requirement, []RequirementError) {
 		}
 
 		if !validRequirement.MatchString(text) {
-			errs = append(errs, RequirementError{
-				Line: line, Text: text,
-				Reason: `must be written as "package==version" (for example "fastapi==0.115.0")`,
-			})
+			errs = append(errs, RequirementError{Line: line, Text: text, Reason: shapeProblem(text)})
 			continue
 		}
 		name, version, _ := strings.Cut(text, "==")
@@ -153,6 +150,36 @@ func ParseRequirements(content string) ([]Requirement, []RequirementError) {
 		errs = append(errs, RequirementError{Reason: "could not read requirements.txt: " + err.Error()})
 	}
 	return reqs, errs
+}
+
+// bareName is a package name with no version at all — by far the most common
+// way to get this wrong, since it is what pip itself accepts and what every
+// example on the internet shows.
+var bareName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// rangeOperator catches the other common shape: a version *range*. Rejected
+// on purpose — a range means the code that ships can change without anyone
+// approving it again — so the message has to say that rather than repeat the
+// required form at someone who plainly knows what a version is.
+var rangeOperator = regexp.MustCompile(`[><~!]=?|===`)
+
+// shapeProblem says which mistake this line is, in the reader's language.
+//
+// One message for every malformed line told a non-developer with six bare
+// names the same sentence six times and named none of them, which is how
+// "fastapi" and "-e ." come to look like the same problem.
+func shapeProblem(text string) string {
+	switch {
+	case bareName.MatchString(text):
+		return fmt.Sprintf("%q — 설치할 버전을 함께 적어 주세요 (예: %s==1.2.3)", text, text)
+	case rangeOperator.MatchString(text):
+		name, _, _ := strings.Cut(strings.FieldsFunc(text, func(r rune) bool {
+			return strings.ContainsRune("><~!= ", r)
+		})[0], "[")
+		return fmt.Sprintf("%q — 버전 범위는 쓸 수 없습니다. 설치할 버전 하나를 지정해 주세요 (예: %s==1.2.3)", text, name)
+	default:
+		return fmt.Sprintf("%q — 한 줄에 패키지 하나를 %q 형태로 적어 주세요", text, "이름==버전")
+	}
 }
 
 // DeniedPackages returns the requirements that are not in allowed, in the

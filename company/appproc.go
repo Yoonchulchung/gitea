@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -280,11 +281,14 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	if err != nil {
 		return err
 	}
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+	// Through a writer rather than straight to the file, so every line is
+	// stamped with when it arrived (company/applogtime.go).
+	stamped := newTimestampWriter(logFile)
+	cmd.Stdout = stamped
+	cmd.Stderr = stamped
 
 	if err := cmd.Start(); err != nil {
-		_ = logFile.Close()
+		_ = stamped.Close()
 		return err
 	}
 	s.cmd = cmd
@@ -294,7 +298,7 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	// behind Gitea for CPU, and ahead of it for the OOM killer.
 	deprioritizeAndProtect(cmd.Process.Pid)
 
-	go s.watchExit(cmd, logFile)
+	go s.watchExit(cmd, stamped)
 	return nil
 }
 
@@ -303,8 +307,10 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 // Deliberately not holding s.mu while waiting — Wait blocks for the life of
 // the process, and holding the lock would deadlock every other operation on
 // this app.
-func (s *appSupervisor) watchExit(cmd *exec.Cmd, logFile *os.File) {
+func (s *appSupervisor) watchExit(cmd *exec.Cmd, logFile io.Closer) {
 	err := cmd.Wait()
+	// Closing the stamping writer flushes a trailing partial line, which on a
+	// crash is usually the last thing the app managed to say.
 	_ = logFile.Close()
 
 	s.mu.Lock()

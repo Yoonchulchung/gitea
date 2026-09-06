@@ -79,10 +79,11 @@ func (e PlatformEnvironment) AIContext() string {
 
 	if e.PythonVersion != "" {
 		fmt.Fprintf(&b, "- Python %s. Any dependency you add must have a wheel built for it — "+
-			"pinning a version released before this Python existed makes the deploy fail with "+
-			"\"No matching distribution found\", naming a transitive dependency the employee never wrote down. "+
-			"Prefer leaving versions unpinned, or pin only versions you are certain support this interpreter.\n",
-			e.PythonVersion)
+			"a version released before this Python existed fails the deploy with \"No matching "+
+			"distribution found\", often naming a transitive dependency the employee never wrote down. "+
+			"So pin recent versions, and if you are not confident a version supports Python %s, "+
+			"say so to the employee instead of guessing.\n",
+			e.PythonVersion, e.PythonVersion)
 	} else {
 		fmt.Fprintf(&b, "- The server currently has no usable Python (%s), so nothing will deploy "+
 			"until an administrator fixes that. Say so if the employee is waiting on a deploy.\n", e.PythonError)

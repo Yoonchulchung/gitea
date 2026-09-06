@@ -4,9 +4,12 @@
 package company
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,3 +70,63 @@ func TestLogSearchFindsBuildOutput(t *testing.T) {
 	require.Len(t, lines, 1)
 	assert.Contains(t, lines[0].Text, "openpyxl==9.9.9")
 }
+
+// Without a time on each line the log answers what happened but never when,
+// which is exactly what someone needs to connect a failure to the deploy that
+// caused it.
+func TestTimestampWriterStampsWholeLines(t *testing.T) {
+	var sink closableBuffer
+	w := newTimestampWriter(&sink)
+	w.now = func() time.Time { return time.Unix(1700000000, 0).UTC() }
+
+	// A partial write must not get its own timestamp mid-line: the child does
+	// not write on line boundaries, and a stack trace would end up striped.
+	n, err := w.Write([]byte("hello "))
+	require.NoError(t, err)
+	assert.Equal(t, 6, n, "a short write is an error to exec; report what we were given")
+	assert.Empty(t, sink.String(), "nothing is emitted until the line ends")
+
+	_, err = w.Write([]byte("world\nsecond\n"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	lines := strings.Split(strings.TrimRight(sink.String(), "\n"), "\n")
+	require.Len(t, lines, 2)
+	for _, line := range lines {
+		at, text := splitLogTime(line)
+		assert.Equal(t, int64(1700000000), at)
+		assert.NotContains(t, text, "1970", "the stamp must be split back off, not left in the text")
+	}
+	assert.Equal(t, "hello world", func() string { _, s := splitLogTime(lines[0]); return s }())
+}
+
+// A crash usually leaves an unterminated line, and it is often the one worth
+// reading.
+func TestTimestampWriterFlushesPartialLineOnClose(t *testing.T) {
+	var sink closableBuffer
+	w := newTimestampWriter(&sink)
+	_, err := w.Write([]byte("Traceback (most recent call last):"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	_, text := splitLogTime(strings.TrimRight(sink.String(), "\n"))
+	assert.Equal(t, "Traceback (most recent call last):", text)
+}
+
+// Rotated files written before stamping existed are still in the directory,
+// and an app is free to print something that starts with a date of its own.
+func TestSplitLogTimeLeavesUnstampedLinesWhole(t *testing.T) {
+	for _, line := range []string{
+		"INFO:     Uvicorn running",
+		"2026-01-01 something that is not our layout",
+		"",
+	} {
+		at, text := splitLogTime(line)
+		assert.Zero(t, at, line)
+		assert.Equal(t, line, text)
+	}
+}
+
+type closableBuffer struct{ bytes.Buffer }
+
+func (closableBuffer) Close() error { return nil }

@@ -107,6 +107,28 @@
    was doing this instead, which also preserved the template's own indentation
    and turned it into visible blank space. */
 .company-app-cause-line + .company-app-cause-line { margin-top: 2px; }
+/* The environment editor. Semantic UI's table gives a cell its content's
+   width, so an input sized by its default `size` attribute left a wide empty
+   gutter beside every field — the name and value columns share the row and
+   the only narrow column is the one holding a checkbox. */
+.company-env-table { table-layout: fixed; }
+.company-env-table th,
+.company-env-table td { padding: 6px 8px; }
+.company-env-table .company-env-select { width: 2.5rem; text-align: center; }
+.company-env-table input[type="text"],
+.company-env-table input[type="password"] { width: 100%; }
+/* A stored name cannot be edited — only added or deleted — so it is shown as
+   a fact rather than as a field inviting a change that would not be saved. */
+/* The time each line arrived. Dimmed and fixed-width so the eye runs down the
+   messages and reaches for the times only when connecting one to a deploy. */
+.company-log-time {
+	color: var(--color-text-light-3);
+	user-select: none;
+}
+.company-env-table input[readonly] {
+	background: var(--color-secondary-bg);
+	color: var(--color-text-light-2);
+}
 /* Same reason, for the panel as a whole: a flex item defaults to min-width
    auto, which refuses to shrink below its content. */
 .company-app-panel { min-width: 0; }

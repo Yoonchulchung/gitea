@@ -29,7 +29,7 @@
 			{{/* Text nodes, never innerHTML: an app prints whatever it wants, and
 			     "<script>" in a log line must not run in the reader's session.
 			     Go templates escape this by default — do not add safeHTML. */}}
-			<pre class="company-log">{{range .Lines}}{{if .Build}}<span class="company-log-build">{{.Text}}</span>{{else}}{{.Text}}{{end}}
+			<pre class="company-log">{{range .Lines}}{{if .At}}<span class="company-log-time" title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.AbsoluteShort .At}}</span> {{end}}{{if .Build}}<span class="company-log-build">{{.Text}}</span>{{else}}{{.Text}}{{end}}
 {{else}}로그가 아직 없습니다. 앱이 한 번이라도 배포되면 여기에 쌓입니다.{{end}}</pre>
 			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">
 				<span class="company-log-build">이 색</span> 은 배포할 때 나온 것이고, 나머지는 실행 중인 앱이 남긴 것입니다.

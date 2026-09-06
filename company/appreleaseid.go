@@ -63,6 +63,50 @@ func CurrentReleaseSHA(owner, repo string) string {
 	return readReleaseSHA(target)
 }
 
+// ReleaseInfo is what a release is and when it was built, for the screens
+// where someone is deciding whether to move off it.
+type ReleaseInfo struct {
+	SHA     string
+	BuiltAt int64 // 0 when the release is gone
+	Exists  bool
+}
+
+// describeRelease reads one release directory.
+//
+// BuiltAt comes from the sha file's timestamp rather than a recorded field:
+// it is written once, at the start of the build, and never touched again, so
+// its mtime is the build time without a second thing to keep in sync. Releases
+// built before that file existed still get a time from the directory, which is
+// what makes "이전 버전으로" say something useful about them rather than
+// nothing.
+func describeRelease(dir string) ReleaseInfo {
+	if dir == "" {
+		return ReleaseInfo{}
+	}
+	info := ReleaseInfo{SHA: readReleaseSHA(dir)}
+	if st, err := os.Stat(filepath.Join(dir, releaseSHAFile)); err == nil {
+		info.BuiltAt, info.Exists = st.ModTime().Unix(), true
+		return info
+	}
+	if st, err := os.Stat(dir); err == nil {
+		info.BuiltAt, info.Exists = st.ModTime().Unix(), true
+	}
+	return info
+}
+
+// CurrentRelease is what the app is serving; PreviousRelease is where "이전
+// 버전으로" would take it. Both read the symlinks, so both are right after a
+// rollback.
+func CurrentRelease(owner, repo string) ReleaseInfo {
+	target, _ := os.Readlink(appPathsFor(owner, repo).current)
+	return describeRelease(target)
+}
+
+func PreviousRelease(owner, repo string) ReleaseInfo {
+	target, _ := os.Readlink(appPathsFor(owner, repo).previous)
+	return describeRelease(target)
+}
+
 // adoptCurrentReleaseSHA points the state at whatever is actually on disk.
 //
 // Called wherever the symlink moves for a reason other than a deploy — a

@@ -273,7 +273,7 @@ func buildRelease(ctx context.Context, job deployJob, p appPaths, release string
 	}
 	reqs, reqErrs := ParseRequirements(string(body))
 	if len(reqErrs) > 0 {
-		return &packagesDeniedError{message: formatRequirementErrors(reqErrs)}
+		return &packagesDeniedError{message: formatRequirementErrors(reqErrs, settings.BasePackages)}
 	}
 	if denied := DeniedPackages(reqs, settings.AllowedPackages()); len(denied) > 0 {
 		return &packagesDeniedError{message: formatDeniedPackages(denied)}
@@ -708,10 +708,26 @@ type packagesDeniedError struct{ message string }
 
 func (e *packagesDeniedError) Error() string { return e.message }
 
-func formatRequirementErrors(errs []RequirementError) string {
+// formatRequirementErrors writes the rejected lines out for the department.
+//
+// Base packages are singled out because they are the likeliest thing in a
+// broken requirements.txt and the advice for them is the opposite of the
+// advice for everything else: the platform already installs these, so the fix
+// is to delete the line, not to find a version for it. Telling someone to pin
+// a package that is already installed sends them to look up a version number
+// they then have to keep correct forever, for nothing.
+func formatRequirementErrors(errs []RequirementError, basePackages []string) string {
+	provided := make(map[string]bool, len(basePackages))
+	for _, name := range BasePackageNames(basePackages) {
+		provided[normalizePackageName(name)] = true
+	}
 	lines := make([]string, 0, len(errs))
 	for _, e := range errs {
-		lines = append(lines, fmt.Sprintf("requirements.txt line %d: %s", e.Line, e.Reason))
+		reason := e.Reason
+		if provided[normalizePackageName(e.Text)] {
+			reason = fmt.Sprintf("%q — 플랫폼이 이미 설치해 주는 패키지입니다. 이 줄은 지워 주세요.", e.Text)
+		}
+		lines = append(lines, fmt.Sprintf("requirements.txt %d번째 줄: %s", e.Line, reason))
 	}
 	return strings.Join(lines, "\n")
 }

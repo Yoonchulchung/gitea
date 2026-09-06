@@ -64,7 +64,11 @@ func AppPage(ctx *context.Context) {
 	// widening is a Deploy Request, because it exposes their data further.
 	ctx.Data["AccessOptions"] = accessOptionsFor(settings.Access, configuredAccess(owner, name))
 	ctx.Data["BlankEnvRows"] = blankEnvRowIndexes
-	ctx.Data["RunningSHA"] = CurrentReleaseSHA(owner, name)
+	// "이전 버전으로" is irreversible in the sense that matters — it takes the
+	// app off what is working now — so both ends of that swap are named here
+	// rather than left for the person to remember.
+	ctx.Data["Running"] = CurrentRelease(owner, name)
+	ctx.Data["Previous"] = PreviousRelease(owner, name)
 	ctx.Data["HistoryRows"] = describeHistory(st.History)
 	ctx.HTML(http.StatusOK, tplApp)
 }

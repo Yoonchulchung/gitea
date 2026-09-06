@@ -36,6 +36,9 @@ const (
 // LogLine is one line of output.
 type LogLine struct {
 	Text string
+	// At is when the line was written, 0 for lines logged before the platform
+	// started stamping them (company/applogtime.go).
+	At   int64
 	File string
 	// Build marks a line that came from a deploy rather than from the running
 	// app. Both matter and both are kept, but "pip could not find that
@@ -109,7 +112,10 @@ func ReadAppLogs(owner, repo string, query LogQuery) ([]LogLine, bool, error) {
 				ring = ring[1:]
 				truncated = true
 			}
-			ring = append(ring, LogLine{Text: line, File: name, Build: strings.HasPrefix(name, buildLogName)})
+			// Matched against the raw line, so searching for a date works, but
+			// split for display so the time is a column rather than noise.
+			at, text := splitLogTime(line)
+			ring = append(ring, LogLine{Text: text, At: at, File: name, Build: strings.HasPrefix(name, buildLogName)})
 		}
 		_ = f.Close()
 		if truncated && time.Now().After(deadline) {

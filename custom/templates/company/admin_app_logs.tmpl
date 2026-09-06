@@ -34,7 +34,7 @@
 			{{/* Build output comes first, then the running app's. The two have no
 			     shared clock, so they are shown as blocks rather than interleaved
 			     — which would imply an ordering that is not there. */}}
-			<pre class="company-log">{{range .Lines}}{{if .Build}}<span class="company-log-build">{{.Text}}</span>{{else}}{{.Text}}{{end}}
+			<pre class="company-log">{{range .Lines}}{{if .At}}<span class="company-log-time" title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.AbsoluteShort .At}}</span> {{end}}{{if .Build}}<span class="company-log-build">{{.Text}}</span>{{else}}{{.Text}}{{end}}
 {{else}}로그가 아직 없습니다.{{end}}</pre>
 			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">
 				<span class="company-log-build">이 색</span> 은 배포(빌드) 출력이고, 나머지는 실행 중인 앱이 남긴 것입니다.
