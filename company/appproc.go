@@ -31,6 +31,11 @@ import (
 // "health checked", a watchdog kill arriving while an admin's stop is
 // already tearing the process down.
 
+// errNoRelease means start was pressed before any deploy ever succeeded —
+// a different situation from an app that is broken, and the only one the
+// department fixes by deploying rather than by editing code.
+var errNoRelease = errors.New("this app has not been deployed successfully yet")
+
 const (
 	// stopGracePeriod is how long a process gets to finish in-flight
 	// requests after SIGTERM before SIGKILL. uvicorn drains on TERM; the
@@ -195,7 +200,10 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	}
 	target, err := os.Readlink(s.paths.current)
 	if err != nil {
-		return fmt.Errorf("no current release to start: %w", err)
+		// Deliberately not wrapped: the underlying error carries an absolute
+		// path inside Gitea's data directory, and this message reaches a
+		// department's screen.
+		return errNoRelease
 	}
 	if _, err := os.Stat(filepath.Join(target, "app", "main.py")); err != nil {
 		// The app contract is a fixed convention, not a config file, so a
@@ -407,9 +415,13 @@ func (s *appSupervisor) startProcess() (int, error) {
 	s.mu.Unlock()
 
 	if startErr != nil {
+		reason := ReasonContractViolation
+		if errors.Is(startErr, errNoRelease) {
+			reason = ReasonNoRelease
+		}
 		_ = MutateAppState(s.owner, s.repo, func(st *AppState) bool {
 			st.Actual = AppStateFailed
-			st.Reason = ReasonContractViolation
+			st.Reason = reason
 			st.Message = startErr.Error()
 			st.PID = 0
 			return true

@@ -114,9 +114,13 @@
      plain repository's sidebar is unchanged. Admins get the far more
      detailed /-/admin/company-deploys instead, which is why this lives only
      in the {{else}} branch. */}}
-{{with .CompanyApp}}
-<div class="repo-home-sidebar-top flex-relaxed-list company-app-panel{{if .HasProblem}} has-problem{{end}}">
-	<div class="flex-relaxed-list">
+<div class="repo-home-sidebar-top flex-relaxed-list">
+	{{/* Inside the existing sidebar block, never as a sibling of it:
+	     .repo-home-sidebar-top is placed explicitly at grid-row 1 /
+	     grid-column 2 (web_src/css/repo/home.css), so a second element with
+	     that class lands in the same cell and draws on top of the first. */}}
+	{{with .CompanyApp}}
+	<div class="flex-relaxed-list company-app-panel{{if .HasProblem}} has-problem{{end}}">
 		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
 			<span>앱</span>
 			<span class="company-app-state {{.Status}}">{{.StatusLabel}}</span>
@@ -159,9 +163,7 @@
 			<a class="ui tiny basic button" href="{{.DeployLink}}">권한 요청하기</a>
 		</div>
 	</div>
-</div>
-{{end}}
-<div class="repo-home-sidebar-top flex-relaxed-list">
+	{{end}}
 	<div class="flex-relaxed-list">
 		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
 			<span>{{ctx.Locale.Tr "repo.repo_desc"}}</span>

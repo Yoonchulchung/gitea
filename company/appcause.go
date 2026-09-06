@@ -102,16 +102,34 @@ func DepartmentCause(st *AppState) *AppCause {
 			Summary: "동시에 배포가 너무 많아 이번 배포가 처리되지 않았습니다",
 			Detail:  "이전 버전은 그대로 동작하고 있습니다. 잠시 뒤 다시 배포해 주세요.",
 		}
+	case ReasonNoRelease:
+		return &AppCause{
+			Summary: "아직 성공적으로 배포된 버전이 없습니다",
+			Detail:  "배포 요청이 승인되고 빌드까지 끝나야 앱을 시작할 수 있습니다.",
+			Action:  "deploy", ActionLabel: "배포 요청하기",
+		}
+	case ReasonContractViolation:
+		return &AppCause{
+			Summary: "앱을 시작할 수 없습니다",
+			// These messages are written for a department — "main.py not
+			// found in the repository root" and the like — so they are safe
+			// to show as-is. Anything that is not is classified above.
+			Detail: st.Message,
+		}
 	case ReasonRolledBack:
 		return &AppCause{
 			Summary: "새 버전이 응답하지 않아 이전 버전으로 되돌렸습니다",
 			Detail:  "지금 동작하는 것은 이전 버전입니다. 코드를 고쳐 다시 배포해 주세요.",
 		}
 	default:
-		if st.Message == "" {
-			return &AppCause{Summary: "앱이 실행되고 있지 않습니다"}
+		// An unclassified failure must not fall back to st.Message: that is
+		// admin-only detail and can carry absolute paths or build output.
+		// Reaching here means a reason code was added without a sentence to
+		// go with it.
+		return &AppCause{
+			Summary: "앱이 실행되고 있지 않습니다",
+			Detail:  "원인을 확인하려면 관리자에게 문의해 주세요.",
 		}
-		return &AppCause{Summary: "앱이 실행되고 있지 않습니다", Detail: st.Message}
 	}
 }
 

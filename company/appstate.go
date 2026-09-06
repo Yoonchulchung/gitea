@@ -62,6 +62,7 @@ const (
 	ReasonDeployQueueFull    = "deploy_queue_full"
 	ReasonContractViolation  = "contract_violation" // no main.py
 	ReasonRolledBack         = "rolled_back"
+	ReasonNoRelease          = "no_release" // start pressed before any deploy succeeded
 )
 
 // appHistoryLimit bounds the per-app history. It doubles as the rollback

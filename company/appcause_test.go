@@ -57,3 +57,31 @@ func TestDepartmentCauseKeepsBuildOutputAdminOnly(t *testing.T) {
 	assert.NotContains(t, cause.Detail, "Downloading")
 	assert.Less(t, len(cause.Detail), len(pipOutput)/2)
 }
+
+// Nothing a department sees may carry an absolute path from inside Gitea's
+// data directory, a build log, or any other admin-only detail. Every reason
+// code needs a sentence written for a non-developer; the default branch is a
+// backstop, not a place to fall through to.
+func TestDepartmentCauseNeverLeaksAdminDetail(t *testing.T) {
+	secret := "/Users/someone/gitea/data/company-apps/9f2c/current"
+	for _, reason := range []string{
+		ReasonInstallFailed, ReasonNoRelease, ReasonHealthTimeout,
+		ReasonCrashLoop, ReasonSandboxUnavailable, ReasonSecretError,
+		ReasonDeployQueueFull, ReasonRolledBack, "some_future_code",
+	} {
+		cause := DepartmentCause(&AppState{Actual: AppStateFailed, Reason: reason, Message: secret})
+		if assert.NotNil(t, cause, reason) {
+			assert.NotContains(t, cause.Detail, secret, reason)
+			assert.NotEmpty(t, cause.Summary, reason)
+		}
+	}
+}
+
+// "Start pressed before anything was ever deployed" is not a broken app, and
+// the fix is a deploy rather than a code change — so it gets its own message
+// and its own button.
+func TestNoReleaseCausePointsAtDeploying(t *testing.T) {
+	cause := DepartmentCause(&AppState{Actual: AppStateFailed, Reason: ReasonNoRelease})
+	assert.Equal(t, "deploy", cause.Action)
+	assert.Contains(t, cause.Summary, "배포")
+}
