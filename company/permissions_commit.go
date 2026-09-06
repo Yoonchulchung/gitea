@@ -302,7 +302,7 @@ func ApproveAppPackages(ctx context.Context, doer *user_model.User, owner, repo 
 		requests = append(requests, PermissionRequest{
 			Kind:     PermKindPackage,
 			Value:    name,
-			Label:    "패키지 추가",
+			Label:    "company.perm.kind.package",
 			Detail:   name,
 			Decision: "approve",
 			Reason:   "관리자가 직접 승인",

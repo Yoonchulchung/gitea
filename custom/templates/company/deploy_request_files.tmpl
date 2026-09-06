@@ -71,7 +71,7 @@
 				{{range .}}
 					<div class="company-perm-review-item">
 						<div>
-							<strong>{{.Label}}</strong> — {{.Detail}}
+							<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{.Detail}}
 							{{if .Evidence}}<div class="text-grey tw-text-12">{{.Evidence}}</div>{{end}}
 							{{if .Reason}}<div class="tw-text-13 tw-mt-1">사유: {{.Reason}}</div>{{end}}
 						</div>

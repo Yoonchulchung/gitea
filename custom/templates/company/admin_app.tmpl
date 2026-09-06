@@ -197,7 +197,7 @@
 						<div class="text"></div> {{svg "octicon-triangle-down" 14 "dropdown icon"}}
 						<div class="menu">
 							{{range .AccessOptions}}
-								<div class="item" data-value="{{.Value}}">{{.Label}} — {{.Explain}}</div>
+								<div class="item" data-value="{{.Value}}">{{ctx.Locale.Tr .Label}} — {{ctx.Locale.Tr .Explain}}</div>
 							{{end}}
 						</div>
 					</div>

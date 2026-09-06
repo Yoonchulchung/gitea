@@ -196,7 +196,7 @@ func packageRequests(resolved []resolvedPackage, allowed []string) []PermissionR
 		out = append(out, PermissionRequest{
 			Kind:     PermKindPackage,
 			Value:    pkg.Name,
-			Label:    "패키지 추가",
+			Label:    "company.perm.kind.package",
 			Detail:   pkg.Name + " (" + pkg.Version + ")",
 			Evidence: evidence,
 		})

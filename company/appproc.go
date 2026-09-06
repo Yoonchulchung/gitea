@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -629,6 +630,9 @@ func ResumeApp(owner, repo, actor string) error {
 func ReconcileApps() {
 	for _, st := range ListAppStates() {
 		owner, repo := st.Owner, st.Repo
+		// Anything of this app's still running was started by a previous
+		// Gitea and answers on the socket the new process needs.
+		reapOrphans(owner, repo)
 		// The symlink decides what starts, so the record has to agree with it
 		// before anything reads the record — a state left over from before a
 		// rollback would otherwise name the failed commit forever.
@@ -728,4 +732,41 @@ func (s *appSupervisor) stableFor(pid int, d time.Duration) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.cmd != nil && s.cmd.Process != nil && s.cmd.Process.Pid == pid
+}
+
+// reapOrphans kills app processes left over from a previous Gitea.
+//
+// On the deploy server bwrap's --die-with-parent ties an app's life to
+// Gitea's, but the dev path has no namespace and a Gitea that dies hard
+// leaves its apps running as orphans. The next start then finds the socket
+// answering and refuses — correctly, but with nothing anyone can do about it
+// from the UI, and every restart cycle stacks another orphan behind the
+// first.
+//
+// Identified by command line: every process this platform has ever started
+// names its release path in argv, and that path is inside a directory only
+// this platform writes. At startup no app has been started yet, so anything
+// matching is by definition not ours to keep. SIGKILL to the group rather
+// than a graceful TERM: these are processes whose supervisor is gone, and
+// there is nobody to watch a grace period for them.
+func reapOrphans(owner, repo string) {
+	home := appPathsFor(owner, repo).home
+	out, err := exec.Command("ps", "-axo", "pid=,command=").Output()
+	if err != nil {
+		return // no ps, no cleanup — the socket probe still protects us
+	}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || !strings.Contains(line, home+string(os.PathSeparator)) {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil || pid == os.Getpid() {
+			continue
+		}
+		log.Warn("company: killing orphaned app process %d for %s/%s (left by a previous Gitea)", pid, owner, repo)
+		if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	}
 }

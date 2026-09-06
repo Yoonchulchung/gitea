@@ -39,11 +39,21 @@ const (
 )
 
 // PermissionRow is one line of the sidebar panel.
+//
+// Label, Value and Reason are locale keys; ValueText is verbatim data — a
+// host, a package list — that no locale file can know. Same split as
+// AppCause, for the same reason: the fixed sentences follow the reader's
+// language, and the data follows itself.
 type PermissionRow struct {
-	Label  string
-	Value  string
-	State  PermissionState
-	Reason string // why it was denied — the part that saves a support request
+	Label string
+	// Value is a locale key; empty when ValueText carries the value instead.
+	Value     string
+	ValueText string
+	State     PermissionState
+	// Reason (a locale key) is why it was denied — the part that saves a
+	// support request. ReasonText carries verbatim additions.
+	Reason     string
+	ReasonText string
 }
 
 // AppSidebarData is everything the panel renders.
@@ -152,7 +162,7 @@ func SetAppPermissionData(ctx *context.Context) {
 
 func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 	rows := []PermissionRow{{
-		Label: "접근",
+		Label: "company.perm.access",
 		Value: accessLabel(settings.Access),
 		State: PermAllowed,
 	}}
@@ -160,7 +170,7 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 	// These rows are department-facing, so they state permission and never
 	// enforcement.
 	//
-	// The distinction matters twice over. Saying "차단됨" would promise a
+	// The distinction matters twice over. Saying "blocked" would promise a
 	// technical block this host may not be applying, and saying that it is
 	// *not* being applied would hand every person with repository access a
 	// working description of a hole only an administrator can close. So the
@@ -169,28 +179,28 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 	// admin screen, where someone can act on it (company/admin_app.go).
 	switch settings.Network.Mode {
 	case NetworkOpen:
-		rows = append(rows, PermissionRow{Label: "외부 통신", Value: "제한 없음", State: PermAllowed})
+		rows = append(rows, PermissionRow{Label: "company.perm.outbound", Value: "company.perm.outbound_open", State: PermAllowed})
 	case NetworkBroker:
 		for _, rule := range settings.Network.Allow {
 			value := rule.Host
 			if len(rule.Methods) > 0 {
 				value += " (" + strings.Join(rule.Methods, ", ") + ")"
 			}
-			rows = append(rows, PermissionRow{Label: "외부 통신", Value: value, State: PermAllowed})
+			rows = append(rows, PermissionRow{Label: "company.perm.outbound", ValueText: value, State: PermAllowed})
 		}
 	default:
 		rows = append(rows, PermissionRow{
-			Label: "외부 통신", Value: "허용되지 않음", State: PermDenied,
-			Reason: "이 앱은 외부 인터넷이나 다른 서버로 연결할 권한이 없습니다. 필요하면 배포 요청에서 신청할 수 있습니다.",
+			Label: "company.perm.outbound", Value: "company.perm.outbound_none", State: PermDenied,
+			Reason: "company.perm.outbound_none.reason",
 		})
 	}
 
 	if packages := settings.AllowedPackages(); len(packages) > 0 {
-		rows = append(rows, PermissionRow{Label: "패키지", Value: strings.Join(packages, ", "), State: PermAllowed})
+		rows = append(rows, PermissionRow{Label: "company.perm.packages", ValueText: strings.Join(packages, ", "), State: PermAllowed})
 	} else {
 		rows = append(rows, PermissionRow{
-			Label: "패키지", Value: "승인된 패키지 없음", State: PermDenied,
-			Reason: "requirements.txt 에 적은 패키지는 관리자 승인 뒤에 설치됩니다.",
+			Label: "company.perm.packages", Value: "company.perm.packages_none", State: PermDenied,
+			Reason: "company.perm.packages_none.reason",
 		})
 	}
 
@@ -205,18 +215,17 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 	// Names only. st.Message is the build's own prose, written for an admin.
 	if len(st.MissingPackages) > 0 {
 		rows = append(rows, PermissionRow{
-			Label: "패키지", Value: strings.Join(st.MissingPackages, ", "), State: PermPending,
-			Reason: "이 패키지가 승인되지 않아 새 버전을 설치하지 못했습니다. " +
-				"직접 적은 패키지가 아니라 그것들이 필요로 하는 것이라, 배포 요청에서 함께 승인받아야 합니다.",
+			Label: "company.perm.packages", ValueText: strings.Join(st.MissingPackages, ", "), State: PermPending,
+			Reason: "company.perm.packages_missing.reason",
 		})
 	}
 
 	if settings.Download.Policy == "allow" {
-		rows = append(rows, PermissionRow{Label: "파일 다운로드", Value: "허용됨", State: PermAllowed})
+		rows = append(rows, PermissionRow{Label: "company.perm.download", Value: "company.perm.allowed", State: PermAllowed})
 	} else {
 		rows = append(rows, PermissionRow{
-			Label: "파일 다운로드", Value: "차단됨", State: PermDenied,
-			Reason: "앱이 파일을 내려주는 것은 기본적으로 막혀 있습니다. 필요하면 배포 요청에서 신청할 수 있습니다.",
+			Label: "company.perm.download", Value: "company.perm.blocked", State: PermDenied,
+			Reason: "company.perm.download_blocked.reason",
 		})
 	}
 	return rows
@@ -225,11 +234,11 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 func accessLabel(access string) string {
 	switch access {
 	case AccessLogin:
-		return "로그인한 사람만"
+		return "company.perm.access_login"
 	case AccessOrg:
-		return "우리 부서만"
+		return "company.perm.access_org"
 	default:
-		return "사내 누구나"
+		return "company.perm.access_public"
 	}
 }
 

@@ -72,19 +72,20 @@ func TestDepartmentRowsStatePermissionNotEnforcement(t *testing.T) {
 
 	var outbound *PermissionRow
 	for i := range rows {
-		if rows[i].Label == "외부 통신" {
+		if rows[i].Label == "company.perm.outbound" {
 			outbound = &rows[i]
 		}
 	}
 	require.NotNil(t, outbound)
-	assert.Equal(t, "허용되지 않음", outbound.Value)
-	assert.Contains(t, outbound.Reason, "권한이 없습니다")
+	assert.Equal(t, "company.perm.outbound_none", outbound.Value, "permission, never enforcement")
 
 	// Whether the platform can currently impose it belongs on the admin
-	// screen, and must not leak into anything a department reads.
+	// screen, and must not leak into anything a department reads — every row
+	// is now a locale key or verbatim data, and no key about enforcement
+	// exists in the department vocabulary.
 	for _, row := range rows {
-		assert.NotContains(t, row.Reason, "막을 수 없는")
-		assert.NotContains(t, row.Value, "차단되지 않음")
+		assert.NotContains(t, row.Value, "unenforced")
+		assert.NotContains(t, row.Reason, "unenforced")
 	}
 }
 

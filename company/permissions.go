@@ -90,7 +90,7 @@ func DetectPermissionRequests(owner, repo, requirements, desiredAccess string) [
 		out = append(out, PermissionRequest{
 			Kind:   PermKindPackage,
 			Value:  denied.Name,
-			Label:  "패키지 추가",
+			Label:  "company.perm.kind.package",
 			Detail: denied.Name + " (" + denied.Version + ")",
 			// The department did not type this into a form; it is what their
 			// own requirements.txt asks for. Saying so tells the admin the
@@ -112,7 +112,7 @@ func DetectPermissionRequests(owner, repo, requirements, desiredAccess string) [
 		out = append(out, PermissionRequest{
 			Kind:     PermKindPackage,
 			Value:    name,
-			Label:    "패키지 추가",
+			Label:    "company.perm.kind.package",
 			Detail:   name,
 			Evidence: "직전 배포가 이 패키지에서 멈췄습니다 — 승인한 패키지가 필요로 하는 의존성입니다",
 		})
@@ -122,10 +122,13 @@ func DetectPermissionRequests(owner, repo, requirements, desiredAccess string) [
 	if desiredAccess != "" && desiredAccess != settings.Access &&
 		accessRank[desiredAccess] > accessRank[settings.Access] {
 		out = append(out, PermissionRequest{
-			Kind:   PermKindAccess,
-			Value:  desiredAccess,
-			Label:  "접근 권한 변경",
-			Detail: accessLabel(settings.Access) + " → " + accessLabel(desiredAccess),
+			Kind:  PermKindAccess,
+			Value: desiredAccess,
+			Label: "company.perm.kind.access",
+			// Mode codes, not translated names: this string is stored in the
+			// request record, and a record written in whatever language the
+			// form happened to render in is a record someone else cannot read.
+			Detail: orDefault(settings.Access, AccessPublic) + " → " + desiredAccess,
 		})
 	}
 
@@ -138,7 +141,7 @@ func DetectPermissionRequests(owner, repo, requirements, desiredAccess string) [
 		out = append(out, PermissionRequest{
 			Kind:     PermKindMemory,
 			Value:    strconv.Itoa(doubled),
-			Label:    "메모리 한도 상향",
+			Label:    "company.perm.kind.memory",
 			Detail:   strconv.Itoa(settings.Limits.MemoryMB) + "MB → " + strconv.Itoa(doubled) + "MB",
 			Evidence: "최근 한도에 " + strconv.Itoa(hits) + "회 도달했습니다",
 		})
@@ -275,4 +278,11 @@ func outboundFromRequest(r PermissionRequest) (host string, methods []string) {
 		methods = []string{"GET"}
 	}
 	return host, methods
+}
+
+func orDefault(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
 }

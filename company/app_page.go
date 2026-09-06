@@ -210,10 +210,11 @@ func accessOptionsFor(current, ceiling string) []accessOption {
 	if current == "" {
 		current = AccessPublic
 	}
+	// Locale keys; the templates translate them where they render.
 	options := []accessOption{
-		{Value: AccessOrg, Label: "우리 부서만", Explain: "이 저장소를 소유한 조직의 구성원만 볼 수 있습니다"},
-		{Value: AccessLogin, Label: "로그인한 사람만", Explain: "Gitea 계정이 있는 사내 구성원이면 볼 수 있습니다"},
-		{Value: AccessPublic, Label: "사내 누구나", Explain: "주소를 아는 사람은 로그인 없이 볼 수 있습니다"},
+		{Value: AccessOrg, Label: "company.perm.access_org", Explain: "company.access.org_explain"},
+		{Value: AccessLogin, Label: "company.perm.access_login", Explain: "company.access.login_explain"},
+		{Value: AccessPublic, Label: "company.perm.access_public", Explain: "company.access.public_explain"},
 	}
 	for i := range options {
 		options[i].Selected = options[i].Value == current

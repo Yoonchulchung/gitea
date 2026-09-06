@@ -25,7 +25,7 @@
 								<td class="tw-w-1/6" title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
 								<td class="tw-w-1/5">{{.Owner}}/{{.Repo}}</td>
 								<td>
-									{{range $i, $r := .Requests}}{{if $i}}, {{end}}{{$r.Label}} ({{$r.Detail}}){{end}}
+									{{range $i, $r := .Requests}}{{if $i}}, {{end}}{{if ctx.Locale.HasKey $r.Label}}{{ctx.Locale.Tr $r.Label}}{{else}}{{$r.Label}}{{end}} ({{$r.Detail}}){{end}}
 									{{range .Requests}}{{if .Reason}}<span class="text-grey tw-text-12 tw-block">{{ctx.Locale.Tr "company.policy.pending_reason"}}: {{.Reason}}</span>{{break}}{{end}}{{end}}
 								</td>
 								<td class="tw-w-32">

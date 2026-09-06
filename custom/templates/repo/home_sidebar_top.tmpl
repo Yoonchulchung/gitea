@@ -175,11 +175,11 @@
 		<div class="repo-home-sidebar-header flex-text-block"><span>{{ctx.Locale.Tr "company.sidebar.perms"}}</span></div>
 		{{range .Rows}}
 			<div class="company-perm-row {{.State}}">
-				<span class="company-perm-label">{{.Label}}</span>
-				<span class="company-perm-value">{{.Value}}</span>
+				<span class="company-perm-label">{{ctx.Locale.Tr .Label}}</span>
+				<span class="company-perm-value">{{if .Value}}{{ctx.Locale.Tr .Value}}{{end}}{{.ValueText}}</span>
 				{{/* The reason is the point of showing a denial at all: without it
 				     the person still has to go and ask an administrator. */}}
-				{{if .Reason}}<span class="company-perm-reason">{{.Reason}}</span>{{end}}
+				{{if or .Reason .ReasonText}}<span class="company-perm-reason">{{if .Reason}}{{ctx.Locale.Tr .Reason}}{{end}} {{.ReasonText}}</span>{{end}}
 			</div>
 		{{end}}
 

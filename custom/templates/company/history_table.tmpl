@@ -18,7 +18,10 @@
 		{{range .Rows}}
 			<tr>
 				<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
-				<td>{{ctx.Locale.Tr .What}}{{if $.Raw}}{{if .Status}} <span class="text-grey tw-text-12">{{.Status}}</span>{{end}}{{end}}</td>
+				{{/* HasKey before Tr on any non-constant key: Tr returns an unknown
+				     key verbatim as template.HTML, which turns "render this code as
+				     itself" into "render this code as markup". */}}
+				<td>{{if ctx.Locale.HasKey .What}}{{ctx.Locale.Tr .What}}{{else}}{{.What}}{{end}}{{if $.Raw}}{{if .Status}} <span class="text-grey tw-text-12">{{.Status}}</span>{{end}}{{end}}</td>
 				<td>
 					{{/* Detail is a locale key for a known reason and the raw code for an
 					     unknown one — an unfamiliar code is still a clue. HasKey tells

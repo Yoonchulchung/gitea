@@ -88,7 +88,7 @@ func requestedByHand(ctx *context.Context, repo *repo_model.Repository) []Permis
 		out = append(out, PermissionRequest{
 			Kind:  PermKindDownload,
 			Value: "allow",
-			Label: "파일 다운로드 허용",
+			Label: "company.perm.kind.download",
 			// Said as the consequence, because that is what an admin is
 			// approving — see docs/company/app-platform.md on what this control
 			// does and does not stop.
@@ -109,7 +109,7 @@ func requestedByHand(ctx *context.Context, repo *repo_model.Repository) []Permis
 			Kind:    PermKindNetwork,
 			Value:   host,
 			Methods: parseMethods(methods),
-			Label:   "외부 통신 허용",
+			Label:   "company.perm.kind.network",
 			Detail:  host + " (" + strings.ToUpper(methods) + ")",
 			// Whether the address is internal is the first thing an admin
 			// checks, so it is stated rather than left to be recognised.

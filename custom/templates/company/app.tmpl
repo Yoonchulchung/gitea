@@ -200,17 +200,19 @@
 			     Same rows as the repository sidebar (company/app_sidebar.go). */}}
 			<table class="ui very basic table tw-text-13">
 				<tbody>
+					{{/* Label/Value/Reason are locale keys; ValueText/ReasonText are
+					     data — a host, a package list — rendered verbatim (escaped). */}}
 					{{range .PermissionRows}}
 						<tr>
-							<td class="tw-w-1/6">{{.Label}}</td>
+							<td class="tw-w-1/6">{{ctx.Locale.Tr .Label}}</td>
 							<td class="tw-w-1/6">
 								{{if eq .State "allowed"}}<span class="company-app-state running">{{ctx.Locale.Tr "company.app.perm_allowed"}}</span>
 								{{else if eq .State "pending"}}<span class="company-app-state building">{{ctx.Locale.Tr "company.app.perm_pending"}}</span>
 								{{else}}<span class="company-app-state failed">{{ctx.Locale.Tr "company.app.perm_denied"}}</span>{{end}}
 							</td>
 							<td>
-								{{.Value}}
-								{{if .Reason}}<span class="text-grey tw-text-12 tw-block">{{.Reason}}</span>{{end}}
+								{{if .Value}}{{ctx.Locale.Tr .Value}}{{end}}{{.ValueText}}
+								{{if or .Reason .ReasonText}}<span class="text-grey tw-text-12 tw-block">{{if .Reason}}{{ctx.Locale.Tr .Reason}}{{end}} {{.ReasonText}}</span>{{end}}
 							</td>
 						</tr>
 					{{end}}
@@ -225,9 +227,12 @@
 					<div class="header">{{ctx.Locale.Tr "company.app.pending_header"}}</div>
 					<table class="ui very basic table tw-text-13 tw-mt-1">
 						<tbody>
+							{{/* The label comes from Kind, not from the stored Label: the
+							     record was written in whichever language the form rendered
+							     in, and Kind is the stable enum underneath it. */}}
 							{{range .PendingRequests}}
 								<tr>
-									<td class="tw-w-1/4">{{.Label}}</td>
+									<td class="tw-w-1/4">{{ctx.Locale.Tr (print "company.perm.kind." .Kind)}}</td>
 									<td>{{.Detail}}{{if .Reason}}<span class="text-grey tw-text-12 tw-block">{{ctx.Locale.Tr "company.app.pending_reason"}}: {{.Reason}}</span>{{end}}</td>
 								</tr>
 							{{end}}
@@ -255,8 +260,8 @@
 								{{if .Selected}}checked{{end}}
 								{{if or .NeedsRequest (not $.CanControl)}}disabled{{end}}>
 							<span>
-								<strong>{{.Label}}</strong>
-								<span class="text-grey tw-ml-2">— {{.Explain}}</span>
+								<strong>{{ctx.Locale.Tr .Label}}</strong>
+								<span class="text-grey tw-ml-2">— {{ctx.Locale.Tr .Explain}}</span>
 								{{if .NeedsRequest}}
 									<a class="tw-ml-2 tw-text-13" href="{{$.DeployLink}}">{{ctx.Locale.Tr "company.app.access_needs_request"}}</a>
 								{{end}}
