@@ -25,14 +25,24 @@
    > class) regardless of cascade order — only an ID-anchored selector
    reliably outranks it. */
 #dashboard-repo-list .repos-search { padding-bottom: 1em !important; }
-/* archived/private filter dropdown next to the search box — hiding it
-   breaks Fomantic's "joined action-input" right-side rounding (it expects
-   the trailing button to supply that corner), so restore it on the input */
+/* archived/private filter dropdown next to the search box — hiding it leaves
+   the input as half of a "joined action input", which Fomantic draws with no
+   right edge at all: the trailing button is supposed to supply that corner
+   and that border.
+
+   Both halves have to be undone. `border-right-color: transparent` is the
+   rule people find first, but a second rule sets `border-right: none`, so
+   restoring only the colour leaves a border of zero width and the box still
+   reads as cut off on the right. */
 .repos-search .ui.dropdown.icon.button { display: none !important; }
 .repos-search .ui.action.input > input {
 	border-top-right-radius: .28571429rem !important;
 	border-bottom-right-radius: .28571429rem !important;
-	border-right-color: var(--color-input-border) !important;
+	border-right: 1px solid var(--color-input-border) !important;
+}
+/* Focus keeps Fomantic's own accent rather than reverting to the grey above. */
+.repos-search .ui.action.input > input:focus {
+	border-right-color: var(--color-primary) !important;
 }
 /* advanced repo-create fields (custom/templates/repo/create.tmpl) — kept in
    the DOM (repo-new.ts does non-null querySelector lookups on them), only
