@@ -111,12 +111,22 @@ func enqueueDeploy(owner, repo, sha string, prID int64) {
 // failDeploy records a deployment failure. It never touches the running
 // process: a build that fails has not replaced anything, so the previous
 // version keeps serving. That is the whole reason the swap happens last.
-func failDeploy(owner, repo, reason, message string) {
+//
+// message is admin detail and may contain anything — a build log, a
+// filesystem path. userMessage is the half a department may see, and is
+// empty unless there is something specific worth telling them beyond the
+// sentence DepartmentCause already has for the reason code.
+func failDeploy(owner, repo, reason, message string, userMessage ...string) {
 	log.Error("company: deploy %s/%s failed (%s): %s", owner, repo, reason, message)
+	safe := ""
+	if len(userMessage) > 0 {
+		safe = userMessage[0]
+	}
 	if err := MutateAppState(owner, repo, func(st *AppState) bool {
 		st.Actual = AppStateFailed
 		st.Reason = reason
 		st.Message = message
+		st.UserMessage = safe
 		st.AppendHistory(AppHistoryEntry{Status: AppStateFailed, Reason: reason})
 		return true
 	}); err != nil {
@@ -148,7 +158,9 @@ func runDeploy(ctx context.Context, job deployJob) {
 	release := releaseDir(p, job.SHA)
 	if err := buildRelease(ctx, job, p, release, settings); err != nil {
 		if denied, ok := errors.AsType[*packagesDeniedError](err); ok {
-			failDeploy(owner, repo, ReasonPackageDenied, denied.Error())
+			// Written by us and naming the packages, so it is the one thing
+			// the department needs in order to fix this.
+			failDeploy(owner, repo, ReasonPackageDenied, denied.Error(), denied.Error())
 			return
 		}
 		failDeploy(owner, repo, ReasonInstallFailed, err.Error())

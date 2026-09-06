@@ -244,6 +244,9 @@ func AdminAppControl(ctx *context.Context) {
 	}
 
 	if err != nil {
+		// Full detail on purpose: this handler is behind adminReq, and an
+		// administrator needs the actual failure. A department gets
+		// DepartmentSafeError instead (company/usererror.go).
 		ctx.Flash.Error(err.Error())
 	} else {
 		ctx.Flash.Success("완료되었습니다: " + verb)

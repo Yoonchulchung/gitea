@@ -1,0 +1,108 @@
+// Copyright 2026 The Gitea Authors. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+package company
+
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"strings"
+	"testing"
+
+	"gitea.dev/modules/setting"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// The error that started this: os errors are *fs.PathError and every one of
+// them names an absolute path inside Gitea's data directory.
+func TestDepartmentSafeErrorHidesFilesystemErrors(t *testing.T) {
+	_, err := os.Readlink("/Users/someone/gitea/data/company-apps/9646/current")
+	require.Error(t, err)
+	require.ErrorAs(t, err, new(*fs.PathError), "the premise of this test")
+
+	got := DepartmentSafeError("starting PO/report", err)
+	assert.NotContains(t, got, "/Users")
+	assert.NotContains(t, got, "company-apps")
+	assert.NotEmpty(t, got, "a department still needs to be told something happened")
+}
+
+// Opt-in disclosure: a message reaches a department only if it was written
+// for one. Wrapping still works, so callers can add context.
+func TestUserErrorPassesThrough(t *testing.T) {
+	err := userErrorf("저장소 최상위에 %s 가 없습니다", "main.py")
+	assert.Equal(t, "저장소 최상위에 main.py 가 없습니다", DepartmentSafeError("ctx", err))
+
+	wrapped := errors.Join(errors.New("internal detail"), err)
+	assert.Equal(t, "저장소 최상위에 main.py 가 없습니다", DepartmentSafeError("ctx", wrapped))
+
+	assert.Empty(t, DepartmentSafeError("ctx", nil))
+}
+
+func TestRedactServerPaths(t *testing.T) {
+	prev := setting.AppDataPath
+	setting.AppDataPath = "/srv/gitea/data"
+	t.Cleanup(func() { setting.AppDataPath = prev })
+
+	assert.NotContains(t,
+		RedactServerPaths("OSError: Permission denied: '/srv/gitea/data/company-apps/x'"),
+		"/srv/gitea/data")
+	assert.NotContains(t,
+		RedactServerPaths("Permission denied: '/home/git/gitea/custom/conf/app.ini'"),
+		"/home/git")
+
+	// A package name or a system path tells nobody anything they could not
+	// guess, and blanking them would mangle the one useful line.
+	kept := RedactServerPaths("No matching distribution found for pydantic-core==2.14.1")
+	assert.Contains(t, kept, "pydantic-core==2.14.1")
+	assert.Contains(t, RedactServerPaths("using /usr/lib/python3.11"), "/usr/lib/python3.11")
+}
+
+// The invariant this whole file exists for: whatever a failure recorded in
+// Message, a department must never be shown it.
+func TestDepartmentCauseIgnoresAdminMessageEntirely(t *testing.T) {
+	leak := "readlink /Users/someone/gitea/data/company-apps/9646/current: no such file"
+	reasons := []string{
+		ReasonInstallFailed, ReasonPackageDenied, ReasonOOM, ReasonHealthTimeout,
+		ReasonCrashLoop, ReasonSuspended, ReasonSandboxUnavailable, ReasonSecretError,
+		ReasonDeployQueueFull, ReasonContractViolation, ReasonNoRelease,
+		ReasonRolledBack, "a_reason_nobody_has_written_a_sentence_for",
+	}
+	for _, reason := range reasons {
+		st := &AppState{Actual: AppStateFailed, Reason: reason, Message: leak}
+		cause := DepartmentCause(st)
+		require.NotNil(t, cause, reason)
+		assert.NotContains(t, cause.Detail, "/Users", reason)
+		assert.NotContains(t, cause.Detail, "company-apps", reason)
+		assert.NotEmpty(t, cause.Summary, reason)
+	}
+}
+
+// UserMessage is the only channel to a department, and it reaches them.
+func TestUserMessageIsWhatSurfaces(t *testing.T) {
+	cause := DepartmentCause(&AppState{
+		Actual:      AppStateSuspended,
+		Reason:      ReasonSuspended,
+		Message:     "internal: killed by watchdog at /srv/gitea/data",
+		UserMessage: "메모리를 너무 많이 써서 정지시켰습니다",
+	})
+	assert.Equal(t, "메모리를 너무 많이 써서 정지시켰습니다", cause.Detail)
+}
+
+// pip's own errors can name a path, so even the filtered subset is scrubbed.
+func TestInstallFailureSummaryRedactsPaths(t *testing.T) {
+	prev := setting.AppDataPath
+	setting.AppDataPath = "/srv/gitea/data"
+	t.Cleanup(func() { setting.AppDataPath = prev })
+
+	got := summarizeInstallFailure(strings.Join([]string{
+		"Collecting fastapi==0.104.1",
+		"ERROR: Could not install packages due to an OSError: [Errno 13] Permission denied: '/srv/gitea/data/company-apps/x/.venv'",
+		"ERROR: No matching distribution found for pydantic-core==2.14.1",
+	}, "\n"))
+
+	assert.NotContains(t, got, "/srv/gitea/data")
+	assert.Contains(t, got, "pydantic-core==2.14.1", "the actionable half survives")
+}

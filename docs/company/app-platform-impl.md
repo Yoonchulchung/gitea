@@ -174,3 +174,32 @@ bwrap --unshare-all --die-with-parent --new-session \
 **`-race` 필수:** 동시 배포+제어, 지표 병렬 증가, 레지스트리 리로드 중 요청.
 
 **통합(느려서 최소한만):** 실제 토이 앱 배포→헬스→프록시 응답, 깨진 앱 롤백. `AGENTS.md`의 sub-2s 기준을 지키기 어려우면 빌드 태그로 분리.
+
+## 정보 노출 경계 (2026-09-06 추가)
+
+부서 화면에 서버 절대 경로가 그대로 뜨는 버그를 계기로, **비관리자에게 무엇이
+닿는가**를 전수 감사하고 구조로 고정했다.
+
+원인은 하나의 실수가 아니라 Go의 기본 동작이다. os 계열 오류는 전부
+`*fs.PathError`라 **실패한 절대 경로를 품고 있다.** `os.Readlink(current)` 하나가
+`readlink /home/git/gitea/data/company-apps/9646…/current: no such file` 이 되고,
+그걸 `err.Error()`로 흘리면 샌드박스가 숨기려는 바로 그 디렉터리 위치를 알려준다.
+
+**원칙: 가림(redaction)이 아니라 허용(opt-in).** 가림은 새는 모양을 전부
+열거해야 하고 하나 놓치면 끝난다. 대신 **부서용으로 일부러 쓴 문장만** 통과시키고
+나머지는 전부 일반 문구 + 관리자용 로그로 보낸다.
+
+| 장치 | 역할 |
+|---|---|
+| `userError` (`company/usererror.go`) | 부서용으로 쓴 메시지에만 붙이는 타입 |
+| `DepartmentSafeError(ctx, err)` | 안전한 것만 반환, 나머지는 로그로 보내고 일반 문구 |
+| `AppState.UserMessage` | `Message`(관리자 전용)와 **필드 자체를 분리** |
+| `RedactServerPaths` | pip 같은 외부 도구 출력용 이중 안전장치 |
+
+`DepartmentCause`는 `st.Message`를 **한 번도 읽지 않는다.** 미분류 원인 코드는
+`UserMessage`가 비어 있으므로 요약 문장만 나간다 — 조용히 새는 것보다 낫다.
+
+감사에서 나온 노출 지점 4곳(전부 수정):
+`AppControl` 플래시, `AppEnvSave` 플래시, `AppPage`의 `EnvError`,
+`DepartmentCause`의 `ReasonContractViolation` 통과. 관리자 화면
+(`admin_app.go`)은 원문 그대로가 맞고, 그 자리에 의도임을 명시했다.

@@ -111,10 +111,19 @@ type AppState struct {
 
 	Health AppHealth `json:"health"`
 
-	// Reason is a code from the list above; Message is admin-only detail.
-	// Message must never reach the staff-facing badge endpoint.
-	Reason  string `json:"reason,omitempty"`
-	Message string `json:"message,omitempty"`
+	// Reason is a code from the list above.
+	//
+	// Message is admin-only. It carries whatever actually went wrong — a
+	// filesystem error with an absolute path, a build log — and must never
+	// reach a department or the staff-facing badge endpoint.
+	//
+	// UserMessage is the half that may. It is only ever set from text
+	// deliberately written for a non-developer (see company/usererror.go), so
+	// that showing it is safe by construction rather than by remembering.
+	// Empty is fine: DepartmentCause has a sentence for every reason code.
+	Reason      string `json:"reason,omitempty"`
+	Message     string `json:"message,omitempty"`
+	UserMessage string `json:"userMessage,omitempty"`
 
 	// EnvVersion is bumped whenever environment variables are saved.
 	// EnvVersionRunning is what the live process was started with. When they

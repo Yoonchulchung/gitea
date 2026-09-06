@@ -34,7 +34,7 @@ import (
 // errNoRelease means start was pressed before any deploy ever succeeded —
 // a different situation from an app that is broken, and the only one the
 // department fixes by deploying rather than by editing code.
-var errNoRelease = errors.New("this app has not been deployed successfully yet")
+var errNoRelease = userErrorf("이 앱은 아직 성공적으로 배포된 적이 없습니다")
 
 const (
 	// stopGracePeriod is how long a process gets to finish in-flight
@@ -209,7 +209,7 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 		// The app contract is a fixed convention, not a config file, so a
 		// missing main.py is the one thing we can and must check up front —
 		// otherwise the failure surfaces as an opaque uvicorn traceback.
-		return errors.New("main.py not found in the repository root")
+		return userErrorf("저장소 최상위에 main.py 가 없습니다")
 	}
 
 	if err := os.MkdirAll(s.paths.run, 0o700); err != nil {
@@ -303,6 +303,7 @@ func (s *appSupervisor) watchExit(cmd *exec.Cmd, logFile *os.File) {
 			st.Actual = AppStateFailed
 			st.Reason = ReasonCrashLoop
 			st.Message = fmt.Sprintf("the app exited %d times in a row; automatic restart stopped", crashes)
+			st.UserMessage = ""
 			st.PID = 0
 			st.AppendHistory(AppHistoryEntry{Status: AppStateFailed, Reason: ReasonCrashLoop})
 			return true
@@ -390,7 +391,7 @@ func (s *appSupervisor) Start() error {
 func (s *appSupervisor) startProcess() (int, error) {
 	settings := SettingsFor(s.owner, s.repo)
 	if !settings.IsEnabled() {
-		return 0, errors.New("this app is disabled by an administrator")
+		return 0, userErrorf("관리자가 이 앱을 비활성화했습니다")
 	}
 	appEnv, envVer, err := LoadAppEnv(s.owner, s.repo)
 	if err != nil {
@@ -400,6 +401,7 @@ func (s *appSupervisor) startProcess() (int, error) {
 			st.Actual = AppStateFailed
 			st.Reason = ReasonSecretError
 			st.Message = "environment variables could not be decrypted: " + err.Error()
+			st.UserMessage = "" // DepartmentCause has the sentence for this one
 			return true
 		})
 		return 0, err
@@ -419,10 +421,14 @@ func (s *appSupervisor) startProcess() (int, error) {
 		if errors.Is(startErr, errNoRelease) {
 			reason = ReasonNoRelease
 		}
+		// Message keeps the real error for an admin; UserMessage takes it
+		// only if it was written for a department in the first place.
+		userMsg, _ := userMessage(startErr)
 		_ = MutateAppState(s.owner, s.repo, func(st *AppState) bool {
 			st.Actual = AppStateFailed
 			st.Reason = reason
 			st.Message = startErr.Error()
+			st.UserMessage = userMsg
 			st.PID = 0
 			return true
 		})
@@ -465,7 +471,7 @@ func (s *appSupervisor) Restart() error {
 func StartApp(owner, repo string) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("start", false); !ok {
-		return fmt.Errorf("%s", why)
+		return userErrorf("%s", why)
 	}
 	return supervisorFor(owner, repo).Start()
 }
@@ -473,7 +479,7 @@ func StartApp(owner, repo string) error {
 func StopApp(owner, repo, actor string, isAdmin bool) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("stop", isAdmin); !ok {
-		return fmt.Errorf("%s", why)
+		return userErrorf("%s", why)
 	}
 	return supervisorFor(owner, repo).Stop(actor, AppStateStopped, "")
 }
@@ -481,7 +487,7 @@ func StopApp(owner, repo, actor string, isAdmin bool) error {
 func RestartApp(owner, repo string, isAdmin bool) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("restart", isAdmin); !ok {
-		return fmt.Errorf("%s", why)
+		return userErrorf("%s", why)
 	}
 	return supervisorFor(owner, repo).Restart()
 }
@@ -492,7 +498,7 @@ func RestartApp(owner, repo string, isAdmin bool) error {
 func SuspendApp(owner, repo, actor, reason string) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("suspend", true); !ok {
-		return fmt.Errorf("%s", why)
+		return userErrorf("%s", why)
 	}
 	if reason == "" {
 		// The department only sees "an administrator stopped this app"; the
@@ -505,7 +511,7 @@ func SuspendApp(owner, repo, actor, reason string) error {
 func ResumeApp(owner, repo, actor string) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("resume", true); !ok {
-		return fmt.Errorf("%s", why)
+		return userErrorf("%s", why)
 	}
 	if err := MutateAppState(owner, repo, func(s *AppState) bool {
 		s.Actual = AppStateStopped

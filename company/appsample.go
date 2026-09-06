@@ -162,6 +162,8 @@ func checkMemoryLimit(owner, repo string, rssBytes int64, settings AppSettings) 
 	_ = MutateAppState(owner, repo, func(st *AppState) bool {
 		st.Message = "the app was stopped for using more than its " +
 			strconv.Itoa(settings.Limits.MemoryMB) + " MB memory limit"
+		// Written by us, about a limit the department can see anyway.
+		st.UserMessage = "한도 " + strconv.Itoa(settings.Limits.MemoryMB) + "MB 를 넘겨 중지되었습니다."
 		// Desired stays "running": the department did not switch this off, the
 		// platform did, and they should be able to start it again after
 		// fixing the cause or getting the limit raised.

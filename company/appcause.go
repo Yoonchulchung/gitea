@@ -56,14 +56,14 @@ func DepartmentCause(st *AppState) *AppCause {
 	case ReasonPackageDenied:
 		return &AppCause{
 			Summary:     "아직 승인되지 않은 패키지가 있습니다",
-			Detail:      st.Message,
+			Detail:      st.UserMessage,
 			Action:      "deploy",
 			ActionLabel: "패키지 승인 요청하기",
 		}
 	case ReasonOOM:
 		return &AppCause{
 			Summary:     "메모리를 한도보다 많이 사용해 중지되었습니다",
-			Detail:      st.Message,
+			Detail:      st.UserMessage,
 			Action:      "deploy",
 			ActionLabel: "메모리 한도 상향 요청하기",
 		}
@@ -82,8 +82,9 @@ func DepartmentCause(st *AppState) *AppCause {
 			Summary: "관리자가 이 앱을 정지시켰습니다",
 			// The reason is the entire value here: "an administrator stopped
 			// it" with no explanation leaves the department with nothing to
-			// act on and no idea who to ask about what.
-			Detail: st.Message,
+			// act on and no idea who to ask about what. An admin types it, so
+			// it is department-safe by definition.
+			Detail: st.UserMessage,
 		}
 	case ReasonSandboxUnavailable:
 		return &AppCause{
@@ -111,10 +112,11 @@ func DepartmentCause(st *AppState) *AppCause {
 	case ReasonContractViolation:
 		return &AppCause{
 			Summary: "앱을 시작할 수 없습니다",
-			// These messages are written for a department — "main.py not
-			// found in the repository root" and the like — so they are safe
-			// to show as-is. Anything that is not is classified above.
-			Detail: st.Message,
+			// Only ever the deliberately-written half. The first version of
+			// this read st.Message on the grounds that those messages "are
+			// written for a department", which was true of some of them and
+			// not of the filesystem errors that also land here.
+			Detail: st.UserMessage,
 		}
 	case ReasonRolledBack:
 		return &AppCause{
@@ -153,7 +155,10 @@ func summarizeInstallFailure(message string) string {
 		if idx := strings.Index(line, " (from versions:"); idx > 0 {
 			line = line[:idx]
 		}
-		errs = append(errs, strings.TrimPrefix(line, "ERROR: "))
+		// pip's own errors can name a path — "Permission denied:
+		// '/home/git/gitea/data/…'" — so even this filtered subset is
+		// scrubbed before it leaves.
+		errs = append(errs, RedactServerPaths(strings.TrimPrefix(line, "ERROR: ")))
 		if len(errs) == installErrorLines {
 			break
 		}

@@ -4,7 +4,6 @@
 package company
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -28,7 +27,7 @@ import (
 func startAppAs(owner, repo, actor string, isAdmin bool) error {
 	st := LoadAppState(owner, repo)
 	if ok, why := st.CanTransition("start", isAdmin); !ok {
-		return errors.New(why)
+		return userErrorf("%s", why) // CanTransition's text is written for staff
 	}
 	if err := supervisorFor(owner, repo).Start(); err != nil {
 		return err
@@ -49,12 +48,12 @@ func RollbackApp(owner, repo, actor string) error {
 	p := appPathsFor(owner, repo)
 	previous, err := os.Readlink(p.previous)
 	if err != nil {
-		return errors.New("there is no previous version to go back to")
+		return userErrorf("되돌아갈 이전 버전이 없습니다")
 	}
 	if _, err := os.Stat(previous); err != nil {
 		// A release directory that has been cleaned up would otherwise fail
 		// after the app is already stopped, leaving it down.
-		return errors.New("the previous version's files are no longer on disk")
+		return userErrorf("이전 버전의 파일이 서버에 더 이상 없습니다")
 	}
 
 	s := supervisorFor(owner, repo)
@@ -83,7 +82,7 @@ func RollbackApp(owner, repo, actor string) error {
 	}
 	RecordRestart(owner, repo)
 	return MutateAppState(owner, repo, func(st *AppState) bool {
-		st.Reason, st.Message = "", ""
+		st.Reason, st.Message, st.UserMessage = "", "", ""
 		st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, Actor: actor, Reason: ReasonRolledBack})
 		return true
 	})
@@ -137,7 +136,8 @@ func RemoveApp(owner, repo, actor string) error {
 		st.Actual = AppStateStopped
 		st.PID = 0
 		st.Reason = "removed"
-		st.Message = "이 앱은 관리자가 플랫폼에서 제거했습니다"
+		st.Message = "removed from the platform by " + actor
+		st.UserMessage = "관리자가 이 앱을 플랫폼에서 제거했습니다"
 		st.Health = AppHealth{State: "unknown"}
 		st.AppendHistory(AppHistoryEntry{Status: AppStateStopped, Actor: actor, Reason: "removed"})
 		return true

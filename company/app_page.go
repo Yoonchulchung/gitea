@@ -46,7 +46,11 @@ func AppPage(ctx *context.Context) {
 	ctx.Data["CauseSummary"] = DepartmentCause(st)
 	ctx.Data["EnvNames"] = envNames
 	ctx.Data["EnvVersion"] = envVersion
-	ctx.Data["EnvError"] = envErr
+	// A read failure here is a filesystem error carrying a path; the
+	// department gets the fact, an admin gets the detail in the log.
+	if envErr != nil {
+		ctx.Data["EnvError"] = DepartmentSafeError("reading env for "+owner+"/"+name, envErr)
+	}
 	ctx.Data["EnvRestartRequired"] = st.Actual == AppStateRunning && envVersion != st.EnvVersionRunning
 	ctx.Data["EnvHistory"] = AppEnvHistory(owner, name)
 	ctx.Data["CanControl"] = canWrite
@@ -81,7 +85,9 @@ func AppControl(ctx *context.Context) {
 		return
 	}
 	if err != nil {
-		ctx.Flash.Error(err.Error())
+		// Never err.Error(): an os error carries the absolute path it failed
+		// on, which is inside Gitea's data directory (company/usererror.go).
+		ctx.Flash.Error(DepartmentSafeError(ctx.PathParam("verb")+" "+owner+"/"+name, err))
 	}
 	// Back where the button was pressed. These controls sit on the repository
 	// header as well as this screen, and bouncing someone to a different page
@@ -128,7 +134,7 @@ func AppEnvSave(ctx *context.Context) {
 		return
 	}
 	if err := SaveAppEnv(owner, name, ctx.Doer.Name, set, unset); err != nil {
-		ctx.Flash.Error(err.Error())
+		ctx.Flash.Error(DepartmentSafeError("saving env for "+owner+"/"+name, err))
 	} else {
 		// The trap this warning exists for: a process's environment cannot be
 		// changed while it runs, so without saying so the department changes a
