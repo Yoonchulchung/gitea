@@ -4,7 +4,9 @@
 package company
 
 import (
+	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -381,6 +383,9 @@ func AdminSetNetwork(ctx *context.Context) {
 	var (
 		subject string
 		mutate  func(*AppSettings)
+		// note says what was actually applied, where that differs from what
+		// was typed.
+		note string
 	)
 	switch ctx.FormString("what") {
 	case "access":
@@ -393,14 +398,19 @@ func AdminSetNetwork(ctx *context.Context) {
 		subject, mutate = "set access to "+access, setAccess(access)
 
 	case "outbound-add":
-		host := strings.TrimSpace(ctx.FormString("host"))
-		if !validOutboundHost(host) {
-			ctx.Flash.Error("호스트 이름이 올바르지 않습니다. 주소만 적어 주세요 (예: erp.internal.company.com).")
+		host, ok := normalizeOutboundHost(ctx.FormString("host"))
+		if !ok {
+			ctx.Flash.Error("주소를 알아볼 수 없습니다. 사이트 주소나 호스트 이름을 넣어 주세요 " +
+				"(예: erp.internal.company.com 또는 https://erp.internal.company.com/api).")
 			ctx.Redirect(back)
 			return
 		}
 		methods := parseMethods(ctx.FormString("methods"))
 		subject, mutate = "allow outbound to "+host, addOutbound(host, methods)
+		// Said back, because what was applied is not always what was typed: a
+		// pasted URL becomes a host, and the rule opens the whole site rather
+		// than the one page.
+		note = " " + host + " 전체가 열립니다 (경로 단위가 아닙니다). " + outboundEvidence(host)
 
 	case "outbound-remove":
 		host := strings.TrimSpace(ctx.FormString("host"))
@@ -423,9 +433,50 @@ func AdminSetNetwork(ctx *context.Context) {
 	} else {
 		// Inbound and download take effect on the next request; outbound is
 		// read when the app starts, so it does not.
-		ctx.Flash.Success("정책을 변경했습니다. 외부 통신 변경은 앱을 재시작해야 적용됩니다.")
+		ctx.Flash.Success("정책을 변경했습니다." + note + " 외부 통신 변경은 앱을 재시작해야 적용됩니다.")
 	}
 	ctx.Redirect(back)
+}
+
+// normalizeOutboundHost turns what someone typed into the host the rule needs.
+//
+// A full URL is accepted and reduced to its host, because pasting one is what
+// a person naturally does — they have the site open in another tab. The rule
+// is per host either way: the broker matches on host, so keeping the path
+// would read on this screen as though the rest of the site were still closed
+// when it is not. What was applied is said back for that reason.
+//
+// A port is dropped for the same reason, and anything that is still not a
+// hostname is refused rather than silently ignored.
+func normalizeOutboundHost(raw string) (string, bool) {
+	host := strings.TrimSpace(raw)
+	if host == "" {
+		return "", false
+	}
+	if scheme, rest, found := strings.Cut(host, "://"); found {
+		// A scheme that is not http(s) is not a web address, and salvaging a
+		// hostname out of it would grant something nobody asked for — "ftp"
+		// would have become the host.
+		if !strings.EqualFold(scheme, "http") && !strings.EqualFold(scheme, "https") {
+			return "", false
+		}
+		host = rest
+	}
+	if parsed, err := url.Parse("http://" + host); err == nil && parsed.Host != "" {
+		host = parsed.Hostname()
+	} else if i := strings.IndexAny(host, "/?#"); i >= 0 {
+		// Scheme-less but still a URL, "example.com/api" — the host is the
+		// part before the first separator.
+		host = host[:i]
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(host, ".")
+	if !validOutboundHost(host) {
+		return "", false
+	}
+	return host, true
 }
 
 // validOutboundHost accepts a hostname and nothing else.

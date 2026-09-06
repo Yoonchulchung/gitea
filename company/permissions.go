@@ -58,6 +58,10 @@ type PermissionRequest struct {
 	Evidence string `json:"evidence,omitempty"`
 	Reason   string `json:"reason,omitempty"` // supplied by the requester
 	Decision string `json:"decision,omitempty"`
+	// Methods applies to an outbound request: which HTTP methods the host may
+	// be reached with. Its own field because Value is the host and the two
+	// were previously squeezed into one string, where the methods were lost.
+	Methods []string `json:"methods,omitempty"`
 }
 
 // PermissionRequestSet is what a Deploy Request carries, stored alongside
@@ -241,16 +245,34 @@ func ApplyApprovedPermissions(current AppSettings, requests []PermissionRequest)
 		case PermKindDownload:
 			updated.Download.Policy = "allow"
 		case PermKindNetwork:
-			if updated.Network.Mode == NetworkNone {
-				updated.Network.Mode = NetworkBroker
-			}
-			host, methods, _ := strings.Cut(r.Value, " ")
-			rule := AppNetworkRule{Host: host}
-			if methods != "" {
-				rule.Methods = strings.Split(methods, ",")
-			}
-			updated.Network.Allow = append(updated.Network.Allow, rule)
+			// Through the same helper an admin's direct change uses, so an
+			// approved host and a hand-added one cannot end up meaning
+			// different things. It also replaces a host already on the list
+			// rather than appending a second, contradicting rule for it.
+			host, methods := outboundFromRequest(r)
+			addOutbound(host, methods)(&updated)
 		}
 	}
 	return updated
+}
+
+// outboundFromRequest reads the host and methods out of a network request.
+//
+// The space-separated form is what requests written before Methods existed
+// carry, and one may be sitting in a file waiting for an admin right now —
+// so it is still understood rather than silently dropping the methods it
+// encodes.
+func outboundFromRequest(r PermissionRequest) (host string, methods []string) {
+	host, legacy, _ := strings.Cut(r.Value, " ")
+	switch {
+	case len(r.Methods) > 0:
+		methods = r.Methods
+	case legacy != "":
+		methods = strings.Split(legacy, ",")
+	default:
+		// Least privilege: an approval that says nothing about methods grants
+		// reading, not writing.
+		methods = []string{"GET"}
+	}
+	return host, methods
 }

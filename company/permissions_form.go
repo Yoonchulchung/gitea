@@ -106,10 +106,11 @@ func requestedByHand(ctx *context.Context, repo *repo_model.Repository) []Permis
 			methods = "GET"
 		}
 		out = append(out, PermissionRequest{
-			Kind:   PermKindNetwork,
-			Value:  host,
-			Label:  "외부 통신 허용",
-			Detail: host + " (" + strings.ToUpper(methods) + ")",
+			Kind:    PermKindNetwork,
+			Value:   host,
+			Methods: parseMethods(methods),
+			Label:   "외부 통신 허용",
+			Detail:  host + " (" + strings.ToUpper(methods) + ")",
 			// Whether the address is internal is the first thing an admin
 			// checks, so it is stated rather than left to be recognised.
 			Evidence: outboundEvidence(host),

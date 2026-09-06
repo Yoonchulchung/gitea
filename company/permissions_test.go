@@ -346,3 +346,57 @@ func TestParseMethodsDefaultsToReadOnly(t *testing.T) {
 	assert.Equal(t, []string{"GET"}, parseMethods("  ,  "))
 	assert.Equal(t, []string{"GET", "POST"}, parseMethods("get, post"))
 }
+
+// Pasting a URL is what a person naturally does — they have the site open in
+// another tab — and refusing it taught them nothing about what the field
+// wanted.
+func TestOutboundHostAcceptsAPastedURL(t *testing.T) {
+	cases := map[string]string{
+		"https://www.hyundaimotorgroup.com/ko/news/newsMain": "www.hyundaimotorgroup.com",
+		"http://erp.internal.company.com/api/v1/employees":   "erp.internal.company.com",
+		"https://erp.internal.company.com":                   "erp.internal.company.com",
+		"erp.internal.company.com/api":                       "erp.internal.company.com",
+		"erp.internal.company.com:8443":                      "erp.internal.company.com",
+		"  erp.internal.company.com  ":                       "erp.internal.company.com",
+		"erp.internal.company.com.":                          "erp.internal.company.com",
+	}
+	for in, want := range cases {
+		got, ok := normalizeOutboundHost(in)
+		require.True(t, ok, in)
+		assert.Equal(t, want, got, in)
+	}
+
+	// Still refused: a wildcard the broker would ignore while this screen
+	// showed it as applied, and anything with no host in it at all.
+	for _, in := range []string{"", "   ", "*.internal", "ftp://erp.internal", "/api/v1"} {
+		_, ok := normalizeOutboundHost(in)
+		assert.False(t, ok, in)
+	}
+}
+
+// The methods someone chose were dropped on the way through approval: the
+// request stored the host in Value while approval expected "host METHODS" and
+// split it on a space, so every approved rule came out with none.
+func TestApprovedOutboundKeepsItsMethods(t *testing.T) {
+	got := ApplyApprovedPermissions(AppSettings{Network: AppNetwork{Mode: NetworkNone}}, []PermissionRequest{{
+		Kind: PermKindNetwork, Value: "erp.internal", Methods: []string{"GET", "POST"}, Decision: "approve",
+	}})
+	require.Len(t, got.Network.Allow, 1)
+	assert.Equal(t, "erp.internal", got.Network.Allow[0].Host)
+	assert.Equal(t, []string{"GET", "POST"}, got.Network.Allow[0].Methods)
+	assert.Equal(t, NetworkBroker, got.Network.Mode)
+
+	// A request written before Methods existed is still understood rather than
+	// silently granting nothing — one may be waiting on an admin right now.
+	legacy := ApplyApprovedPermissions(AppSettings{}, []PermissionRequest{{
+		Kind: PermKindNetwork, Value: "erp.internal GET,POST", Decision: "approve",
+	}})
+	require.Len(t, legacy.Network.Allow, 1)
+	assert.Equal(t, []string{"GET", "POST"}, legacy.Network.Allow[0].Methods)
+
+	// And one that says nothing about methods grants reading, not writing.
+	bare := ApplyApprovedPermissions(AppSettings{}, []PermissionRequest{{
+		Kind: PermKindNetwork, Value: "erp.internal", Decision: "approve",
+	}})
+	assert.Equal(t, []string{"GET"}, bare.Network.Allow[0].Methods)
+}
