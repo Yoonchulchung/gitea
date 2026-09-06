@@ -157,3 +157,10 @@
 }
 .company-perm-review-item:last-child { border-bottom: 0; }
 </style>
+
+<style>
+/* Start/stop next to "Deploy Request" on the repository header. The form is
+   only there to carry the CSRF token and the POST; it must not break the
+   button row's layout. */
+.company-app-action { display: inline-flex; margin: 0; }
+</style>

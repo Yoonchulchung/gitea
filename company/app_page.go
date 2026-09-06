@@ -83,7 +83,12 @@ func AppControl(ctx *context.Context) {
 	if err != nil {
 		ctx.Flash.Error(err.Error())
 	}
-	ctx.Redirect(ctx.Repo.RepoLink + "/_app")
+	// Back where the button was pressed. These controls sit on the repository
+	// header as well as this screen, and bouncing someone to a different page
+	// for clicking "stop" reads as though something went wrong.
+	// RedirectToCurrentSite refuses an off-site referer, so an attacker cannot
+	// turn this into an open redirect.
+	ctx.RedirectToCurrentSite(ctx.Req.Referer(), ctx.Repo.RepoLink+"/_app")
 }
 
 // AppEnvSave stores the app's environment variables.

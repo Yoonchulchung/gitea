@@ -77,6 +77,36 @@
 						{{template "repo/header/fork" $}}
 					{{end}}
 					{{end}}
+					{{/* App controls, for a repository that has actually been deployed.
+					     Placed here rather than only on /_app because this is the page a
+					     non-developer opens, and "our app needs to come down for an hour"
+					     is their decision to make — not something to ask an administrator
+					     for. See docs/company/app-platform.md.
+
+					     .CompanyApp is set by company.SetAppPermissionData, which runs on
+					     the repository home route only, so these buttons appear there and
+					     nowhere else. */}}
+					{{with $.CompanyApp}}
+						<span class="company-app-state {{.Status}}" data-tooltip-content="{{.StatusLabel}}">{{.StatusLabel}}</span>
+						{{if .CanControl}}
+							{{if .Suspended}}
+								{{/* Deliberately no start button: an app an administrator
+								     stopped stays stopped, or protecting the platform from a
+								     runaway app would mean nothing. */}}
+							{{else if .Running}}
+								<form method="post" action="{{.AppLink}}/stop" class="company-app-action"
+									data-company-confirm="앱을 중지하면 지금 사용 중인 사람들이 접속할 수 없게 됩니다. 계속할까요?">
+									{{$.CsrfTokenHtml}}
+									<button class="ui compact small basic button">중지</button>
+								</form>
+							{{else}}
+								<form method="post" action="{{.AppLink}}/start" class="company-app-action">
+									{{$.CsrfTokenHtml}}
+									<button class="ui compact small basic button">시작</button>
+								</form>
+							{{end}}
+						{{end}}
+					{{end}}
 					{{if and (not .IsEmpty) (not $.IsAdmin) ($.Permission.CanRead ctx.Consts.RepoUnitTypeCode)}}
 						<a class="ui compact small basic primary button" href="{{$.RepoLink}}/deploy">
 							Deploy Request

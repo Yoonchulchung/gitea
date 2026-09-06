@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"gitea.dev/models/unit"
 	"gitea.dev/services/context"
 )
 
@@ -54,6 +55,14 @@ type AppSidebarData struct {
 	AppURL      string
 	AppLink     string
 	DeployLink  string
+	// CanControl is write access to the repository. Starting and stopping an
+	// app is the department's own decision, so it follows the same permission
+	// as changing the code.
+	CanControl bool
+	// Running drives which of start/stop is offered. Suspended is neither:
+	// an admin stopped it and the department cannot undo that.
+	Running   bool
+	Suspended bool
 	// HasProblem drives whether the panel draws attention to itself.
 	HasProblem bool
 }
@@ -82,6 +91,9 @@ func SetAppPermissionData(ctx *context.Context) {
 	st := LoadAppState(owner, name)
 	settings := SettingsFor(owner, name)
 	data := &AppSidebarData{
+		CanControl:  ctx.Repo.Permission.CanWrite(unit.TypeCode),
+		Running:     st.Actual == AppStateRunning,
+		Suspended:   st.Actual == AppStateSuspended,
 		Deployed:    true,
 		StatusLabel: departmentStatusLabel(st),
 		Status:      st.Actual,
