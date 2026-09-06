@@ -120,6 +120,26 @@
 	     grid-column 2 (web_src/css/repo/home.css), so a second element with
 	     that class lands in the same cell and draws on top of the first. */}}
 	{{with .CompanyApp}}
+	{{if not .Deployed}}
+		{{/* Never deployed. The settings behind [앱 관리] — access mode,
+		     environment variables, the permission request — all work before a
+		     first deploy and are most useful then; without this row the only
+		     way to find that screen was to already know its URL. One quiet
+		     row, so a repository that never becomes an app is not shouting
+		     about one. */}}
+		<div class="flex-relaxed-list company-app-panel">
+			<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
+				<span>앱</span>
+				<span class="text-grey tw-text-12 tw-font-normal">아직 배포되지 않음</span>
+			</div>
+			{{if .CanControl}}
+				<div class="tw-flex tw-gap-2 tw-flex-wrap">
+					<a class="ui compact tiny basic button" href="{{.AppLink}}">앱 관리</a>
+					<a class="ui compact tiny basic button" href="{{.DeployLink}}">배포 요청하기</a>
+				</div>
+			{{end}}
+		</div>
+	{{else}}
 	<div class="flex-relaxed-list company-app-panel">
 		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
 			<span>앱</span>
@@ -165,7 +185,8 @@
 			     has grounds to judge whether to ask for more. */}}
 			<div class="company-perm-row allowed">
 				<span class="company-perm-label">메모리</span>
-				<span class="company-perm-value">{{.MemoryLimit}}MB 중 {{.MemoryUsed}}MB 사용</span>
+				{{/* A dash, not a zero, where nothing measured it. */}}
+				<span class="company-perm-value">{{if .MemoryMeasured}}{{.MemoryLimit}}MB 중 {{.MemoryUsed}}MB 사용{{else}}한도 {{.MemoryLimit}}MB{{end}}</span>
 			</div>
 		{{end}}
 
@@ -177,6 +198,7 @@
 			<a class="ui tiny basic button" href="{{.DeployLink}}">권한 요청하기</a>
 		</div>
 	</div>
+	{{end}}
 	{{end}}
 	<div class="flex-relaxed-list">
 		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">

@@ -54,10 +54,15 @@ type AppSidebarData struct {
 	Cause       *AppCause
 	Rows        []PermissionRow
 	MemoryUsed  int // MB, most recent sample
-	MemoryLimit int // MB
-	AppURL      string
-	AppLink     string
-	DeployLink  string
+	MemoryLimit int
+	// MemoryMeasured is false where this host cannot sample usage at all. The
+	// figure above is then absent rather than zero, and "192MB 중 0MB 사용"
+	// would read as an idle app rather than as no data
+	// (company/appsample.go).
+	MemoryMeasured bool
+	AppURL         string
+	AppLink        string
+	DeployLink     string
 	// CanControl is write access to the repository. Starting and stopping an
 	// app is the department's own decision, so it follows the same permission
 	// as changing the code.
@@ -98,28 +103,49 @@ func SetAppPermissionData(ctx *context.Context) {
 	name := ctx.Repo.Repository.Name
 
 	if _, known := LookupApp(owner, name); !known {
-		return // never deployed: the panel would be noise on a plain repository
+		// Never deployed. Not nothing, though: the settings a department can
+		// reach through this panel — access mode, environment variables, the
+		// permission request — all work before a first deploy, and are most
+		// useful then. Hiding the panel entirely meant the only way to find
+		// the app screen was to already know its URL.
+		//
+		// Department repositories only: on a personal repository the platform
+		// has no role, and the panel really would be noise.
+		if ctx.Repo.Owner.IsOrganization() {
+			ctx.Data["CompanyApp"] = &AppSidebarData{
+				CanControl: ctx.Repo.Permission.CanWrite(unit.TypeCode),
+				AppLink:    ctx.Repo.RepoLink + "/_app",
+				DeployLink: ctx.Repo.RepoLink + "/deploy",
+			}
+		}
+		return
 	}
 
 	st := LoadAppState(owner, name)
 	settings := SettingsFor(owner, name)
+	// Whether the usage figure below is a measurement at all: a host with no
+	// /proc cannot read it, and "192MB 중 0MB 사용" reads as an idle app
+	// rather than as no data (company/appsample.go).
+	memoryMeasured, _ := ResourceSamplingAvailable()
+
 	data := &AppSidebarData{
-		CanControl:  ctx.Repo.Permission.CanWrite(unit.TypeCode),
-		Running:     st.Actual == AppStateRunning,
-		Suspended:   st.Actual == AppStateSuspended,
-		CanStart:    st.HasRelease && st.Actual != AppStateRunning && st.Actual != AppStateSuspended,
-		CanRedeploy: st.SHA != "" && !st.IsBusy(),
-		StartedAt:   st.StartedAt,
-		Deployed:    true,
-		StatusLabel: departmentStatusLabel(st),
-		Status:      st.Actual,
-		Cause:       DepartmentCause(st),
-		Rows:        permissionRows(settings, st),
-		MemoryLimit: settings.Limits.MemoryMB,
-		MemoryUsed:  CurrentMemoryMB(owner, name),
-		AppURL:      appProxyPrefix + "/" + owner + "/" + name,
-		AppLink:     ctx.Repo.RepoLink + "/_app",
-		DeployLink:  ctx.Repo.RepoLink + "/deploy",
+		CanControl:     ctx.Repo.Permission.CanWrite(unit.TypeCode),
+		Running:        st.Actual == AppStateRunning,
+		Suspended:      st.Actual == AppStateSuspended,
+		CanStart:       st.HasRelease && st.Actual != AppStateRunning && st.Actual != AppStateSuspended,
+		CanRedeploy:    st.SHA != "" && !st.IsBusy(),
+		StartedAt:      st.StartedAt,
+		Deployed:       true,
+		StatusLabel:    departmentStatusLabel(st),
+		Status:         st.Actual,
+		Cause:          DepartmentCause(st),
+		Rows:           permissionRows(settings, st),
+		MemoryLimit:    settings.Limits.MemoryMB,
+		MemoryUsed:     CurrentMemoryMB(owner, name),
+		MemoryMeasured: memoryMeasured,
+		AppURL:         appProxyPrefix + "/" + owner + "/" + name,
+		AppLink:        ctx.Repo.RepoLink + "/_app",
+		DeployLink:     ctx.Repo.RepoLink + "/deploy",
 	}
 	ctx.Data["CompanyApp"] = data
 }
@@ -141,10 +167,10 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 	// wording is about what the app is allowed to do, which is true either
 	// way; whether the platform is currently able to impose it is on the
 	// admin screen, where someone can act on it (company/admin_app.go).
-	switch {
-	case settings.Network.Mode == NetworkOpen:
+	switch settings.Network.Mode {
+	case NetworkOpen:
 		rows = append(rows, PermissionRow{Label: "외부 통신", Value: "제한 없음", State: PermAllowed})
-	case settings.Network.Mode == NetworkBroker:
+	case NetworkBroker:
 		for _, rule := range settings.Network.Allow {
 			value := rule.Host
 			if len(rule.Methods) > 0 {

@@ -200,3 +200,30 @@ apps:
 	}
 	assert.Equal(t, 1, count)
 }
+
+// Rules written before the form normalised what it was given are already in
+// the file — a full URL, scheme and path and all. The broker matches on host,
+// so leaving one as typed is a rule that matches nothing while the screen
+// lists it as an allowance.
+func TestOutboundRulesAreNormalisedOnLoad(t *testing.T) {
+	cfg, err := ParseAppsConfig([]byte(`
+version: 1
+apps:
+  PO/app:
+    network:
+      mode: broker
+      allow:
+        - host: https://my.gabia.com/service#/?carve_code=cloud_v2
+        - host: erp.internal.company.com
+`))
+	require.NoError(t, err)
+	got := cfg.EffectiveSettings("PO", "app").Network.Allow
+	require.Len(t, got, 2)
+	assert.Equal(t, "my.gabia.com", got[0].Host)
+	assert.Equal(t, "erp.internal.company.com", got[1].Host)
+
+	// Something with no host in it at all is a mistake worth refusing, not
+	// silently turning into a rule.
+	_, err = ParseAppsConfig([]byte("version: 1\napps:\n  PO/app:\n    network:\n      allow:\n        - host: \"*.internal\"\n"))
+	require.Error(t, err)
+}

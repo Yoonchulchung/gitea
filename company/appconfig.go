@@ -280,6 +280,18 @@ func ParseAppsConfig(data []byte) (*AppsConfig, error) {
 		default:
 			return fmt.Errorf("%s: network.mode %q must be one of none, broker, open", what, s.Network.Mode)
 		}
+		// Hosts are normalised on the way in rather than rejected, because
+		// entries written before the form did this are already in the file:
+		// a full URL, scheme and path and all. The broker matches on host, so
+		// leaving one as typed means a rule that matches nothing while the
+		// screen lists it as an allowance.
+		for i, rule := range s.Network.Allow {
+			host, ok := normalizeOutboundHost(rule.Host)
+			if !ok {
+				return fmt.Errorf("%s: network.allow[%d].host %q is not a hostname", what, i, rule.Host)
+			}
+			s.Network.Allow[i].Host = host
+		}
 		switch s.Download.Policy {
 		case "", "block", "allow":
 		default:
