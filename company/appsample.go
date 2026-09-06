@@ -171,6 +171,7 @@ func checkMemoryLimit(owner, repo string, rssBytes int64, settings AppSettings) 
 		log.Error("company: stopping %s/%s after memory limit: %v", owner, repo, err)
 	}
 	_ = MutateAppState(owner, repo, func(st *AppState) bool {
+		st.FailedAt = time.Now().Unix()
 		st.Message = "the app was stopped for using more than its " +
 			strconv.Itoa(settings.Limits.MemoryMB) + " MB memory limit"
 		// Written by us, about a limit the department can see anyway.

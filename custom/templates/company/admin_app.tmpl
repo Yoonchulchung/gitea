@@ -68,9 +68,14 @@
 		     their question will be about that sentence, not about the log. */}}
 		{{if .App.Reason}}
 			<div class="ui attached negative message">
-				<div class="tw-flex tw-items-baseline tw-gap-2">
+				<div class="tw-flex tw-items-baseline tw-gap-2 tw-flex-wrap">
 					<strong>{{with .Cause}}{{.Summary}}{{end}}</strong>
 					<code class="tw-text-12">{{.App.Reason}}</code>
+					{{/* An admin correlates this against the log, so the absolute
+					     time matters as much as the relative one. */}}
+					{{with .Cause}}{{if .At}}
+						<span class="text-grey tw-text-12">{{DateUtils.TimeSince .At}} · {{DateUtils.AbsoluteShort .At}}</span>
+					{{end}}{{end}}
 				</div>
 				{{with .Cause}}
 					{{/* What the operator should do comes first — it is their page.
@@ -79,7 +84,9 @@
 					     sentence rather than about the log. */}}
 					{{if .AdminHint}}<div class="tw-mt-1">{{.AdminHint}}</div>{{end}}
 					{{if .Detail}}
-						<div class="tw-text-13 tw-mt-2 text-grey">부서에 보이는 안내: {{.Detail}}</div>
+						<div class="tw-text-13 tw-mt-2 text-grey">부서에 보이는 안내:
+							{{range StringUtils.Split .Detail "\n"}}<div class="company-app-cause-line">{{.}}</div>{{end}}
+						</div>
 					{{end}}
 				{{end}}
 				{{if .App.Message}}

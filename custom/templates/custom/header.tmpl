@@ -102,8 +102,11 @@
 	max-height: 14em;
 	overflow-y: auto;
 	overflow-wrap: anywhere;
-	white-space: pre-wrap;
 }
+/* Each line of a multi-line cause is its own element. `white-space: pre-wrap`
+   was doing this instead, which also preserved the template's own indentation
+   and turned it into visible blank space. */
+.company-app-cause-line + .company-app-cause-line { margin-top: 2px; }
 /* Same reason, for the panel as a whole: a flex item defaults to min-width
    auto, which refuses to shrink below its content. */
 .company-app-panel { min-width: 0; }

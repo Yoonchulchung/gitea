@@ -124,6 +124,7 @@ func failDeploy(owner, repo, reason, message string, userMessage ...string) {
 	}
 	if err := MutateAppState(owner, repo, func(st *AppState) bool {
 		st.Actual = AppStateFailed
+		st.FailedAt = time.Now().Unix()
 		st.Reason = reason
 		st.Message = message
 		st.UserMessage = safe
@@ -427,7 +428,8 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 				st.PID = pid
 				st.StartedAt = time.Now().Unix()
 				st.SHA = sha
-				st.Reason, st.Message = "", ""
+				st.Reason, st.Message, st.UserMessage = "", "", ""
+				st.FailedAt = 0
 				st.Health = AppHealth{State: "up", CheckedAt: time.Now().Unix()}
 				st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, SHA: sha})
 				return true

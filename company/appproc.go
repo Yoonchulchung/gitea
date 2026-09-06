@@ -308,6 +308,7 @@ func (s *appSupervisor) watchExit(cmd *exec.Cmd, logFile *os.File) {
 		// flickering green while nothing works.
 		_ = MutateAppState(s.owner, s.repo, func(st *AppState) bool {
 			st.Actual = AppStateFailed
+			st.FailedAt = time.Now().Unix()
 			st.Reason = ReasonCrashLoop
 			st.Message = fmt.Sprintf("the app exited %d times in a row; automatic restart stopped", crashes)
 			st.UserMessage = ""
@@ -390,7 +391,8 @@ func (s *appSupervisor) Start() error {
 		st.PID = pid
 		st.StartedAt = time.Now().Unix()
 		st.EnvVersionRunning = envVer
-		st.Reason, st.Message = "", ""
+		st.Reason, st.Message, st.UserMessage = "", "", ""
+		st.FailedAt = 0
 		return true
 	})
 }
@@ -410,6 +412,7 @@ func (s *appSupervisor) startProcess() (int, error) {
 		// confusing runtime error instead of a clear one here.
 		_ = MutateAppState(s.owner, s.repo, func(st *AppState) bool {
 			st.Actual = AppStateFailed
+			st.FailedAt = time.Now().Unix()
 			st.Reason = ReasonSecretError
 			st.Message = "environment variables could not be decrypted: " + err.Error()
 			st.UserMessage = "" // DepartmentCause has the sentence for this one
@@ -446,6 +449,7 @@ func (s *appSupervisor) startProcess() (int, error) {
 				return false
 			}
 			st.Actual = AppStateFailed
+			st.FailedAt = time.Now().Unix()
 			st.Reason = reason
 			st.Message = startErr.Error()
 			st.UserMessage = userMsg

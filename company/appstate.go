@@ -115,6 +115,11 @@ type AppState struct {
 	StartedAt int64 `json:"startedAt,omitempty"`
 	UpdatedAt int64 `json:"updatedAt"`
 
+	// FailedAt is when the current failure happened, which UpdatedAt cannot
+	// answer: that moves on any change at all, so pressing start on a broken
+	// app would make its build failure look like it happened just now.
+	FailedAt int64 `json:"failedAt,omitempty"`
+
 	Health AppHealth `json:"health"`
 
 	// Reason is a code from the list above.

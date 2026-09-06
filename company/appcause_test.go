@@ -34,7 +34,11 @@ func TestSummarizeInstallFailure(t *testing.T) {
 	// The version list is hundreds of characters and helps nobody here.
 	assert.NotContains(t, got, "(from versions:")
 	assert.NotContains(t, got, "2.48.0")
-	assert.LessOrEqual(t, len(strings.Split(got, "\n")), installErrorLines+2)
+	// Two error lines plus the one-line instruction — a sidebar panel, not a
+	// log viewer.
+	assert.LessOrEqual(t, len(strings.Split(got, "\n")), installErrorLines+1)
+	assert.NotContains(t, got, "Ignored the following", "pip labels this ERROR but it is not the failure")
+	assert.NotContains(t, got, "\n\n", "a blank line inside a sidebar panel is wasted space")
 	assert.Contains(t, got, "requirements.txt")
 }
 

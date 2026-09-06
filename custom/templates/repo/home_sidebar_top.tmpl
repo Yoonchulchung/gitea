@@ -130,7 +130,8 @@
 			{{/* Only rendered when something is actually wrong. */}}
 			<div class="company-app-cause">
 				<div class="tw-font-semibold">{{.Summary}}</div>
-				{{if .Detail}}<div class="tw-text-12 tw-mt-1">{{.Detail}}</div>{{end}}
+				{{if .At}}<div class="tw-text-12 tw-mt-1" data-tooltip-content="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</div>{{end}}
+				{{range StringUtils.Split .Detail "\n"}}<div class="tw-text-12 tw-mt-1 company-app-cause-line">{{.}}</div>{{end}}
 			</div>
 		{{end}}
 

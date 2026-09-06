@@ -14,7 +14,10 @@
 		{{with .CauseSummary}}
 			<div class="ui negative message">
 				<div class="header">{{.Summary}}</div>
-				{{if .Detail}}<p class="tw-mt-2">{{.Detail}}</p>{{end}}
+				{{/* When, not just what: "it broke four minutes ago" is what tells
+				     someone whether their last change caused it. */}}
+				{{if .At}}<div class="tw-text-13 tw-mt-1">{{DateUtils.TimeSince .At}} · {{DateUtils.AbsoluteShort .At}}</div>{{end}}
+				{{range StringUtils.Split .Detail "\n"}}<div class="tw-mt-1 company-app-cause-line">{{.}}</div>{{end}}
 				{{if .ActionLabel}}
 					<a class="ui small primary button tw-mt-2"
 						href="{{if eq .Action "deploy"}}{{$.DeployLink}}{{else}}{{$.AppLink}}{{end}}">{{.ActionLabel}}</a>

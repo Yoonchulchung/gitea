@@ -34,12 +34,24 @@ type AppCause struct {
 	// AdminHint is what an *operator* should do about this, which is often
 	// not what the department should do. Empty where the two are the same.
 	AdminHint string
+	// At is when this failure happened. "It is broken" and "it broke four
+	// minutes ago" are different pieces of information, and the second is
+	// what tells someone whether their last change caused it.
+	At int64
 }
 
 // DepartmentCause explains an app's current problem, or returns nil when
 // there isn't one. Nil is the normal case, and the screen shows nothing at
 // all for it — a panel that is always saying something stops being read.
 func DepartmentCause(st *AppState) *AppCause {
+	cause := departmentCause(st)
+	if cause != nil {
+		cause.At = st.FailedAt
+	}
+	return cause
+}
+
+func departmentCause(st *AppState) *AppCause {
 	if st.Actual != AppStateFailed && st.Actual != AppStateSuspended {
 		return nil
 	}
@@ -165,24 +177,34 @@ func summarizeInstallFailure(message string) string {
 		if !strings.HasPrefix(line, "ERROR:") {
 			continue
 		}
+		line = strings.TrimPrefix(line, "ERROR: ")
+		// pip labels these ERROR but they are not the failure — they are
+		// notes about versions it declined to consider along the way, and
+		// they push the line that matters off the panel.
+		if strings.HasPrefix(line, "Ignored the following") {
+			continue
+		}
 		// pip appends the full list of available versions, which can be
 		// hundreds of characters and helps nobody here.
 		if idx := strings.Index(line, " (from versions:"); idx > 0 {
 			line = line[:idx]
 		}
-		// pip's own errors can name a path — "Permission denied:
+		// Its own errors can name a path — "Permission denied:
 		// '/home/git/gitea/data/…'" — so even this filtered subset is
 		// scrubbed before it leaves.
-		errs = append(errs, RedactServerPaths(strings.TrimPrefix(line, "ERROR: ")))
+		errs = append(errs, RedactServerPaths(line))
 		if len(errs) == installErrorLines {
 			break
 		}
 	}
 	if len(errs) == 0 {
-		return "requirements.txt 의 패키지 이름과 버전을 확인해 주세요. 자세한 내용은 관리자가 볼 수 있습니다."
+		return "requirements.txt 의 패키지 이름과 버전을 확인해 주세요."
 	}
-	return strings.Join(errs, "\n") + "\n\nrequirements.txt 를 고친 뒤 다시 배포해 주세요."
+	return strings.Join(errs, "\n") + "\nrequirements.txt 를 고친 뒤 다시 배포해 주세요."
 }
 
 // installErrorLines caps how much of a failed build reaches the department.
-const installErrorLines = 3
+// Two, because pip usually says the same thing twice — "could not find a
+// version that satisfies" and "no matching distribution found" — and a
+// sidebar panel is not a log viewer.
+const installErrorLines = 2
