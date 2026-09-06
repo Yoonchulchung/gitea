@@ -164,12 +164,20 @@
 				{{.CsrfTokenHtml}}
 				<input type="hidden" name="what" value="access">
 				<div class="tw-mb-1"><strong>들어오는 접근 (inbound)</strong></div>
+				{{/* The same Fomantic dropdown the AI settings page uses, rather
+				     than a bare <select>: .ui.dropdown:not(.custom) is initialized
+				     globally, so this needs no script of its own and matches every
+				     other control in the instance. */}}
 				<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
-					<select name="access">
-						{{range .AccessOptions}}
-							<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}} — {{.Explain}}</option>
-						{{end}}
-					</select>
+					<div class="ui selection dropdown tw-flex-1">
+						<input type="hidden" name="access" value="{{.Settings.Access}}">
+						<div class="text"></div> {{svg "octicon-triangle-down" 14 "dropdown icon"}}
+						<div class="menu">
+							{{range .AccessOptions}}
+								<div class="item" data-value="{{.Value}}">{{.Label}} — {{.Explain}}</div>
+							{{end}}
+						</div>
+					</div>
 					<button class="ui button">적용</button>
 				</div>
 				<div class="text-grey tw-text-12 tw-mt-1">
@@ -229,10 +237,14 @@
 				<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
 					<input type="text" name="host" class="tw-flex-1" autocomplete="off"
 						placeholder="주소 붙여넣기 (예: https://erp.internal.company.com/api 또는 erp.internal.company.com)">
-					<select name="methods">
-						<option value="GET">읽기만 (GET)</option>
-						<option value="GET,POST">읽기와 보내기 (GET, POST)</option>
-					</select>
+					<div class="ui selection dropdown">
+						<input type="hidden" name="methods" value="GET">
+						<div class="text"></div> {{svg "octicon-triangle-down" 14 "dropdown icon"}}
+						<div class="menu">
+							<div class="item" data-value="GET">읽기만 (GET)</div>
+							<div class="item" data-value="GET,POST">읽기와 보내기 (GET, POST)</div>
+						</div>
+					</div>
 					<button class="ui button">허용</button>
 				</div>
 			</form>

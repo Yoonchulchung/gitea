@@ -131,18 +131,17 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 		State: PermAllowed,
 	}}
 
-	// Policy is not the same as enforcement, and this row is read as a
-	// guarantee. Where no sandbox can be applied the app reaches the network
-	// freely whatever apps.yml says (company/appsandbox.go).
-	enforced, _ := NetworkEnforced()
-
+	// These rows are department-facing, so they state permission and never
+	// enforcement.
+	//
+	// The distinction matters twice over. Saying "차단됨" would promise a
+	// technical block this host may not be applying, and saying that it is
+	// *not* being applied would hand every person with repository access a
+	// working description of a hole only an administrator can close. So the
+	// wording is about what the app is allowed to do, which is true either
+	// way; whether the platform is currently able to impose it is on the
+	// admin screen, where someone can act on it (company/admin_app.go).
 	switch {
-	case !enforced:
-		rows = append(rows, PermissionRow{
-			Label: "외부 통신", Value: "차단되지 않음", State: PermDenied,
-			Reason: "이 서버는 앱의 외부 연결을 막을 수 없는 상태입니다. 정책은 차단으로 되어 있지만 실제로는 적용되지 않습니다. " +
-				"민감한 자료를 다루는 앱이라면 관리자에게 알려 주세요.",
-		})
 	case settings.Network.Mode == NetworkOpen:
 		rows = append(rows, PermissionRow{Label: "외부 통신", Value: "제한 없음", State: PermAllowed})
 	case settings.Network.Mode == NetworkBroker:
@@ -155,8 +154,8 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 		}
 	default:
 		rows = append(rows, PermissionRow{
-			Label: "외부 통신", Value: "차단됨", State: PermDenied,
-			Reason: "이 앱은 외부 인터넷·다른 서버로 연결하지 않습니다. 필요하면 배포 요청에서 신청할 수 있습니다.",
+			Label: "외부 통신", Value: "허용되지 않음", State: PermDenied,
+			Reason: "이 앱은 외부 인터넷이나 다른 서버로 연결할 권한이 없습니다. 필요하면 배포 요청에서 신청할 수 있습니다.",
 		})
 	}
 

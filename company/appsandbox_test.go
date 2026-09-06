@@ -61,13 +61,14 @@ func TestBuildEnvDoesNotInheritParent(t *testing.T) {
 	assert.Contains(t, env, "API_KEY=sk-abc")
 }
 
-// Egress is blocked by the sandbox and by nothing else. Where none can be
-// applied, apps.yml saying `network: none` changes nothing about what the app
-// can reach — and the screens were reporting the policy as though it were the
-// outcome, which is the platform vouching for a control it is not applying.
-func TestOutboundRowSaysWhenNothingIsEnforcing(t *testing.T) {
-	settings := AppSettings{Network: AppNetwork{Mode: NetworkNone}}
-	rows := permissionRows(settings, &AppState{})
+// The department's rows state permission, never enforcement.
+//
+// Two mistakes are avoided at once. "차단됨" would promise a technical block
+// this host may not be applying; saying the block is *not* applied would hand
+// every person with repository access a working description of a hole only an
+// administrator can close. What the app is allowed to do is true either way.
+func TestDepartmentRowsStatePermissionNotEnforcement(t *testing.T) {
+	rows := permissionRows(AppSettings{Network: AppNetwork{Mode: NetworkNone}}, &AppState{})
 
 	var outbound *PermissionRow
 	for i := range rows {
@@ -76,15 +77,15 @@ func TestOutboundRowSaysWhenNothingIsEnforcing(t *testing.T) {
 		}
 	}
 	require.NotNil(t, outbound)
+	assert.Equal(t, "허용되지 않음", outbound.Value)
+	assert.Contains(t, outbound.Reason, "권한이 없습니다")
 
-	if enforced, _ := NetworkEnforced(); enforced {
-		assert.Equal(t, "차단됨", outbound.Value)
-		return
+	// Whether the platform can currently impose it belongs on the admin
+	// screen, and must not leak into anything a department reads.
+	for _, row := range rows {
+		assert.NotContains(t, row.Reason, "막을 수 없는")
+		assert.NotContains(t, row.Value, "차단되지 않음")
 	}
-	// The case this test exists for, and the one every development machine is
-	// in: policy says blocked, nothing is blocking.
-	assert.Equal(t, "차단되지 않음", outbound.Value)
-	assert.Contains(t, outbound.Reason, "실제로는 적용되지 않습니다")
 }
 
 // The assistant must not be told calls "fail" on a host where they succeed:

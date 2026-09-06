@@ -147,10 +147,16 @@
 					<div class="tw-flex tw-gap-2 tw-flex-wrap">
 						<input type="text" name="perm_want_host" class="tw-flex-1"
 							placeholder="주소 붙여넣기 (예: https://erp.internal.company.com/api)" autocomplete="off">
-						<select name="perm_want_methods">
-							<option value="GET">읽기만 (GET)</option>
-							<option value="GET,POST">읽기와 보내기 (GET, POST)</option>
-						</select>
+						{{/* Fomantic dropdown, as on /user/settings/ai — a bare <select>
+						     is the browser's own widget and looks like nothing else here. */}}
+						<div class="ui selection dropdown">
+							<input type="hidden" name="perm_want_methods" value="GET">
+							<div class="text"></div> {{svg "octicon-triangle-down" 14 "dropdown icon"}}
+							<div class="menu">
+								<div class="item" data-value="GET">읽기만 (GET)</div>
+								<div class="item" data-value="GET,POST">읽기와 보내기 (GET, POST)</div>
+							</div>
+						</div>
 					</div>
 					<span class="text-grey tw-text-12">
 						{{if .OutboundAllowed}}현재 허용: {{StringUtils.Join .OutboundAllowed ", "}}{{else}}지금은 외부 통신이 모두 차단되어 있습니다.{{end}}
