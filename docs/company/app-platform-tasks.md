@@ -120,9 +120,11 @@
   - [x] `cmd.Env` **명시 구성** — 부모 환경 상속 금지 (impl.md §5, 이게 빠지면 Gitea 시크릿이 통째로 샌다)
   - [x] 크래시 백오프 재시작, 3연속 실패 시 `failed`
   - [x] Gitea 기동 시 재조정 1회 (desired 존중) — `company/appinit.go`, `routers/init.go` 1줄
-    - [ ] stale 소켓 정리를 PID 확인 후로 좁히기 (현재는 자식이 없을 때만 도달하므로 무조건 삭제)
+    - [x] stale 소켓은 **연결해 본 뒤** 정리 — 응답하면 살아 있는 것이므로 기동을 거부한다. Gitea 가
+      강제 종료된 뒤 고아가 된 앱의 소켓을 지우면 멀쩡한 앱이 소리 없이 내려가고 두 번째 복사본이
+      옆에 뜬다 (`socketInUse`, company/appproc.go)
 - [x] `company/envstore.go` — 앱별 환경변수 (암호화 저장, 이름 검증, 버전 카운터, 변경 이력)
-  - [ ] `_app` 화면에서 입력받기 (6단계)
+  - [x] `_app` 화면에서 입력받기 — 한 줄 + [항목 추가], 일괄 선택 삭제 (`company-app-env.ts`)
 - [x] `company/appsandbox.go` — `buildAppCommand` (bwrap / dev 분기, `${SOCKET}`·`${ROOT_PATH}` 치환)
 - [x] 배포 워커 `company/deployworker.go` — 큐 + 워커 2개, 같은 앱 직렬화(`deployMu`), 큐 상한 초과 시 `deploy_queue_full` (merge 훅은 큐잉 후 즉시 반환)
   - [x] central-deploy에서 `<owner>/<repo>/` 서브트리를 릴리스로 추출 (경로 탈출 차단, 실행 비트 없음)
@@ -135,7 +137,8 @@
     - [x] venv는 나이가 아니라 **참조 기준**으로 수거 — 같은 의존성 집합이면 여러 릴리스가 공유하므로, 가장 새 venv가 오래된 릴리스의 것일 수 있다
     - [x] 테스트: 최신 N 유지, current/previous 보호, 공유 venv 생존, 고아 venv 삭제, 미배포 앱 no-op
 - [x] 헬스체크 (impl.md §7 — 연속 3회) + 자동 롤백 (`rolled_back` vs `failed` 구분)
-  - [ ] 크래시 루프 재확인(10초 후 재시작 횟수 비교) — 현재는 연속 성공 3회만
+  - [x] 크래시 루프 재확인 — 헬스체크 통과 후 **10초 뒤 같은 프로세스인지**를 pid 로 비교
+    (`stableFor`). 크래시 카운터는 의도적 중지가 리셋하므로 프로세스 동일성이 기준이다
 - [x] `company/proxy.go` — `/apps/{owner}/{repo}/*` 리버스 프록시 (`vitedev.go:61` 패턴 + unix 소켓 DialContext), `optSignIn` 없이 등록해 무인증 유지
   - [x] 인메모리 앱 레지스트리 (`company/appregistry.go`) — 요청당 파일 읽기 없음, 미등록 404. URL을 소켓 경로로 직접 바꾸지 않는 **보안 경계**이기도 하다
   - [x] 접근 모드 3종 (`public`/`login`/`org`), 들어오는 `X-Forwarded-*`·`X-Gitea-*` 스트립 후 우리가 다시 설정. `org` 판정 실패는 **fail-closed**
@@ -209,9 +212,25 @@
 - [x] 로그 조회 (`company/applogs.go`) — 검색, 스트리밍 읽기 + 5초 타임아웃 + 결과 상한(링 버퍼), **부분 문자열 기본·정규식은 옵트인** (ReDoS)
 - [x] 앱 상세 — KPI 타일 + 차트 3종 + **배포/롤백/OOM 시점 세로선 annotation** + 이력 타임라인 (`custom/templates/company/admin_app.tmpl`)
   - chart.js를 직접 사용(`web_src/js/features/company-app-charts.ts`). `ChartCanvas.vue`는 Vue 컴포넌트라 정적 데이터 3개에 Vue를 띄울 이유가 없다. **새 의존성 없음**
-- [ ] 전체 대시보드에 KPI 타일 + 앱별 스파크라인 추가 (현재 목록은 상태·헬스만)
+- [ ] 전체 대시보드에 KPI 타일 + 앱별 스파크라인 추가 (현재 목록은 상태·헬스만) — 남음
 - [ ] 로그·앱 이름 등 직원 입력 **이스케이프 확인** (`<script>` 주입 테스트) — 템플릿은 기본 이스케이프이고 `innerHTML` 미사용, 실제 주입 확인은 미실시
 - [x] 테스트: 버킷 집계(평균·최대·p95·고유 방문자), 자원 샘플 최대값 보존, 파일 왕복 + 기간 필터, `-race`(동시 기록 50)
+
+### 이번 라운드에 추가된 것 (2026-09-06)
+
+- [x] **정확성 감사** — 관리자 앱 화면의 모든 값이 실제를 반영하는지 대조. 발견 3건 모두 수정:
+  - [x] 측정 안 된 자원을 0으로 표시 (`ResourceSamples`/`ResourcesMeasured` — 0은 값이 아니라 초기값)
+  - [x] "설치 가능"(정책)과 "설치됨"(실행 중 릴리스)의 구분 — 릴리스가 자기 패키지 목록을 기록 (`packages` 파일)
+  - [x] git 직접 푸시된 apps.yml 이 재시작까지 미반영 — PushCommits 노티파이어로 재적재
+- [x] outbound 정책: 요청 폼의 메서드가 승인에서 유실되던 버그, URL 붙여넣기 정규화(파싱 시점 일괄), 관리자 직접 허용/차단
+- [x] 배포 사전 검사 — 제출 시 자동 실행, 하드 실패만 차단 (버전 충돌 vs 인덱스 장애 구분)
+- [x] 대기 중 요청 표시 + 취소 (deploy 폼)
+- [x] 배포 이력: 진행 중 행 + 최신/실행 중 배지 분리, 특정 버전 재배포
+- [x] i18n 1단계 — 상태 배지·실패 원인·이력 어휘를 로케일 키로 (en-US/ko-KR). AppCause 는 키(고정문)와
+  데이터(관리자 입력·pip 출력)를 분리. **남은 것: 페이지별 템플릿 산문과 Go 플래시 메시지** — 규모가
+  커서(약 500곳) 화면 단위로 이어서 진행
+- [ ] i18n 2단계 — 템플릿 산문 (app.tmpl, deploy.tmpl, admin\_\*.tmpl, 사이드바)
+- [ ] i18n 3단계 — Go 플래시·userError 메시지 (audienceError 를 키 기반으로)
 
 ## 6. 제어 + 부서 화면
 
