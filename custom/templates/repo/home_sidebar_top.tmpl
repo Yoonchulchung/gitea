@@ -123,14 +123,21 @@
 	<div class="flex-relaxed-list company-app-panel">
 		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
 			<span>앱</span>
-			<span class="company-app-state {{.Status}}">{{.StatusLabel}}</span>
+			<span class="tw-flex tw-items-center tw-gap-2">
+				{{/* Beside the state rather than inside the message: "it broke" and
+				     "it broke four minutes ago" are both about the state, and this
+				     way the time is visible without reading the whole panel. */}}
+				{{with .Cause}}{{if .At}}
+					<span class="text-grey tw-text-12 tw-font-normal" data-tooltip-content="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</span>
+				{{end}}{{end}}
+				<span class="company-app-state {{$.CompanyApp.Status}}">{{$.CompanyApp.StatusLabel}}</span>
+			</span>
 		</div>
 
 		{{with .Cause}}
 			{{/* Only rendered when something is actually wrong. */}}
 			<div class="company-app-cause">
 				<div class="tw-font-semibold">{{.Summary}}</div>
-				{{if .At}}<div class="tw-text-12 tw-mt-1" data-tooltip-content="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</div>{{end}}
 				{{range StringUtils.Split .Detail "\n"}}<div class="tw-text-12 tw-mt-1 company-app-cause-line">{{.}}</div>{{end}}
 			</div>
 		{{end}}

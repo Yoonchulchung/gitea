@@ -45,8 +45,16 @@ type AppCause struct {
 // all for it — a panel that is always saying something stops being read.
 func DepartmentCause(st *AppState) *AppCause {
 	cause := departmentCause(st)
-	if cause != nil {
-		cause.At = st.FailedAt
+	if cause == nil {
+		return nil
+	}
+	cause.At = st.FailedAt
+	if cause.At == 0 {
+		// State written before failures carried their own timestamp. UpdatedAt
+		// is the wrong answer in general — it moves on any change, so pressing
+		// start on a broken app drags it forward — but for a record that has
+		// nothing better it beats showing no time at all.
+		cause.At = st.UpdatedAt
 	}
 	return cause
 }
