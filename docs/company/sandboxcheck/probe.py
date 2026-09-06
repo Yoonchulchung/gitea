@@ -111,7 +111,10 @@ def run_curl():
 
 check("TCP connect out", tcp_connect)
 check("socket(AF_INET6)", lambda: socket.socket(socket.AF_INET6, socket.SOCK_STREAM))
-check("socket(AF_PACKET) raw", raw_socket)
+# AF_PACKET/SOCK_RAW needs CAP_NET_RAW, which an unprivileged account never
+# has — denied sandbox or not, so it cannot be evidence. Kept as defence in
+# depth in case the process ever acquires the capability.
+check("socket(AF_PACKET) raw", raw_socket, discriminating=False)
 check("socket(AF_NETLINK)", lambda: socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 0)
       if hasattr(socket, "AF_NETLINK") else (_ for _ in ()).throw(NotImplementedError("Linux-only")))
 check("UDP socket", lambda: socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
@@ -160,7 +163,17 @@ def list_proc():
 
 check("list /proc", list_proc)
 check("read Gitea's environ", other_pid_environ)
-check("ptrace ATTACH on Gitea", ptrace_gitea)
+# Ubuntu enables Yama's ptrace_scope=1 by default, which already stops a
+# process from tracing anything but its own children. Where that is on, this
+# check cannot tell the sandbox apart from the kernel doing the work — so it
+# is reported either way, but only counted as evidence where Yama is off.
+try:
+    with open("/proc/sys/kernel/yama/ptrace_scope") as f:
+        yama = int(f.read().strip())
+except (OSError, ValueError):
+    yama = 0
+check("ptrace on Gitea" + (" (Yama already blocks it)" if yama else ""),
+      ptrace_gitea, discriminating=(yama == 0))
 check("signal Gitea", lambda: os.kill(gitea_pid, 0))
 check("kill(-1) — everything this user owns", lambda: os.kill(-1, 0))
 

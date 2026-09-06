@@ -155,9 +155,17 @@
   - [x] `preflight.sh` — 커널·bubblewrap 가용성과 실패 사유·Landlock 수준·PyPI 접근성
   - [x] `probe.py` — Gitea 데이터 / 네트워크 / 타 프로세스 / 자원 한도 + **"막히면 안 되는 것"**(이게 없으면 "전부 막힘"과 "파이썬이 아예 못 뜸"을 구분할 수 없다)
   - [x] `run.sh` — **통제군 먼저**: 샌드박스 밖에서 돌려 프로브가 실제로 구분한다는 것을 증명한 뒤 본 실행. 통제군 실패 시 중단
-  - [x] 통제군이 실제로 결함을 잡아냄 — `/etc/shadow`·`/usr` 쓰기는 리눅스에서도 일반 계정이면 막히므로 구분력이 없다. 계약에서 제외하고 defence-in-depth로 강등
+  - [x] 통제군이 실제로 결함을 **세 번** 잡아냄. 전부 "샌드박스와 무관하게 이미 막히는 것"이라
+    본 실행에서 통과로 보이며 아무것도 증명하지 않았을 항목들이다:
+    - `/etc/shadow`·`/usr` 쓰기 — root 전용. 계약에서 제외, defence-in-depth로 강등
+    - `AF_PACKET` raw 소켓 — `CAP_NET_RAW` 필요. 비특권 계정은 애초에 못 만든다
+    - `ptrace` — Ubuntu 기본 **Yama `ptrace_scope=1`**이 형제 프로세스 추적을 막는다.
+      호스트마다 다르므로 `/proc/sys/kernel/yama/ptrace_scope`를 **실행 시 읽어** 판단하게 했다
+- [x] **통제군 실행 확인 (2026-09-06, 배포 서버)** — 격리가 없으면 앱이 `gitea.db`·
+  `data/sessions/`·전 부서 저장소·`app.ini`를 전부 읽고, Gitea의 환경변수를 읽고,
+  `kill(-1)`까지 할 수 있다는 것이 이 서버에서 실증됐다. 설계 문서의 주장이 추정이 아님
 - [ ] **샌드박스 실증 실행 (서버에서, 전부 `ok`여야 통과):**
-  - [ ] `./preflight.sh`
+  - [x] `./preflight.sh`
   - [ ] `./run.sh /path/to/gitea /path/to/gitea/data` — **Gitea를 실행하는 계정으로**
   - [ ] seccomp 단위 테스트: `go test -run 'Seccomp|HandledRights' ./company/`
   - [ ] 실제 토이 앱 배포 후 `subprocess` 다중 자식 → 프로세스 그룹 종료로 고아 0인지 (Landlock에는 PID 네임스페이스가 없어 여기가 bwrap보다 약한 유일한 지점)
