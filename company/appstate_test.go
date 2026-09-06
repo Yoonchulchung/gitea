@@ -4,6 +4,8 @@
 package company
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -264,4 +266,23 @@ func TestMarkCurrentFlagsTheLiveRelease(t *testing.T) {
 	none := []deployAttempt{{SHA: "aaaaaaaaaaaa"}}
 	markCurrent(none, "")
 	assert.False(t, none[0].Current)
+}
+
+// A release directory is named sha256(sha)[:16], which is one-way — the id
+// cannot be read back out of it. It can be confirmed, though: hashing a
+// candidate and matching the name is proof, because nothing else hashes to
+// it. That is what lets releases built before they recorded their own id
+// still be identified, instead of every screen going silent about which
+// version is serving.
+func TestReleaseDirIdentifiesItsCommit(t *testing.T) {
+	p := appPathsFor("PO", "app")
+	const sha = "a42245e516e4b7df905b58d17403bdec6532a64c"
+
+	sum := sha256.Sum256([]byte(sha))
+	assert.Equal(t, hex.EncodeToString(sum[:16]), filepath.Base(releaseDir(p, sha)),
+		"the name must be reproducible from the commit id, or nothing can be recovered")
+
+	// A commit id is never used as a path component, so a traversal attempt
+	// cannot escape the app's own directory.
+	assert.Equal(t, p.releases, filepath.Dir(releaseDir(p, "../../etc/passwd")))
 }

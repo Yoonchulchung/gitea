@@ -4,10 +4,15 @@
 package company
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/modules/git"
 	"gitea.dev/modules/log"
 )
 
@@ -121,3 +126,104 @@ func adoptCurrentReleaseSHA(st *AppState, owner, repo string) {
 	log.Info("company: %s/%s is serving %s; state said %s", owner, repo, sha, st.SHA)
 	st.SHA = sha
 }
+
+// backfillReleaseSHAs identifies releases built before they recorded their own
+// commit id.
+//
+// The directory name is sha256(sha)[:16], which is one-way, so the id cannot
+// be read back out of it — but it can be confirmed. Hashing each commit in the
+// central deploy repository and looking for a directory with that name
+// recovers the mapping exactly, with no guessing: a match is proof, because
+// nothing else hashes to that name.
+//
+// Needed because the alternative is silence. Without it, an app whose release
+// predates this leaves every screen unable to say which version is serving,
+// including the deploy history where the whole question is which of these
+// attempts is the one still running.
+//
+// Runs once at startup, is skipped entirely for apps whose releases already
+// carry the file, and is best-effort throughout — this is a repair, and
+// failing it should cost the label rather than the boot.
+func backfillReleaseSHAs(ctx context.Context) {
+	states := ListAppStates()
+	unidentified := map[string][]string{} // appKey -> release dirs missing the record
+	for _, st := range states {
+		p := appPathsFor(st.Owner, st.Repo)
+		entries, err := os.ReadDir(p.releases)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			dir := filepath.Join(p.releases, entry.Name())
+			if entry.IsDir() && readReleaseSHA(dir) == "" {
+				unidentified[st.Owner+"/"+st.Repo] = append(unidentified[st.Owner+"/"+st.Repo], dir)
+			}
+		}
+	}
+	if len(unidentified) == 0 {
+		return
+	}
+
+	commits, err := centralDeployCommitIDs(ctx)
+	if err != nil {
+		log.Warn("company: could not read the central deploy history to identify old releases: %v", err)
+		return
+	}
+	// Indexed by directory name, so this is one pass over the commits rather
+	// than one pass per release.
+	byName := make(map[string]string, len(commits))
+	for _, sha := range commits {
+		sum := sha256.Sum256([]byte(sha))
+		byName[hex.EncodeToString(sum[:16])] = sha
+	}
+
+	for app, dirs := range unidentified {
+		for _, dir := range dirs {
+			sha, ok := byName[filepath.Base(dir)]
+			if !ok {
+				continue // its commit is no longer in the history; nothing to recover from
+			}
+			if err := writeReleaseSHA(dir, sha); err != nil {
+				log.Error("company: recording %s for %s: %v", sha, dir, err)
+				continue
+			}
+			log.Info("company: identified an existing release of %s as %s", app, sha)
+		}
+	}
+}
+
+// centralDeployCommitIDs lists every commit the deploy repository still has.
+func centralDeployCommitIDs(ctx context.Context) ([]string, error) {
+	owner, name, err := centralDeployOwnerName()
+	if err != nil {
+		return nil, err
+	}
+	central, err := repo_model.GetRepositoryByOwnerAndName(ctx, owner, name)
+	if err != nil {
+		return nil, err
+	}
+	gitRepo, err := git.OpenRepository(ctx, central)
+	if err != nil {
+		return nil, err
+	}
+	defer gitRepo.Close()
+
+	commit, err := gitRepo.GetBranchCommit(ctx, central.DefaultBranch)
+	if err != nil {
+		return nil, err
+	}
+	// Bounded: a release older than this many deploys has been cleaned up long
+	// since, and the point is to identify what is on disk now.
+	commits, err := commit.CommitsByRange(ctx, gitRepo, 1, backfillCommitScan, "", "", "")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(commits))
+	for _, c := range commits {
+		out = append(out, c.ID.String())
+	}
+	return out, nil
+}
+
+// backfillCommitScan bounds how far back the identification looks.
+const backfillCommitScan = 500

@@ -44,6 +44,10 @@ func InitAppPlatform(ctx context.Context) {
 	// to know about everything deployed before the first request arrives.
 	loadAppRegistry()
 	loadDepartmentAccess()
+	// Releases built before they recorded their own commit id can still be
+	// identified from the deploy history, and until they are no screen can say
+	// which version is serving (company/appreleaseid.go).
+	backfillReleaseSHAs(ctx)
 
 	StartDeployWorkers()
 	StartMetricsFlusher()
