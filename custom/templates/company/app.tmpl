@@ -193,6 +193,53 @@
 			{{end}}
 		</div>
 
+		<h3>권한 현황</h3>
+		<div class="ui segment">
+			{{/* Denied and pending first in the reader's eye, because those are the
+			     lines that answer "why doesn't my app work" — a panel listing only
+			     what was approved leaves that question with no answer on screen.
+			     Same rows as the repository sidebar (company/app_sidebar.go). */}}
+			<table class="ui very basic table tw-text-13">
+				<tbody>
+					{{range .PermissionRows}}
+						<tr>
+							<td class="tw-w-1/6">{{.Label}}</td>
+							<td class="tw-w-1/6">
+								{{if eq .State "allowed"}}<span class="company-app-state running">허용됨</span>
+								{{else if eq .State "pending"}}<span class="company-app-state building">승인 대기</span>
+								{{else}}<span class="company-app-state failed">차단됨</span>{{end}}
+							</td>
+							<td>
+								{{.Value}}
+								{{if .Reason}}<span class="text-grey tw-text-12 tw-block">{{.Reason}}</span>{{end}}
+							</td>
+						</tr>
+					{{end}}
+				</tbody>
+			</table>
+
+			{{if .PendingRequests}}
+				{{/* "Nobody asked" and "somebody asked and an admin has not decided"
+				     are different answers, and a screen that cannot tell them apart
+				     sends the department to ask an administrator either way. */}}
+				<div class="ui info message tw-mt-2">
+					<div class="header">관리자 승인을 기다리는 요청</div>
+					<table class="ui very basic table tw-text-13 tw-mt-1">
+						<tbody>
+							{{range .PendingRequests}}
+								<tr>
+									<td class="tw-w-1/4">{{.Label}}</td>
+									<td>{{.Detail}}{{if .Reason}}<span class="text-grey tw-text-12 tw-block">사유: {{.Reason}}</span>{{end}}</td>
+								</tr>
+							{{end}}
+						</tbody>
+					</table>
+				</div>
+			{{else}}
+				<a class="ui basic button tw-mt-2" href="{{.DeployLink}}">권한 요청하기</a>
+			{{end}}
+		</div>
+
 		<h3>접근 권한</h3>
 		<div class="ui segment">
 			<p class="text-grey tw-text-13">

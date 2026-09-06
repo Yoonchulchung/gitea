@@ -211,6 +211,9 @@ func DeployForm(ctx *context.Context) {
 	// non-developer handed an empty permissions form fills in either nothing
 	// or something unusable. They supply only the reason. See
 	// company/permissions.go.
+	deploySettings := SettingsFor(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name)
+	ctx.Data["DownloadAllowed"] = deploySettings.Download.Policy == "allow"
+	ctx.Data["OutboundAllowed"] = allowedOutboundHosts(deploySettings)
 	ctx.Data["PermissionRequests"] = DetectPermissionRequests(
 		ctx.Repo.Repository.OwnerName, ctx.Repo.Repository.Name,
 		readRepoFile(ctx, ctx.Repo.Repository, "requirements.txt"), ctx.FormString("access"))

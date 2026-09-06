@@ -235,3 +235,28 @@ func TestClearMissingPackagesDropsOnlyWhatWasApproved(t *testing.T) {
 	clearMissingPackages("PO", "app", []string{"markupsafe"})
 	assert.Equal(t, []string{"python-dotenv"}, LoadAppState("PO", "app").MissingPackages)
 }
+
+// Packages come from requirements.txt and a memory increase comes from the
+// recorded times the limit was hit, so both can be proposed with evidence.
+// Nothing in an app says it needs to reach a host or hand over a file — those
+// are intentions, and without somewhere to say them a department that needed
+// one had no route to a request at all.
+func TestOutboundEvidenceSeparatesInternalFromInternet(t *testing.T) {
+	for _, host := range []string{"erp.internal.company.com", "billing.local", "reports.corp", "erp"} {
+		assert.Contains(t, outboundEvidence(host), "사내", host)
+	}
+	// The distinction an operator who is not a developer cannot make alone,
+	// and it is most of the decision.
+	for _, host := range []string{"api.example.com", "hooks.slack.com"} {
+		assert.Contains(t, outboundEvidence(host), "사외", host)
+	}
+}
+
+// Someone should not be asked to request access the app already has.
+func TestAllowedOutboundHostsReportsWhatIsInForce(t *testing.T) {
+	assert.Empty(t, allowedOutboundHosts(AppSettings{Network: AppNetwork{Mode: NetworkNone}}))
+	assert.Equal(t, []string{"제한 없음"}, allowedOutboundHosts(AppSettings{Network: AppNetwork{Mode: NetworkOpen}}))
+	assert.Equal(t, []string{"erp.internal"}, allowedOutboundHosts(AppSettings{Network: AppNetwork{
+		Mode: NetworkBroker, Allow: []AppNetworkRule{{Host: "erp.internal"}},
+	}}))
+}

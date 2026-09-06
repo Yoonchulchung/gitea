@@ -5,6 +5,7 @@ package company
 
 import (
 	"slices"
+	"strings"
 
 	repo_model "gitea.dev/models/repo"
 	"gitea.dev/modules/git"
@@ -66,7 +67,82 @@ func collectPermissionRequests(ctx *context.Context, repo *repo_model.Repository
 		item.Reason = ctx.FormString("perm_reason")
 		out = append(out, item)
 	}
+	out = append(out, requestedByHand(ctx, repo)...)
 	return withDependencies(ctx, repo, requirements, out, ctx.FormString("perm_reason"))
+}
+
+// requestedByHand collects the items the platform cannot detect.
+//
+// Packages come from requirements.txt and a memory increase comes from the
+// recorded times the limit was hit, so both can be proposed with evidence.
+// Nothing in an app says "this needs to reach erp.internal" or "this needs to
+// hand people a file" — those are intentions, and until they are asked for
+// there is nowhere to say them. A department that needs one had no route to a
+// request at all.
+func requestedByHand(ctx *context.Context, repo *repo_model.Repository) []PermissionRequest {
+	settings := SettingsFor(repo.OwnerName, repo.Name)
+	reason := ctx.FormString("perm_reason")
+	var out []PermissionRequest
+
+	if ctx.FormString("perm_want_download") != "" && settings.Download.Policy != "allow" {
+		out = append(out, PermissionRequest{
+			Kind:  PermKindDownload,
+			Value: "allow",
+			Label: "파일 다운로드 허용",
+			// Said as the consequence, because that is what an admin is
+			// approving — see docs/company/app-platform.md on what this control
+			// does and does not stop.
+			Detail: "앱이 파일을 내려받게 할 수 있습니다 (현재는 차단됨)",
+			Reason: reason,
+		})
+	}
+
+	// One host per request. A form that took a list would need a syntax, and
+	// the person filling it in is not a developer; a second host is a second
+	// request, which is also a second decision for the admin.
+	if host := strings.TrimSpace(ctx.FormString("perm_want_host")); host != "" {
+		methods := strings.TrimSpace(ctx.FormString("perm_want_methods"))
+		if methods == "" {
+			methods = "GET"
+		}
+		out = append(out, PermissionRequest{
+			Kind:   PermKindNetwork,
+			Value:  host,
+			Label:  "외부 통신 허용",
+			Detail: host + " (" + strings.ToUpper(methods) + ")",
+			// Whether the address is internal is the first thing an admin
+			// checks, so it is stated rather than left to be recognised.
+			Evidence: outboundEvidence(host),
+			Reason:   reason,
+		})
+	}
+	return out
+}
+
+// outboundEvidence says whether the destination looks internal.
+//
+// Not a security control — a name proves nothing — but an operator who is not
+// a developer has no other way to tell "erp.internal" from "api.example.com",
+// and that difference is most of the decision.
+func outboundEvidence(host string) string {
+	name := strings.ToLower(host)
+	if i := strings.Index(name, "/"); i >= 0 {
+		name = name[:i]
+	}
+	// Matched per label rather than as a suffix: the usual internal name is
+	// erp.internal.company.com, where the marker is in the middle and a
+	// suffix test would call it an internet address.
+	labels := strings.Split(name, ".")
+	if len(labels) == 1 {
+		return "사내 주소로 보입니다 (도메인 없음)"
+	}
+	for _, label := range labels {
+		switch label {
+		case "internal", "local", "lan", "corp", "intranet":
+			return "사내 주소로 보입니다"
+		}
+	}
+	return "인터넷 주소로 보입니다 — 승인하면 이 앱이 사외로 데이터를 보낼 수 있습니다"
 }
 
 // withDependencies adds the packages the ticked ones will drag in.
@@ -119,4 +195,17 @@ func SetDeployRequestPermissions(ctx *context.Context, owner, repo string, prID 
 	if requests := LoadPermissionRequests(owner, repo, prID); len(requests) > 0 {
 		ctx.Data["PermissionRequests"] = requests
 	}
+}
+
+// allowedOutboundHosts names what this app may already reach, so someone does
+// not request access it already has.
+func allowedOutboundHosts(settings AppSettings) []string {
+	if settings.Network.Mode == NetworkOpen {
+		return []string{"제한 없음"}
+	}
+	hosts := make([]string, 0, len(settings.Network.Allow))
+	for _, rule := range settings.Network.Allow {
+		hosts = append(hosts, rule.Host)
+	}
+	return hosts
 }

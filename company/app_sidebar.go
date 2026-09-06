@@ -6,6 +6,7 @@ package company
 import (
 	"strings"
 
+	issues_model "gitea.dev/models/issues"
 	"gitea.dev/models/unit"
 	"gitea.dev/services/context"
 )
@@ -194,4 +195,41 @@ func accessLabel(access string) string {
 	default:
 		return "사내 누구나"
 	}
+}
+
+// PendingRequest is one item a department has submitted and an admin has not
+// decided yet.
+type PendingRequest struct {
+	Label   string
+	Detail  string
+	Reason  string
+	Waiting bool // still open, as opposed to decided
+}
+
+// pendingPermissionRequests reports what this app has asked for and not yet
+// received.
+//
+// "Why is my app still blocked?" has two different answers — nobody asked, or
+// somebody asked and it is sitting with an admin — and a screen that cannot
+// tell them apart sends the department to ask an administrator either way.
+//
+// Best-effort: the request file is a record, and a screen that cannot read it
+// should show less rather than fail.
+func pendingPermissionRequests(ctx *context.Context, owner, repo string) []PendingRequest {
+	set := LoadPermissionRequestSet(owner, repo)
+	if set == nil || len(set.Requests) == 0 {
+		return nil
+	}
+	// Merged means the permissions were applied, so the items are history
+	// rather than something to wait for.
+	pr, err := issues_model.GetPullRequestByID(ctx, set.PRID)
+	if err != nil || pr.HasMerged {
+		return nil
+	}
+
+	out := make([]PendingRequest, 0, len(set.Requests))
+	for _, r := range set.Requests {
+		out = append(out, PendingRequest{Label: r.Label, Detail: r.Detail, Reason: r.Reason, Waiting: true})
+	}
+	return out
 }

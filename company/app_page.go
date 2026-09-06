@@ -74,6 +74,11 @@ func AppPage(ctx *context.Context) {
 	// st.Reason — and that is cleared as soon as another deploy is queued,
 	// taking the only explanation of why nothing installs with it.
 	ctx.Data["MissingPackages"] = st.MissingPackages
+	// The same rows the repository sidebar shows. "What is my app allowed to
+	// do" is asked at least as often from this screen, and answering it in one
+	// place and not the other is how someone concludes the two disagree.
+	ctx.Data["PermissionRows"] = permissionRows(settings, st)
+	ctx.Data["PendingRequests"] = pendingPermissionRequests(ctx, owner, name)
 	ctx.HTML(http.StatusOK, tplApp)
 }
 

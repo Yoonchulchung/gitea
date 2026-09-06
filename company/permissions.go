@@ -173,6 +173,22 @@ func SavePermissionRequests(owner, repo string, prID int64, requests []Permissio
 	return writeFileAtomic(permissionFile(owner, repo), body)
 }
 
+// LoadPermissionRequestSet returns whatever request is on file for this app,
+// whichever PR it belongs to. Used by the app screen, which is asking "is
+// something of ours waiting on an admin?" rather than about one PR.
+func LoadPermissionRequestSet(owner, repo string) *PermissionRequestSet {
+	body, err := readFileIfExists(permissionFile(owner, repo))
+	if err != nil || body == nil {
+		return nil
+	}
+	var set PermissionRequestSet
+	if err := json.Unmarshal(body, &set); err != nil {
+		log.Error("company: permission requests for %s/%s are unreadable: %v", owner, repo, err)
+		return nil
+	}
+	return &set
+}
+
 // LoadPermissionRequests returns the items attached to a Deploy Request, or
 // nil if this PR has none. Keyed by PR id so a stale file from a previous,
 // abandoned request is never shown against a new one.

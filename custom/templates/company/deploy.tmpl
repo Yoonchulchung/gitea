@@ -54,8 +54,8 @@
 			     The person supplies only the reason, which is required: an
 			     operator who is not a developer cannot judge "allow outbound
 			     access to api.foo.com?" on its own. See company/permissions.go. */}}
-			{{with .PermissionRequests}}
-				<div class="company-perm-request">
+			<div class="company-perm-request">
+				{{with .PermissionRequests}}
 					<div class="company-deploy-section-lbl">이번 배포에 필요한 승인</div>
 					{{range .}}
 						<label class="company-perm-request-item">
@@ -66,16 +66,53 @@
 							</span>
 						</label>
 					{{end}}
-					<div class="field tw-mt-2">
-						<label>사유 <span class="text-grey tw-text-12">(관리자가 판단할 수 있도록 왜 필요한지 적어 주세요)</span></label>
+				{{end}}
+
+				{{/* Nothing in an app says "this needs to reach erp.internal" or
+				     "this needs to hand people a file". Those are intentions, and
+				     without somewhere to say them a department that needs one had
+				     no route to a request at all. */}}
+				<div class="company-deploy-section-lbl tw-mt-3">추가로 요청할 것이 있나요?</div>
+				{{if not .DownloadAllowed}}
+					<label class="company-perm-request-item">
+						<input type="checkbox" name="perm_want_download" value="1">
+						<span>
+							<strong>파일 다운로드 허용</strong>
+							<span class="text-grey tw-text-12 tw-block">
+								엑셀·PDF 처럼 파일을 내려받게 해야 한다면 선택하세요. 지금은 화면에 보여주는 것만 됩니다.
+							</span>
+						</span>
+					</label>
+				{{end}}
+				<div class="field tw-mt-2">
+					<label>외부 통신 <span class="text-grey tw-text-12">(다른 시스템의 자료를 가져와야 할 때만 적으세요)</span></label>
+					<div class="tw-flex tw-gap-2 tw-flex-wrap">
+						<input type="text" name="perm_want_host" class="tw-flex-1"
+							placeholder="예: erp.internal.company.com" autocomplete="off">
+						<select name="perm_want_methods">
+							<option value="GET">읽기만 (GET)</option>
+							<option value="GET,POST">읽기와 보내기 (GET, POST)</option>
+						</select>
+					</div>
+					<span class="text-grey tw-text-12">
+						{{if .OutboundAllowed}}현재 허용: {{StringUtils.Join .OutboundAllowed ", "}}{{else}}지금은 외부 통신이 모두 차단되어 있습니다.{{end}}
+					</span>
+				</div>
+
+				<div class="field tw-mt-2">
+					<label>사유 <span class="text-grey tw-text-12">(관리자가 판단할 수 있도록 왜 필요한지 적어 주세요)</span></label>
 						{{/* autocomplete off: the browser offers what was typed into this field on
 						     a previous request, and a reason carried over from a different
 						     approval is worse than no reason — the admin reads it as though it
 						     were written about this one. */}}
-						<input type="text" name="perm_reason" placeholder="예: 엑셀 보고서를 만들기 위해 openpyxl 이 필요합니다" required autocomplete="off">
-					</div>
+					{{/* Not `required`: a deploy with no permission items needs no
+					     reason, and a browser refusing to submit a form over a field
+					     the person cannot see is indistinguishable from a broken
+					     button. The reason is required where it matters — an item
+					     without one is what the admin sees. */}}
+					<input type="text" name="perm_reason" placeholder="예: 엑셀 보고서를 만들기 위해 openpyxl 이 필요합니다" autocomplete="off">
 				</div>
-			{{end}}
+			</div>
 			<button type="submit" id="submit-button" class="ui primary button">
 				{{ctx.Locale.Tr "company.deploy.submit_button"}}
 			</button>
