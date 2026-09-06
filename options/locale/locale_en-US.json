@@ -4477,5 +4477,7 @@
   "company.deploy.reason_placeholder": "e.g. openpyxl is needed to build the Excel report",
   "company.deploy.requested_perms": "Requested permissions (%d)",
   "company.deploy.perm_reason": "Reason: %s",
-  "company.deploy.perm_merge_note": "Approving (merging) this deploy request applies the permissions above with it. To approve only some of them, ask the requester to revise it."
+  "company.deploy.perm_merge_note": "Approving (merging) this deploy request applies the permissions above with it. To approve only some of them, ask the requester to revise it.",
+  "company.dashboard.apps": "Deployed apps",
+  "company.dashboard.open": "Open the app"
 }

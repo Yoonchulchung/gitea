@@ -1,0 +1,27 @@
+{{template "base/head" .}}
+<div role="main" aria-label="{{.Title}}" class="page-content dashboard feeds">
+	{{template "user/dashboard/navbar" .}}
+	<div class="ui container flex-container">
+		<div class="flex-container-main">
+			{{template "base/alert" .}}
+			{{template "user/heatmap" .}}
+			{{if .Page.Paginator.TotalPages}}
+				{{template "user/dashboard/feeds" .}}
+			{{else}}
+				{{template "user/dashboard/guide" .}}
+			{{end}}
+		</div>
+		{{/* repolist already carries .flex-container-sidebar, so this sits
+		     beside it as a second sidebar block rather than wrapping it —
+		     nesting the class would give the column two widths.
+
+		     A repository is not an app: most never become one, and the ones
+		     that do say nothing in that list about whether they are up. "Is our
+		     thing running?" is the question people here ask most, and until now
+		     it took opening repositories one at a time to answer. See
+		     company/dashboard_apps.go. */}}
+		{{template "user/dashboard/repolist" .}}
+		{{template "company/dashboard_apps" .}}
+	</div>
+</div>
+{{template "base/footer" .}}

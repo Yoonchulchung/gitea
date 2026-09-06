@@ -988,8 +988,8 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 		})
 
 		m.Group("/{org}", func() {
-			m.Get("/dashboard", user.Dashboard)
-			m.Get("/dashboard/{team}", user.Dashboard)
+			m.Get("/dashboard", company.SetDashboardApps, user.Dashboard)
+			m.Get("/dashboard/{team}", company.SetDashboardApps, user.Dashboard)
 			m.Get("/dashboard/-/heatmap", user.DashboardHeatmap)
 			m.Get("/dashboard/-/heatmap/{team}", user.DashboardHeatmap)
 			m.Get("/dashboard/deploy-requests", company.DeployRequests)          // see docs/company/mount-points.md

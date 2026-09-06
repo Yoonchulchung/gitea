@@ -4429,5 +4429,7 @@
   "company.deploy.reason_placeholder": "예: 엑셀 보고서를 만들기 위해 openpyxl 이 필요합니다",
   "company.deploy.requested_perms": "요청된 권한 (%d)",
   "company.deploy.perm_reason": "사유: %s",
-  "company.deploy.perm_merge_note": "이 배포 요청을 승인(merge)하면 위 권한이 함께 적용됩니다. 일부만 승인하려면 요청자에게 수정을 요청해 주세요."
+  "company.deploy.perm_merge_note": "이 배포 요청을 승인(merge)하면 위 권한이 함께 적용됩니다. 일부만 승인하려면 요청자에게 수정을 요청해 주세요.",
+  "company.dashboard.apps": "배포된 앱",
+  "company.dashboard.open": "앱 열기"
 }

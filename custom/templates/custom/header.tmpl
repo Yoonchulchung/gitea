@@ -24,7 +24,7 @@
    beats a plain `.repos-search{...!important}` on specificity (class+attr
    > class) regardless of cascade order — only an ID-anchored selector
    reliably outranks it. */
-#dashboard-repo-list .repos-search { padding-bottom: 2em !important; }
+#dashboard-repo-list .repos-search { padding-bottom: 1em !important; }
 /* archived/private filter dropdown next to the search box — hiding it
    breaks Fomantic's "joined action-input" right-side rounding (it expects
    the trailing button to supply that corner), so restore it on the input */
@@ -121,6 +121,32 @@
    a fact rather than as a field inviting a change that would not be saved. */
 /* The time each line arrived. Dimmed and fixed-width so the eye runs down the
    messages and reaches for the times only when connecting one to a deploy. */
+/* The dashboard's deployed-app panel. Sits under the repository list in the
+   same sidebar column, so it takes that column's width and its own spacing
+   rather than the list's. */
+.company-dashboard-apps { margin-top: 1em; }
+.company-dashboard-apps-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	background: var(--color-box-header);
+}
+.company-dashboard-app {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px !important;
+}
+/* The name takes the slack so the state pill stays hard right, where the eye
+   can run down a column of them. */
+.company-dashboard-app-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: .9em;
+}
 /* Inline sparkline: one polyline per list row, no chart library. Stroked
    rather than filled so a flat line still reads as a line. */
 .company-sparkline {

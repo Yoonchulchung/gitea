@@ -1,0 +1,20 @@
+{{/* Rendered only when the viewer has apps: a panel that is always there,
+     saying nothing, stops being read on the day it matters. */}}
+{{with .CompanyDashboardApps}}
+	<div class="ui segments company-dashboard-apps flex-container-sidebar">
+		<div class="ui segment company-dashboard-apps-head">
+			<strong>{{ctx.Locale.Tr "company.dashboard.apps"}}</strong>
+			<span class="text-grey tw-text-12">{{len .}}</span>
+		</div>
+		{{range .}}
+			<div class="ui segment company-dashboard-app">
+				<a class="company-dashboard-app-name" href="{{.Link}}">{{.Owner}}/{{.Repo}}</a>
+				<span class="company-app-state {{.Status}}">{{ctx.Locale.Tr .StatusLabel}}</span>
+				{{if .Running}}
+					<a class="muted" href="{{.AppURL}}" target="_blank" rel="noopener"
+						data-tooltip-content="{{ctx.Locale.Tr "company.dashboard.open"}}">{{svg "octicon-link-external" 12}}</a>
+				{{end}}
+			</div>
+		{{end}}
+	</div>
+{{end}}
