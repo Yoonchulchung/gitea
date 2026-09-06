@@ -26,10 +26,18 @@
 				{{if eq (len $scPush.Commits) 1}}
 					{{$scMsg := (index $scPush.Commits 0).Message}}
 					{{$scSha := (index $scPush.Commits 0).Sha1}}
-					{{if StringUtils.Contains $scMsg "추가"}}
+					{{/* The commit message is data: it was written by the editor in
+					     whoever committed's own language (repo.editor.add /
+					     repo.editor.update), so matching one language only left every
+					     English commit falling through to the generic push line. Both
+					     of the languages this instance runs in are checked. A commit
+					     made in a third language still falls through, which is the
+					     honest limit of matching on prose — the action record carries
+					     nothing else that says "this came from our editor". */}}
+					{{if or (StringUtils.Contains $scMsg "추가") (StringUtils.HasPrefix $scMsg "Add ")}}
 						{{$isSimpleAdd = true}}
 						{{$simpleCommitLink = printf "%s/commit/%s" (.GetRepoLink ctx) $scSha}}
-					{{else if StringUtils.Contains $scMsg "업데이트"}}
+					{{else if or (StringUtils.Contains $scMsg "업데이트") (StringUtils.HasPrefix $scMsg "Update ")}}
 						{{$isSimpleEdit = true}}
 						{{$simpleCommitLink = printf "%s/commit/%s" (.GetRepoLink ctx) $scSha}}
 					{{end}}
@@ -53,9 +61,9 @@
 						{{ctx.Locale.Tr "action.rename_repo" .GetContent (.GetRepoLink ctx) (.ShortRepoPath ctx)}}
 					{{else if .GetOpType.InActions "commit_repo"}}
 						{{if $isSimpleAdd}}
-							<a href="{{$simpleCommitLink}}">{{.ShortRepoPath ctx}}에 추가 {{DateUtils.TimeSince .GetCreate}}</a>
+							<a href="{{$simpleCommitLink}}">{{ctx.Locale.Tr "company.feed.added" (.ShortRepoPath ctx) (DateUtils.TimeSince .GetCreate)}}</a>
 						{{else if $isSimpleEdit}}
-							<a href="{{$simpleCommitLink}}">{{.ShortRepoPath ctx}}에 편집 {{DateUtils.TimeSince .GetCreate}}</a>
+							<a href="{{$simpleCommitLink}}">{{ctx.Locale.Tr "company.feed.edited" (.ShortRepoPath ctx) (DateUtils.TimeSince .GetCreate)}}</a>
 						{{else if .Content}}
 							{{ctx.Locale.Tr "action.commit_repo" (.GetRepoLink ctx) (.GetRefLink ctx) .GetBranch (.ShortRepoPath ctx)}}
 						{{else}}
