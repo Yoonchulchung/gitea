@@ -95,6 +95,25 @@ func DetectPermissionRequests(owner, repo, requirements, desiredAccess string) [
 		})
 	}
 
+	// What the last build resolved but could not install: transitive
+	// dependencies of packages that *are* approved. They appear in no file
+	// anyone wrote, so without this the department has nothing to tick and
+	// the build stays blocked on a package they cannot ask for.
+	for _, name := range st.MissingPackages {
+		if slices.ContainsFunc(out, func(r PermissionRequest) bool {
+			return r.Kind == PermKindPackage && normalizePackageName(r.Value) == normalizePackageName(name)
+		}) {
+			continue
+		}
+		out = append(out, PermissionRequest{
+			Kind:     PermKindPackage,
+			Value:    name,
+			Label:    "패키지 추가",
+			Detail:   name,
+			Evidence: "직전 배포가 이 패키지에서 멈췄습니다 — 승인한 패키지가 필요로 하는 의존성입니다",
+		})
+	}
+
 	// Access, only when it widens. Narrowing is applied without asking.
 	if desiredAccess != "" && desiredAccess != settings.Access &&
 		accessRank[desiredAccess] > accessRank[settings.Access] {

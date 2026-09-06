@@ -5,6 +5,7 @@ package company
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -174,4 +175,47 @@ func TestPackageRequestsSeparateNamedFromPulledIn(t *testing.T) {
 func TestNamedPackagesReadsUnpinnedAndPinnedAlike(t *testing.T) {
 	got := namedPackages("jinja2\npydantic-settings==2.15.0\n# comment\nhttpx>=0.27  # inline\n\n")
 	assert.Equal(t, map[string]bool{"jinja2": true, "pydantic-settings": true, "httpx": true}, got)
+}
+
+// The dead end this closes: once an app's own requirements are all approved,
+// the request form has nothing to tick, so a transitive dependency that
+// stopped the build can never be asked for and the app stays broken with no
+// action available to anyone.
+func TestMissingPackagesBecomeRequestable(t *testing.T) {
+	withTempAppData(t)
+	require.NoError(t, MutateAppState("PO", "app", func(st *AppState) bool {
+		st.MissingPackages = []string{"MarkupSafe", "python-dotenv"}
+		return true
+	}))
+
+	got := DetectPermissionRequests("PO", "app", "", "")
+	require.Len(t, got, 2)
+	for _, r := range got {
+		assert.Equal(t, PermKindPackage, r.Kind)
+		assert.Contains(t, r.Evidence, "직전 배포가 이 패키지에서 멈췄습니다")
+	}
+	assert.Equal(t, []string{"MarkupSafe", "python-dotenv"}, []string{got[0].Value, got[1].Value})
+}
+
+// The log has to give every request a diff, including one that changes no
+// code — that is the case it exists for.
+func TestRequestLogEntryNamesWhatIsBeingAsked(t *testing.T) {
+	entry := requestLogEntry("kim", "패키지 승인 요청", "",
+		[]PermissionRequest{{Label: "패키지 추가", Detail: "MarkupSafe (3.0.3)", Evidence: "의존성입니다", Reason: "빌드가 멈춰서"}},
+		time.Unix(1700000000, 0))
+	assert.Contains(t, entry, "@kim")
+	assert.Contains(t, entry, "MarkupSafe (3.0.3)")
+	assert.Contains(t, entry, "빌드가 멈춰서")
+}
+
+// Newest first, and bounded: this file is reviewed as a diff, and an admin
+// should not scroll past a year of history to find what is being asked now.
+func TestRequestLogKeepsRecentEntriesNewestFirst(t *testing.T) {
+	existing := requestLogHeader("PO", "app") + "## older\nbody\n\n## oldest\nbody\n"
+	kept := trimToRecentEntries(existing, 1)
+	assert.Contains(t, kept, "older")
+	assert.NotContains(t, kept, "oldest")
+	assert.NotContains(t, kept, "직접 편집하지 마세요", "the header is rewritten, not carried")
+
+	assert.Empty(t, trimToRecentEntries("no entries yet", 5))
 }

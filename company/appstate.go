@@ -109,6 +109,12 @@ type AppState struct {
 	// is worse than no button.
 	HasRelease bool `json:"hasRelease,omitempty"`
 
+	// MissingPackages is what the last build resolved but was not allowed to
+	// install — transitive dependencies nobody listed. Kept so the next
+	// Deploy Request can offer them for approval; cleared when a build
+	// succeeds.
+	MissingPackages []string `json:"missingPackages,omitempty"`
+
 	// AccessChoice is the department's own narrowing of the configured access
 	// mode. Only ever narrower — see company/appaccess.go.
 	AccessChoice string `json:"accessChoice,omitempty"`

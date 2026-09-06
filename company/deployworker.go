@@ -220,6 +220,11 @@ func runDeploy(ctx context.Context, job deployJob) {
 			// Written by us and naming the packages, so it is the one thing
 			// the department needs in order to fix this.
 			failBuild(owner, repo, ReasonPackageDenied, denied.Error(), priorActual, denied.Error())
+			// Recorded so the next Deploy Request can propose them. Without
+			// this, an app whose own requirements are all approved has nothing
+			// left to tick on the request form, and the dependency that
+			// stopped the build can never be asked for at all.
+			recordMissingPackages(owner, repo, denied.packages)
 			return
 		}
 		if errors.Is(err, errNoPython) {
@@ -450,8 +455,13 @@ func installIntoVenv(ctx context.Context, venv string, reqs []Requirement, setti
 		return err
 	}
 	if len(extra) > 0 {
-		return &packagesDeniedError{message: "이 패키지들이 의존성으로 필요한데 아직 승인되지 않았습니다: " +
-			strings.Join(extra, ", ")}
+		// The names travel as data as well as prose: they are what the next
+		// Deploy Request has to offer for approval, and re-extracting them
+		// from a sentence later would be guessing at our own message.
+		return &packagesDeniedError{
+			message:  "이 패키지들이 의존성으로 필요한데 아직 승인되지 않았습니다: " + strings.Join(extra, ", "),
+			packages: extra,
+		}
 	}
 	return nil
 }
@@ -574,6 +584,7 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 				st.StartedAt = time.Now().Unix()
 				st.SHA = sha
 				st.Reason, st.Message, st.UserMessage = "", "", ""
+				st.MissingPackages = nil // it installed; nothing is outstanding
 				st.FailedAt = 0
 				st.Health = AppHealth{State: "up", CheckedAt: time.Now().Unix()}
 				st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, SHA: sha})
@@ -704,7 +715,11 @@ func runBuildCmd(ctx context.Context, name string, args ...string) (string, erro
 // packagesDeniedError separates "you asked for something unapproved" from
 // "the install broke", because the department sees a different message and a
 // different button for each.
-type packagesDeniedError struct{ message string }
+type packagesDeniedError struct {
+	message string
+	// packages is what still needs approving, where we know the names.
+	packages []string
+}
 
 func (e *packagesDeniedError) Error() string { return e.message }
 
@@ -761,4 +776,17 @@ func lastLines(s string, n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// recordMissingPackages stores what the last build could not install.
+func recordMissingPackages(owner, repo string, packages []string) {
+	if err := MutateAppState(owner, repo, func(st *AppState) bool {
+		if slices.Equal(st.MissingPackages, packages) {
+			return false
+		}
+		st.MissingPackages = packages
+		return true
+	}); err != nil {
+		log.Error("company: %s/%s: recording missing packages: %v", owner, repo, err)
+	}
 }

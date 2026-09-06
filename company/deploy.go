@@ -664,15 +664,31 @@ func DeployPost(ctx *context.Context) {
 		ctx.ServerError("snapshotFilesUnderPrefix", err)
 		return
 	}
+	// Collected before the commit, not after it: the items go into the request
+	// log that gives this PR its diff, and an admin has to be able to read
+	// what is being asked in the change they are reviewing.
+	requests := collectPermissionRequests(ctx, deptRepo)
+
 	// Zero files means "nothing to say": the department repo is empty *and*
 	// nothing of theirs is live on central. An empty repo whose files were
 	// all deleted still produces deletes, and that is a legitimate request —
 	// it's how a department un-deploys. Rejecting on "no uploads" alone would
 	// leave them unable to take their app down.
-	if len(files) == 0 {
+	//
+	// A permission request is also something to say, and often has no file
+	// change at all behind it: a build that stopped on an unapproved
+	// dependency needs approval, not code.
+	if len(files) == 0 && len(requests) == 0 {
 		ctx.HTTPError(http.StatusBadRequest, "nothing to deploy: the repository is empty and nothing is currently deployed")
 		return
 	}
+
+	// Always appended, so the commit is never empty. A snapshot identical to
+	// what is already on central produces no tree change, and a pull request
+	// with no diff cannot be opened or merged — which is exactly the case
+	// when the only thing being asked for is approval.
+	files = append(files, buildRequestLogFile(ctx, central, deptRepo.OwnerName, deptRepo.Name,
+		requestLogEntry(ctx.Doer.Name, title, body, requests, time.Now())))
 
 	newBranch := deployBranchName(deptRepo.OwnerName, deptRepo.Name, ctx.Doer.ID)
 	if _, err := files_service.ChangeRepoFiles(ctx, central, centralOwner, &files_service.ChangeRepoFilesOptions{
@@ -714,7 +730,7 @@ func DeployPost(ctx *context.Context) {
 	// sees, on the same screen, what the app is asking to be allowed to do.
 	// Best-effort: the deploy request itself has already been created, and
 	// failing it now over bookkeeping would lose the submission.
-	if requests := collectPermissionRequests(ctx, deptRepo); len(requests) > 0 {
+	if len(requests) > 0 {
 		if err := SavePermissionRequests(deptRepo.OwnerName, deptRepo.Name, pullIssue.ID, requests); err != nil {
 			log.Error("company: saving permission requests for %s: %v", deptRepo.FullName(), err)
 		}
