@@ -21,18 +21,29 @@ import "strings"
 // docs/company/app-platform.md.
 
 // AppCause is what a non-developer sees when their app is not working.
+//
+// Fixed sentences travel as locale keys and are translated where they are
+// rendered, so the reader's own language setting decides what they see. Text
+// that is data — an admin's typed reason, the line pip printed — travels as
+// text: it was written in whatever language its author used, and a locale
+// file cannot know it.
 type AppCause struct {
-	// Summary is written for someone who has never read a stack trace.
+	// Summary is a locale key, written for someone who has never read a
+	// stack trace.
 	Summary string
-	// Detail is the app's own message where it is safe to show — a package
-	// name, a limit. Never log output.
+	// Detail is a locale key for a fixed explanation, or "" when DetailText
+	// carries the message instead.
 	Detail string
-	// Action and ActionLabel point at the one thing that fixes it. Empty when
-	// the fix is in the department's own code, where no button helps.
+	// DetailText is verbatim content — a package name, an admin's reason.
+	// Never log output.
+	DetailText string
+	// Action and ActionLabel (a locale key) point at the one thing that
+	// fixes it. Empty when the fix is in the department's own code, where no
+	// button helps.
 	Action      string
 	ActionLabel string
-	// AdminHint is what an *operator* should do about this, which is often
-	// not what the department should do. Empty where the two are the same.
+	// AdminHint is a locale key for what an *operator* should do about this,
+	// which is often not what the department should do.
 	AdminHint string
 	// At is when this failure happened. "It is broken" and "it broke four
 	// minutes ago" are different pieces of information, and the second is
@@ -75,103 +86,101 @@ func departmentCause(st *AppState) *AppCause {
 	switch st.Reason {
 	case ReasonInstallFailed:
 		return &AppCause{
-			Summary: "필요한 패키지를 설치하지 못했습니다",
-			AdminHint: "패키지 이름·버전 문제라면 부서가 requirements.txt 를 고쳐 다시 배포해야 합니다. " +
-				"PyPI 접속 실패처럼 코드와 무관한 원인이면 [다시 배포]로 같은 커밋을 재시도할 수 있습니다.",
+			Summary:   "company.app.cause.install_failed",
+			AdminHint: "company.app.cause.install_failed.admin",
 			// Never st.Message: that is the raw pip output, which runs to
 			// dozens of lines of download progress and is admin-only by
 			// design. What a department needs is the one line naming the
 			// package that could not be found.
-			Detail: summarizeInstallFailure(st.Message),
+			DetailText: summarizeInstallFailure(st.Message),
 			// No button: a version that does not exist is fixed in
 			// requirements.txt, and an approval request here would ask an
 			// admin to approve a package nobody can install.
 		}
 	case ReasonPackageDenied:
 		return &AppCause{
-			Summary:     "아직 승인되지 않은 패키지가 있습니다",
-			AdminHint:   "이 부서의 배포 요청을 승인하면 apps.yml 에 패키지가 추가되고 자동으로 재배포됩니다.",
-			Detail:      st.UserMessage,
+			Summary:     "company.app.cause.package_denied",
+			AdminHint:   "company.app.cause.package_denied.admin",
+			DetailText:  st.UserMessage,
 			Action:      "deploy",
-			ActionLabel: "패키지 승인 요청하기",
+			ActionLabel: "company.app.cause.package_denied.action",
 		}
 	case ReasonOOM:
 		return &AppCause{
-			Summary:     "메모리를 한도보다 많이 사용해 중지되었습니다",
-			AdminHint:   "지표의 메모리 최대치를 한도와 비교해 상향 여부를 판단하세요. 평균이 아니라 피크가 근거입니다.",
-			Detail:      st.UserMessage,
+			Summary:     "company.app.cause.oom",
+			AdminHint:   "company.app.cause.oom.admin",
+			DetailText:  st.UserMessage,
 			Action:      "deploy",
-			ActionLabel: "메모리 한도 상향 요청하기",
+			ActionLabel: "company.app.cause.oom.action",
 		}
 	case ReasonHealthTimeout:
 		return &AppCause{
-			Summary:   "앱이 시작된 뒤 응답하지 않았습니다",
-			AdminHint: "로그에 기동 직후 예외가 있는지 확인하세요. 이전 버전이 있었다면 자동으로 롤백되어 서비스는 유지됩니다.",
-			Detail:    "main.py 의 app 이 정상적으로 뜨는지, 시작하자마자 오류로 종료되지 않는지 확인해 주세요.",
+			Summary:   "company.app.cause.health_timeout",
+			AdminHint: "company.app.cause.health_timeout.admin",
+			Detail:    "company.app.cause.health_timeout.detail",
 		}
 	case ReasonCrashLoop:
 		return &AppCause{
-			Summary: "앱이 반복해서 종료되어 자동 시작을 멈췄습니다",
-			Detail:  "코드를 고친 뒤 다시 시작해 주세요. 계속 같은 문제가 나면 관리자에게 문의해 주세요.",
+			Summary: "company.app.cause.crash_loop",
+			Detail:  "company.app.cause.crash_loop.detail",
 		}
 	case ReasonSuspended:
 		return &AppCause{
-			Summary: "관리자가 이 앱을 정지시켰습니다",
+			Summary: "company.app.cause.suspended",
 			// The reason is the entire value here: "an administrator stopped
 			// it" with no explanation leaves the department with nothing to
 			// act on and no idea who to ask about what. An admin types it, so
-			// it is department-safe by definition.
-			Detail: st.UserMessage,
+			// it is department-safe by definition — and it is their words,
+			// not the platform's, so it is not translated.
+			DetailText: st.UserMessage,
 		}
 	case ReasonNoPython:
 		return &AppCause{
-			Summary:   "서버에 파이썬이 준비되어 있지 않습니다",
-			Detail:    "부서에서 고칠 수 있는 문제가 아닙니다. 관리자에게 알려 주세요.",
-			AdminHint: "python3 과 python3-venv 를 설치하거나, [company] PYTHON_PATH 로 경로를 지정하세요. 이 상태에서는 어떤 앱도 빌드되지 않습니다.",
+			Summary:   "company.app.cause.no_python",
+			Detail:    "company.app.cause.no_python.detail",
+			AdminHint: "company.app.cause.no_python.admin",
 		}
 	case ReasonSandboxUnavailable:
 		return &AppCause{
-			Summary:   "서버 설정 문제로 앱을 안전하게 실행할 수 없습니다",
-			AdminHint: "docs/company/sandboxcheck/preflight.sh 로 호스트를 확인하세요. 격리 없이 띄우려면 [company] ALLOW_UNSANDBOXED_APPS 를 명시적으로 켜야 합니다.",
-			Detail:    "부서에서 고칠 수 있는 문제가 아닙니다. 관리자에게 문의해 주세요.",
+			Summary:   "company.app.cause.sandbox_unavailable",
+			AdminHint: "company.app.cause.sandbox_unavailable.admin",
+			Detail:    "company.app.cause.sandbox_unavailable.detail",
 		}
 	case ReasonSecretError:
 		return &AppCause{
-			Summary:     "환경변수를 읽지 못했습니다",
-			Detail:      "값을 다시 입력한 뒤 앱을 시작해 주세요.",
+			Summary:     "company.app.cause.secret_error",
+			Detail:      "company.app.cause.secret_error.detail",
 			Action:      "app",
-			ActionLabel: "환경변수 다시 입력하기",
+			ActionLabel: "company.app.cause.secret_error.action",
 		}
 	case ReasonDeployQueueFull:
 		return &AppCause{
-			Summary: "동시에 배포가 너무 많아 이번 배포가 처리되지 않았습니다",
-			Detail:  "이전 버전은 그대로 동작하고 있습니다. 잠시 뒤 다시 배포해 주세요.",
+			Summary: "company.app.cause.queue_full",
+			Detail:  "company.app.cause.queue_full.detail",
 		}
 	case ReasonNoRelease:
 		// Only ever reached when no deploy has been attempted at all — a
 		// failed one keeps its own reason (company/appproc.go), because that
 		// is the thing to fix and this sentence is not.
 		return &AppCause{
-			Summary: "아직 배포되지 않았습니다",
-			AdminHint: "부서가 배포 요청을 올리면 승인 후 자동으로 빌드·기동됩니다. 관리자가 먼저 할 일은 없습니다. " +
-				"이미 승인했는데 이 문구가 보인다면 아래 이력에서 직전 배포가 왜 실패했는지 확인해 주세요.",
-			Detail: "코드를 올린 뒤 [배포 요청]을 하면, 관리자 승인과 빌드가 끝나는 대로 " +
-				"앱이 자동으로 시작됩니다.",
-			Action: "deploy", ActionLabel: "배포 요청하기",
+			Summary:   "company.app.cause.no_release",
+			AdminHint: "company.app.cause.no_release.admin",
+			Detail:    "company.app.cause.no_release.detail",
+			Action:    "deploy", ActionLabel: "company.app.cause.no_release.action",
 		}
 	case ReasonContractViolation:
 		return &AppCause{
-			Summary: "앱을 시작할 수 없습니다",
+			Summary: "company.app.cause.contract_violation",
 			// Only ever the deliberately-written half. The first version of
 			// this read st.Message on the grounds that those messages "are
 			// written for a department", which was true of some of them and
 			// not of the filesystem errors that also land here.
-			Detail: st.UserMessage,
+			DetailText: st.UserMessage,
 		}
 	case ReasonRolledBack:
 		return &AppCause{
-			Summary: "새 버전이 응답하지 않아 이전 버전으로 되돌렸습니다",
-			Detail:  "지금 동작하는 것은 이전 버전입니다. 코드를 고쳐 다시 배포해 주세요.",
+			Summary: "company.app.cause.rolled_back",
+			Detail:  "company.app.cause.rolled_back.detail",
 		}
 	default:
 		// An unclassified failure must not fall back to st.Message: that is
@@ -179,8 +188,8 @@ func departmentCause(st *AppState) *AppCause {
 		// Reaching here means a reason code was added without a sentence to
 		// go with it.
 		return &AppCause{
-			Summary: "앱이 실행되고 있지 않습니다",
-			Detail:  "원인을 확인하려면 관리자에게 문의해 주세요.",
+			Summary: "company.app.cause.unknown",
+			Detail:  "company.app.cause.unknown.detail",
 		}
 	}
 }

@@ -59,8 +59,8 @@ func TestDepartmentCauseKeepsBuildOutputAdminOnly(t *testing.T) {
 		Message: pipOutput,
 	})
 	assert.NotNil(t, cause)
-	assert.NotContains(t, cause.Detail, "Downloading")
-	assert.Less(t, len(cause.Detail), len(pipOutput)/2)
+	assert.NotContains(t, cause.DetailText, "Downloading")
+	assert.Less(t, len(cause.DetailText), len(pipOutput)/2)
 }
 
 // Nothing a department sees may carry an absolute path from inside Gitea's
@@ -76,7 +76,7 @@ func TestDepartmentCauseNeverLeaksAdminDetail(t *testing.T) {
 	} {
 		cause := DepartmentCause(&AppState{Actual: AppStateFailed, Reason: reason, Message: secret})
 		if assert.NotNil(t, cause, reason) {
-			assert.NotContains(t, cause.Detail, secret, reason)
+			assert.NotContains(t, cause.Detail+cause.DetailText, secret, reason)
 			assert.NotEmpty(t, cause.Summary, reason)
 		}
 	}
@@ -88,7 +88,7 @@ func TestDepartmentCauseNeverLeaksAdminDetail(t *testing.T) {
 func TestNoReleaseCausePointsAtDeploying(t *testing.T) {
 	cause := DepartmentCause(&AppState{Actual: AppStateFailed, Reason: ReasonNoRelease})
 	assert.Equal(t, "deploy", cause.Action)
-	assert.Contains(t, cause.Summary, "배포")
+	assert.Equal(t, "company.app.cause.no_release", cause.Summary)
 }
 
 // Pressing start on an app whose build failed must not replace the reason it
@@ -108,7 +108,7 @@ func TestFailedStartKeepsTheDeployFailure(t *testing.T) {
 
 	st := LoadAppState("PO", "app")
 	assert.Equal(t, ReasonInstallFailed, st.Reason, "the actionable cause survives")
-	assert.Contains(t, DepartmentCause(st).Detail, "pydantic-core")
+	assert.Contains(t, DepartmentCause(st).DetailText, "pydantic-core")
 }
 
 // An app nobody has ever deployed is a different situation, and gets a
@@ -116,8 +116,8 @@ func TestFailedStartKeepsTheDeployFailure(t *testing.T) {
 func TestNeverDeployedSaysWhatToDo(t *testing.T) {
 	cause := DepartmentCause(&AppState{Actual: AppStateFailed, Reason: ReasonNoRelease})
 	assert.Equal(t, "deploy", cause.Action)
-	assert.Contains(t, cause.Detail, "배포 요청")
-	assert.NotContains(t, cause.Summary, "성공적으로", "a bare statement of fact is not a next step")
+	assert.Equal(t, "company.app.cause.no_release.detail", cause.Detail)
+	// The key is asserted above; the sentence itself lives in the locale files now.
 }
 
 // A build breaks for reasons unrelated to the code, and before this there
@@ -183,7 +183,7 @@ func TestControlSurvivesAFailedRedeploy(t *testing.T) {
 
 	// And they can still see why the deploy failed, even though the app runs.
 	require.NotNil(t, DepartmentCause(st))
-	assert.Contains(t, DepartmentCause(st).Summary, "패키지")
+	assert.Equal(t, "company.app.cause.install_failed", DepartmentCause(st).Summary)
 }
 
 // Queued and building touch nothing — the previous version is serving
@@ -209,7 +209,7 @@ func TestOnlyTheSwapBlocksControl(t *testing.T) {
 func TestRollbackIsVisibleWhileRunning(t *testing.T) {
 	cause := DepartmentCause(&AppState{Actual: AppStateRunning, Reason: ReasonRolledBack})
 	require.NotNil(t, cause)
-	assert.Contains(t, cause.Summary, "이전 버전")
+	assert.Equal(t, "company.app.cause.rolled_back", cause.Summary)
 }
 
 // Only two states survive a build that never reached the swap: Running,

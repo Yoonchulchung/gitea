@@ -5,7 +5,7 @@
 
 		<h2 class="tw-flex tw-items-center tw-gap-3">
 			배포 이력
-			<span class="company-app-state {{.App.Actual}}">{{.StatusLabel}}</span>
+			<span class="company-app-state {{.App.Actual}}">{{ctx.Locale.Tr .StatusLabel}}</span>
 			<span class="text-grey tw-text-13">{{.TotalAttempts}}건</span>
 			<div class="tw-flex-1"></div>
 			<a class="ui basic button" href="{{.AppLink}}">앱 관리로</a>

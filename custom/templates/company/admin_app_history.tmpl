@@ -5,7 +5,7 @@
 			<span class="text-grey">/ 배포 이력</span>
 			{{/* The app's own state, not a per-attempt outcome: a deploy that is
 			     queued or building has no entry in the log below yet. */}}
-			<span class="company-app-state {{.App.Actual}}">{{.StatusLabel}}</span>
+			<span class="company-app-state {{.App.Actual}}">{{ctx.Locale.Tr .StatusLabel}}</span>
 			<div class="tw-flex-1"></div>
 			<span class="text-grey tw-text-13">{{.TotalAttempts}}건</span>
 		</h4>

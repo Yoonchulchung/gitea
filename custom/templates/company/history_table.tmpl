@@ -7,29 +7,32 @@
 <table class="ui very basic table tw-text-13">
 	<thead>
 		<tr>
-			<th class="tw-w-1/5">언제</th>
-			<th class="tw-w-1/6">무엇을</th>
-			<th>내용</th>
-			<th class="tw-w-1/6">누가</th>
-			<th class="tw-w-1/6">버전</th>
+			<th class="tw-w-1/5">{{ctx.Locale.Tr "company.app.history.col_when"}}</th>
+			<th class="tw-w-1/6">{{ctx.Locale.Tr "company.app.history.col_what"}}</th>
+			<th>{{ctx.Locale.Tr "company.app.history.col_detail"}}</th>
+			<th class="tw-w-1/6">{{ctx.Locale.Tr "company.app.history.col_who"}}</th>
+			<th class="tw-w-1/6">{{ctx.Locale.Tr "company.app.history.col_version"}}</th>
 		</tr>
 	</thead>
 	<tbody>
 		{{range .Rows}}
 			<tr>
 				<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
-				<td>{{.What}}{{if $.Raw}}{{if .Status}} <span class="text-grey tw-text-12">{{.Status}}</span>{{end}}{{end}}</td>
+				<td>{{ctx.Locale.Tr .What}}{{if $.Raw}}{{if .Status}} <span class="text-grey tw-text-12">{{.Status}}</span>{{end}}{{end}}</td>
 				<td>
-					{{if .Detail}}{{.Detail}}{{else}}<span class="text-grey">—</span>{{end}}
+					{{/* Detail is a locale key for a known reason and the raw code for an
+					     unknown one — an unfamiliar code is still a clue. HasKey tells
+					     the two apart. */}}
+					{{if .Detail}}{{if ctx.Locale.HasKey .Detail}}{{ctx.Locale.Tr .Detail}}{{else}}{{.Detail}}{{end}}{{else}}<span class="text-grey">—</span>{{end}}
 					{{if $.Raw}}{{if .Reason}}<span class="text-grey tw-text-12 tw-ml-1">{{.Reason}}</span>{{end}}{{end}}
 				</td>
 				{{/* Blank when the platform did it rather than a person; saying so
 				     is clearer than an empty cell. */}}
-				<td>{{if .Actor}}{{.Actor}}{{else}}<span class="text-grey">자동</span>{{end}}</td>
+				<td>{{if .Actor}}{{.Actor}}{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.app.history.automatic"}}</span>{{end}}</td>
 				<td class="tw-font-mono">{{if .SHA}}{{ShortSha .SHA}}{{else}}<span class="text-grey">—</span>{{end}}</td>
 			</tr>
 		{{else}}
-			<tr><td colspan="5" class="text-grey">아직 이력이 없습니다.</td></tr>
+			<tr><td colspan="5" class="text-grey">{{ctx.Locale.Tr "company.app.history.empty"}}</td></tr>
 		{{end}}
 	</tbody>
 </table>

@@ -153,15 +153,18 @@
 				{{if and $.CompanyApp.Running $.CompanyApp.StartedAt}}
 					<span class="text-grey tw-text-12 tw-font-normal" data-tooltip-content="{{DateUtils.AbsoluteShort $.CompanyApp.StartedAt}}">{{DateUtils.TimeSince $.CompanyApp.StartedAt}} 시작</span>
 				{{end}}
-				<span class="company-app-state {{$.CompanyApp.Status}}">{{$.CompanyApp.StatusLabel}}</span>
+				<span class="company-app-state {{$.CompanyApp.Status}}">{{ctx.Locale.Tr $.CompanyApp.StatusLabel}}</span>
 			</span>
 		</div>
 
 		{{with .Cause}}
 			{{/* Only rendered when something is actually wrong. */}}
 			<div class="company-app-cause">
-				<div class="tw-font-semibold">{{.Summary}}</div>
-				{{range StringUtils.Split .Detail "\n"}}<div class="tw-text-12 tw-mt-1 company-app-cause-line">{{.}}</div>{{end}}
+				{{/* Summary and Detail are locale keys; DetailText is verbatim
+				     data (an admin's words, a pip line) and is never translated. */}}
+				<div class="tw-font-semibold">{{ctx.Locale.Tr .Summary}}</div>
+				{{if .Detail}}<div class="tw-text-12 tw-mt-1 company-app-cause-line">{{ctx.Locale.Tr .Detail}}</div>{{end}}
+				{{range StringUtils.Split .DetailText "\n"}}<div class="tw-text-12 tw-mt-1 company-app-cause-line">{{.}}</div>{{end}}
 			</div>
 		{{end}}
 

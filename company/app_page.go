@@ -259,90 +259,92 @@ func describeHistory(entries []AppHistoryEntry) []historyRow {
 	return rows
 }
 
+// departmentStatusLabel is the locale key for the one word a non-developer
+// sees. rolled_back never reaches them: to the department the app either
+// works or it doesn't.
+func departmentStatusLabel(st *AppState) string {
+	switch st.Actual {
+	case AppStateRunning:
+		return "company.app.status.running"
+	case AppStateQueued, AppStateBuilding, AppStateActivating:
+		return "company.app.status.deploying"
+	case AppStateSuspended:
+		return "company.app.status.suspended"
+	case AppStateFailed:
+		return "company.app.status.failed"
+	default:
+		return "company.app.status.stopped"
+	}
+}
+
 func historyStatusLabel(status string) string {
 	switch status {
 	case AppStateRunning:
-		return "실행"
+		return "company.app.history.started"
 	case AppStateStopped:
-		return "중지"
+		return "company.app.history.stopped"
 	case AppStateSuspended:
-		return "관리자 정지"
+		return "company.app.history.suspended"
 	case AppStateFailed:
-		return "실패"
+		return "company.app.history.failed"
 	case AppStateQueued, AppStateBuilding, AppStateActivating:
-		return "배포"
+		return "company.app.history.deployed"
 	default:
 		return status
 	}
 }
 
-// historyReasonLabel keeps unmapped reasons visible rather than blanking them:
-// an unfamiliar code is still a clue, while an empty cell is not.
+// historyReasonLabel returns a locale key for a known reason, or the raw code
+// itself: an unfamiliar code is still a clue, while an empty cell is not. The
+// template translates only values that look like keys (TrKeyOrText).
 func historyReasonLabel(reason string) string {
 	if mode, ok := strings.CutPrefix(reason, ReasonAccessChanged+":"); ok {
 		switch mode {
 		case AccessOrg:
-			return "접근 범위를 '우리 부서만'으로 변경"
+			return "company.app.history.access_org"
 		case AccessLogin:
-			return "접근 범위를 '로그인한 사람만'으로 변경"
+			return "company.app.history.access_login"
 		default:
-			return "접근 범위를 '사내 누구나'로 변경"
+			return "company.app.history.access_public"
 		}
 	}
 	switch reason {
 	case "":
 		return ""
 	case ReasonRolledBack:
-		return "문제가 있어 이전 버전으로 되돌림"
+		return "company.app.history.reason.rolled_back"
 	case ReasonInstallFailed:
-		return "필요한 패키지를 설치하지 못함"
+		return "company.app.history.reason.install_failed"
 	case ReasonPackageDenied:
-		return "승인되지 않은 패키지"
+		return "company.app.history.reason.package_denied"
 	case ReasonOOM:
-		return "메모리 한도 초과"
+		return "company.app.history.reason.oom"
 	case ReasonHealthTimeout:
-		return "시작 후 응답이 없음"
+		return "company.app.history.reason.health_timeout"
 	case ReasonCrashLoop:
-		return "반복 종료되어 자동 시작 중단"
+		return "company.app.history.reason.crash_loop"
 	case ReasonSuspended:
-		return "관리자가 정지시킴"
+		return "company.app.history.reason.suspended"
 	case ReasonNoRelease:
-		return "실행할 수 있는 버전이 없음"
+		return "company.app.history.reason.no_release"
 	case ReasonNoPython:
-		return "서버에 파이썬이 준비되지 않음"
+		return "company.app.history.reason.no_python"
 	case ReasonContractViolation:
-		return "main.py 를 찾을 수 없음"
+		return "company.app.history.reason.contract_violation"
 	case ReasonDeployQueueFull:
-		return "배포 대기열이 가득 참"
+		return "company.app.history.reason.queue_full"
 	case ReasonVersionPinned:
-		return "특정 버전을 지정해 배포"
+		return "company.app.history.reason.version_pinned"
 	case "redeploy":
-		return "다시 배포 요청"
+		return "company.app.history.reason.redeploy"
 	case "restarted":
-		return "재시작"
+		return "company.app.history.reason.restarted"
 	case "resumed":
-		return "관리자가 정지를 해제"
+		return "company.app.history.reason.resumed"
 	case "deployed while stopped":
-		return "중지 상태에서 새 버전만 준비됨"
+		return "company.app.history.reason.deployed_stopped"
 	default:
 		return reason
-	}
-}
-
-// departmentStatusLabel is the one word a non-developer sees. rolled_back
-// never reaches them: to the department the app either works or it doesn't.
-func departmentStatusLabel(st *AppState) string {
-	switch st.Actual {
-	case AppStateRunning:
-		return "실행 중"
-	case AppStateQueued, AppStateBuilding, AppStateActivating:
-		return "배포 중"
-	case AppStateSuspended:
-		return "관리자가 정지시킴"
-	case AppStateFailed:
-		return "문제 발생"
-	default:
-		return "중지됨"
 	}
 }
 

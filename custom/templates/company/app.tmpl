@@ -5,7 +5,7 @@
 
 		<h2 class="tw-flex tw-items-center tw-gap-3">
 			앱 관리
-			<span class="company-app-state {{.App.Actual}}">{{.StatusLabel}}</span>
+			<span class="company-app-state {{.App.Actual}}">{{ctx.Locale.Tr .StatusLabel}}</span>
 		</h2>
 
 		{{/* The cause panel is absent when nothing is wrong. A panel that always
@@ -13,14 +13,15 @@
 		     company/appcause.go. */}}
 		{{with .CauseSummary}}
 			<div class="ui negative message">
-				<div class="header">{{.Summary}}</div>
+				<div class="header">{{ctx.Locale.Tr .Summary}}</div>
 				{{/* When, not just what: "it broke four minutes ago" is what tells
 				     someone whether their last change caused it. */}}
 				{{if .At}}<div class="tw-text-13 tw-mt-1">{{DateUtils.TimeSince .At}} · {{DateUtils.AbsoluteShort .At}}</div>{{end}}
-				{{range StringUtils.Split .Detail "\n"}}<div class="tw-mt-1 company-app-cause-line">{{.}}</div>{{end}}
+				{{if .Detail}}<div class="tw-mt-1 company-app-cause-line">{{ctx.Locale.Tr .Detail}}</div>{{end}}
+				{{range StringUtils.Split .DetailText "\n"}}<div class="tw-mt-1 company-app-cause-line">{{.}}</div>{{end}}
 				{{if .ActionLabel}}
 					<a class="ui small primary button tw-mt-2"
-						href="{{if eq .Action "deploy"}}{{$.DeployLink}}{{else}}{{$.AppLink}}{{end}}">{{.ActionLabel}}</a>
+						href="{{if eq .Action "deploy"}}{{$.DeployLink}}{{else}}{{$.AppLink}}{{end}}">{{ctx.Locale.Tr .ActionLabel}}</a>
 				{{end}}
 			</div>
 		{{end}}

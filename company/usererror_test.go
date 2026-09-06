@@ -88,7 +88,8 @@ func TestUserMessageIsWhatSurfaces(t *testing.T) {
 		Message:     "internal: killed by watchdog at /srv/gitea/data",
 		UserMessage: "메모리를 너무 많이 써서 정지시켰습니다",
 	})
-	assert.Equal(t, "메모리를 너무 많이 써서 정지시켰습니다", cause.Detail)
+	assert.Equal(t, "메모리를 너무 많이 써서 정지시켰습니다", cause.DetailText,
+		"an admin's own words are data, not a locale key")
 }
 
 // pip's own errors can name a path, so even the filtered subset is scrubbed.
