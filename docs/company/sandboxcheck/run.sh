@@ -40,8 +40,24 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/app" "$WORK/run"
 cp "$HERE/probe.py" "$WORK/app/probe.py"
 
+# Gitea has to be running, and this refuses rather than falling back to pid 1.
+# Half the probe aims at the live process — reading its memory, signalling it,
+# reading its environment — and against pid 1 those are refused by ordinary
+# permissions whether the sandbox works or not. The run would look like a pass
+# while testing nothing.
 GITEA_PID="$(pgrep -f 'gitea web' | head -1 || true)"
-[ -n "$GITEA_PID" ] || GITEA_PID=1
+if [ -z "$GITEA_PID" ]; then
+	echo "No running 'gitea web' process found." >&2
+	echo "Start Gitea first: the checks that matter most aim at the live process," >&2
+	echo "and without it they would pass for the wrong reason." >&2
+	exit 1
+fi
+
+# The file checks aim at real data. An empty or wrong directory makes them
+# fail with FileNotFoundError, which reads as "blocked" and is not.
+for f in gitea.db sessions gitea-repositories; do
+	[ -e "$DATA/$f" ] || echo "warning: $DATA/$f is missing — checks against it prove nothing" >&2
+done
 
 PYTHON="$(command -v python3 || true)"
 [ -n "$PYTHON" ] || { echo "python3 is required" >&2; exit 1; }

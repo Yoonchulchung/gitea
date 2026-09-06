@@ -129,13 +129,24 @@ def other_pid_environ():
 
 
 def ptrace_gitea():
+    """Attach to Gitea, which is how an app would read its session keys.
+
+    PTRACE_SEIZE, not PTRACE_ATTACH: attaching sends SIGSTOP to the target,
+    and in the control run — outside the sandbox, same account — that
+    succeeds and freezes the live Gitea until this process exits. A
+    verification tool must not take the service down to prove a point.
+    SEIZE attaches without stopping, and we detach immediately either way.
+    """
     try:
         libc = ctypes.CDLL("libc.so.6", use_errno=True)
     except OSError as e:
         raise NotImplementedError("no glibc to call ptrace through") from e
-    PTRACE_ATTACH = 16
-    if libc.ptrace(PTRACE_ATTACH, gitea_pid, 0, 0) == -1:
+    PTRACE_SEIZE, PTRACE_DETACH = 0x4206, 17
+    libc.ptrace.restype = ctypes.c_long
+    libc.ptrace.argtypes = [ctypes.c_long] * 4
+    if libc.ptrace(PTRACE_SEIZE, gitea_pid, 0, 0) == -1:
         raise OSError(ctypes.get_errno(), "ptrace refused")
+    libc.ptrace(PTRACE_DETACH, gitea_pid, 0, 0)
 
 
 def list_proc():
