@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -249,8 +250,21 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	}
 
 	// A socket left behind by a process that died without cleaning up makes
-	// bind() fail with "address already in use". Safe to remove here because
-	// we only reach this point with no live child of our own.
+	// bind() fail with "address already in use", so it has to go. But
+	// "nothing of ours is running" is not the same as "nothing is running":
+	// a hard kill of Gitea leaves the app orphaned and still serving, and
+	// deleting the socket underneath it would take a working app off the air
+	// without anything saying so, then start a second copy beside it.
+	//
+	// So the socket is asked first. Something answering means the old process
+	// is alive, and refusing is the only safe move — an operator can see that
+	// and kill it, which is recoverable, while two live copies writing to one
+	// app's files is not.
+	if socketInUse(s.paths.socket) {
+		return audienceError(
+			"이 앱이 이미 실행 중입니다. 잠시 뒤 다시 시도해 주세요.",
+			"소켓이 이미 응답합니다 — 이전 프로세스가 살아 있습니다. Gitea 가 비정상 종료된 뒤라면 그 프로세스를 종료해야 합니다: "+s.paths.socket)
+	}
 	if err := os.Remove(s.paths.socket); err != nil && !os.IsNotExist(err) {
 		log.Warn("company: %s/%s: could not remove stale socket: %v", s.owner, s.repo, err)
 	}
@@ -660,4 +674,41 @@ func isReservedEnvName(name string) bool {
 		return true
 	}
 	return false
+}
+
+// socketInUse reports whether something is listening on the app's socket.
+//
+// A connect, not a stat: the file existing proves nothing — it outlives the
+// process that made it, which is the whole reason it has to be cleaned up.
+// Only a connection that succeeds means a live listener.
+func socketInUse(socket string) bool {
+	conn, err := net.DialTimeout("unix", socket, socketProbeTimeout)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+// socketProbeTimeout is short on purpose: this is on the start path, and a
+// local unix socket either accepts immediately or is not there.
+const socketProbeTimeout = 200 * time.Millisecond
+
+// stableFor reports whether the process started for this deploy is still the
+// one running after d.
+//
+// The health check proves an app answered three times a second apart. It does
+// not prove the app that answered is still alive: one that crashes on its
+// first real request, or a few seconds after boot, restarts fast enough to
+// answer the probe every time. The badge then reads "running" over an app
+// that is dying in a loop, and the release is activated.
+//
+// Compared by process identity rather than by a crash counter, because the
+// counter is reset by an intentional stop and a supervisor that has since
+// been handed a different process is exactly the case being caught.
+func (s *appSupervisor) stableFor(pid int, d time.Duration) bool {
+	time.Sleep(d)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cmd != nil && s.cmd.Process != nil && s.cmd.Process.Pid == pid
 }

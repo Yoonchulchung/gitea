@@ -48,6 +48,11 @@ const (
 	healthCheckTries   = 30
 	healthCheckOK      = 3 // consecutive successes, so an app that answers once and dies fails
 	healthCheckSpacing = time.Second
+
+	// healthSettleDelay is how long the new process has to stay the same one
+	// after passing its health check. Long enough to catch a crash loop
+	// whose restarts are fast, short enough not to lengthen every deploy.
+	healthSettleDelay = 10 * time.Second
 )
 
 type deployJob struct {
@@ -617,7 +622,11 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 	// badge for the whole check window before flipping to failed.
 	pid, startErr := s.startProcess(true)
 	if startErr == nil {
-		if err := waitHealthy(p.socket, settings); err == nil {
+		// Healthy, and then still the same process a few seconds later. An app
+		// that crashes shortly after boot restarts fast enough to answer every
+		// probe, so the check alone would activate a release that is dying in
+		// a loop and show it as running.
+		if err := waitHealthy(p.socket, settings); err == nil && s.stableFor(pid, healthSettleDelay) {
 			return MutateAppState(owner, repo, func(st *AppState) bool {
 				st.Actual = AppStateRunning
 				st.Desired = AppStateRunning
