@@ -79,7 +79,7 @@
 					{{end}}
 					{{if and (not .IsEmpty) (not $.IsAdmin) ($.Permission.CanRead ctx.Consts.RepoUnitTypeCode)}}
 						<a class="ui compact small basic primary button" href="{{$.RepoLink}}/deploy">
-							{{svg "octicon-rocket" 16}} Deploy Request
+							Deploy Request
 						</a>
 					{{end}}
 				</div>

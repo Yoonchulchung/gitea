@@ -59,6 +59,35 @@
 			<div class="ui placeholder segment text-grey">{{ctx.Locale.Tr "company.deploy_request_files.no_files"}}</div>
 		{{end}}
 
+		{{/* Permissions sit above the comments and below the diff on purpose:
+		     an admin reads the change, then what it is asking to be allowed to
+		     do. Splitting these onto separate screens is what makes approval a
+		     rubber stamp. See company/permissions.go. */}}
+		{{with .PermissionRequests}}
+			<h4 class="ui top attached header company-perm-review-header">
+				{{svg "octicon-shield-lock" 16 "tw-mr-2"}}요청된 권한 ({{len .}})
+			</h4>
+			<div class="ui attached segment">
+				{{range .}}
+					<div class="company-perm-review-item">
+						<div>
+							<strong>{{.Label}}</strong> — {{.Detail}}
+							{{if .Evidence}}<div class="text-grey tw-text-12">{{.Evidence}}</div>{{end}}
+							{{if .Reason}}<div class="tw-text-13 tw-mt-1">사유: {{.Reason}}</div>{{end}}
+						</div>
+						{{/* Approval happens by merging the deploy request, which
+						     commits the change to apps.yml with the admin as author —
+						     that commit is the audit record. Nothing is decided here. */}}
+					</div>
+				{{end}}
+				{{if $.CanApprovePermissions}}
+					<div class="text-grey tw-text-12 tw-mt-2">
+						이 배포 요청을 승인(merge)하면 위 권한이 함께 적용됩니다. 일부만 승인하려면 요청자에게 수정을 요청해 주세요.
+					</div>
+				{{end}}
+			</div>
+		{{end}}
+
 		{{if .Comments}}
 			{{/* Whatever anyone wrote alongside a status change — most often an
 			     admin's own reason for rejecting this, typed into Gitea's native

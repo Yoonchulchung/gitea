@@ -1,11 +1,12 @@
 import {registerGlobalInitFunc} from '../modules/observer.ts';
 import {POST} from '../modules/fetch.ts';
+import {fomanticQuery} from '../modules/fomantic/base.ts';
 
 // /user/settings/ai (company/settings_ai.go, custom/templates/company/settings_ai.tmpl).
-// Model ID is a free-text input with a <datalist> of suggestions rather
-// than a locked-down dropdown, since an internal OpenAI-compatible
-// gateway's model names are deployment-specific — not a fixed set this
-// codebase could ever hardcode correctly.
+// Model ID is a dropdown that still accepts a typed-in value
+// (allowAdditions), not a locked-down list, since an internal
+// OpenAI-compatible gateway's model names are deployment-specific — not a
+// fixed set this codebase could ever hardcode correctly.
 //
 // Claude's model family is small and effectively fixed, so its suggestions
 // are just listed here directly, no request needed. These are pulled from
@@ -26,16 +27,47 @@ export function initCompanySettingsAI(): void {
     const modelsUrl = form.getAttribute('data-models-url')!;
     const providerInput = form.querySelector<HTMLInputElement>('.company-settings-ai-provider input[name="provider"]')!;
     const keyInput = form.querySelector<HTMLInputElement>('.company-settings-ai-key')!;
-    const modelOptions = form.querySelector<HTMLDataListElement>('#company-settings-ai-model-options')!;
     const fetchButton = form.querySelector<HTMLButtonElement>('.company-settings-ai-fetch-models')!;
+    const modelDropdown = form.querySelector<HTMLElement>('.company-settings-ai-model')!;
+    const modelValue = modelDropdown.querySelector<HTMLInputElement>('input[name="model_id"]')!;
+    const modelMenu = modelDropdown.querySelector<HTMLElement>('.menu')!;
     const modelHelp = form.querySelector<HTMLElement>('.company-settings-ai-model-help')!;
+    const modelsEmptyText = modelDropdown.closest('.field')!.getAttribute('data-i18n-models-empty')!;
 
+    fomanticQuery(modelDropdown).dropdown({
+      allowAdditions: true, // a gateway model ID that isn't in the list must still be enterable
+      forceSelection: false,
+      fullTextSearch: 'exact',
+    });
+
+    // Rebuilds the menu from `models`, keeping whatever is currently saved
+    // selected — and listing it even when it isn't among the suggestions,
+    // so switching provider (or a fetch that doesn't return it) never
+    // silently drops the value the user already has stored.
     function setOptions(models: string[]): void {
-      modelOptions.replaceChildren(...models.map((id) => {
-        const opt = document.createElement('option');
-        opt.value = id;
-        return opt;
-      }));
+      const current = modelValue.value.trim();
+      const ids = current && !models.includes(current) ? [current, ...models] : models;
+      if (ids.length) {
+        modelMenu.replaceChildren(...ids.map((id) => {
+          const item = document.createElement('div');
+          item.className = 'item';
+          item.setAttribute('data-value', id);
+          item.textContent = id;
+          return item;
+        }));
+      } else {
+        // The gateway's list starts empty (its model IDs are only known
+        // after a lookup). Fomantic suppresses its own "no results" text
+        // whenever allowAdditions is on, so without this the menu opens as
+        // a blank box that looks broken — say what to do instead. A
+        // ".message" is Fomantic's own non-selectable menu element.
+        const msg = document.createElement('div');
+        msg.className = 'message';
+        msg.textContent = modelsEmptyText;
+        modelMenu.replaceChildren(msg);
+      }
+      fomanticQuery(modelDropdown).dropdown('refresh');
+      if (current) fomanticQuery(modelDropdown).dropdown('set selected', current);
     }
 
     function applyProvider(): void {

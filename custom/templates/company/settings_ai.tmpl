@@ -35,11 +35,22 @@
 					<input name="api_key" class="company-settings-ai-key" type="password" autocomplete="off" placeholder="{{if .APIKeySet}}{{ctx.Locale.Tr "company.settings_ai.api_key_unchanged"}}{{else}}{{ctx.Locale.Tr "company.settings_ai.api_key_placeholder"}}{{end}}">
 					{{if .APIKeySet}}<p class="help">{{ctx.Locale.Tr "company.settings_ai.api_key_set_help"}}</p>{{end}}
 				</div>
-				<div class="field">
+				<div class="field" data-i18n-models-empty="{{ctx.Locale.Tr "company.settings_ai.models_empty"}}">
 					<label>{{ctx.Locale.Tr "company.settings_ai.model_id"}}</label>
-					<div class="ui action input">
-						<input name="model_id" class="company-settings-ai-model" list="company-settings-ai-model-options" value="{{.ModelID}}" placeholder="{{ctx.Locale.Tr "company.settings_ai.model_id_placeholder"}}">
-						<datalist id="company-settings-ai-model-options"></datalist>
+					{{/* A real Fomantic dropdown rather than a bare <input list="...">:
+					     a <datalist> renders inconsistently across browsers (and on
+					     several shows no list at all), so the suggestions were
+					     effectively invisible. "custom" keeps common-page.ts's global
+					     dropdown init off it — company-settings-ai.ts initializes it
+					     itself with allowAdditions, since a gateway's model IDs are
+					     deployment-specific and must stay free-typeable. */}}
+					<div class="tw-flex tw-gap-2">
+						<div class="ui search selection dropdown custom company-settings-ai-model tw-flex-1">
+							<input type="hidden" name="model_id" value="{{.ModelID}}">
+							<div class="default text">{{ctx.Locale.Tr "company.settings_ai.model_id_placeholder"}}</div>
+							{{svg "octicon-triangle-down" 14 "dropdown icon"}}
+							<div class="menu"></div>
+						</div>
 						<button type="button" class="ui basic button company-settings-ai-fetch-models">{{ctx.Locale.Tr "company.settings_ai.fetch_models"}}</button>
 					</div>
 					<p class="help company-settings-ai-model-help"></p>

@@ -206,6 +206,14 @@ func DeployForm(ctx *context.Context) {
 		ctx.ServerError("latestDeployRequest", err)
 		return
 	}
+	// What this deploy needs that the app is not allowed yet, worked out
+	// from the files themselves rather than asked for on a blank form — a
+	// non-developer handed an empty permissions form fills in either nothing
+	// or something unusable. They supply only the reason. See
+	// company/permissions.go.
+	ctx.Data["PermissionRequests"] = DetectPermissionRequests(
+		ctx.Repo.Repository.OwnerName, ctx.Repo.Repository.Name,
+		readRepoFile(ctx, ctx.Repo.Repository, "requirements.txt"), ctx.FormString("access"))
 	// Both computed here rather than with a chain of {{eq .Status "..."}} in
 	// the template — deploy.tmpl uses DeployStatusIcon for both the header
 	// badge and the bigger status box's icon bubble, and the resubmit
@@ -222,9 +230,11 @@ func DeployForm(ctx *context.Context) {
 		switch status.Status {
 		case "approved":
 			ctx.Data["DeployStatusIcon"] = "octicon-check"
-		case "rejected", "cancelled":
+		case "deployed":
+			ctx.Data["DeployStatusIcon"] = "octicon-check-circle"
+		case "rejected", "cancelled", "deploy_failed":
 			ctx.Data["DeployStatusIcon"] = "octicon-x-circle"
-		default:
+		default: // pending, deploying
 			ctx.Data["DeployStatusIcon"] = "octicon-diff"
 		}
 
@@ -331,20 +341,9 @@ func deployFilePreviews(ctx *context.Context, repo *repo_model.Repository) ([]de
 		return nil, err
 	}
 	prefix := deployPathPrefix(repo.OwnerName, repo.Name)
-	beforePaths := map[string]bool{}
-	// A missing prefix subtree just means this department has never
-	// deployed anything yet — every file below is new, beforePaths stays
-	// empty; not a real error.
-	if centralPrefixTree, err := centralCommit.SubTree(ctx, centralGitRepo, prefix); err == nil {
-		centralEntries, err := centralPrefixTree.ListEntriesRecursiveFast(ctx, centralGitRepo)
-		if err != nil {
-			return nil, err
-		}
-		for _, entry := range centralEntries {
-			if !entry.IsDir() && !entry.IsSubModule() {
-				beforePaths[entry.Name()] = true
-			}
-		}
+	beforePaths, err := centralPrefixPaths(ctx, centralGitRepo, centralCommit, prefix)
+	if err != nil {
+		return nil, err
 	}
 
 	allPaths := make(map[string]bool, len(afterPaths)+len(beforePaths))
@@ -421,6 +420,57 @@ func deployFilePreviews(ctx *context.Context, repo *repo_model.Repository) ([]de
 	}
 	sort.Slice(previews, func(i, j int) bool { return previews[i].Path < previews[j].Path })
 	return previews, nil
+}
+
+// deletePathsFor returns the paths that are live on central but no longer
+// present in the department repo — i.e. what the staff deleted. Sorted so
+// a given pair of trees always produces byte-identical commit contents;
+// map iteration order is not stable and would otherwise leak into the
+// commit.
+//
+// Split out from snapshotFilesUnderPrefix purely so this — the logic whose
+// absence was the bug — is testable without building two git repositories.
+func deletePathsFor(kept, live map[string]bool) []string {
+	deletes := make([]string, 0, len(live))
+	for path := range live {
+		if !kept[path] {
+			deletes = append(deletes, path)
+		}
+	}
+	sort.Strings(deletes)
+	return deletes
+}
+
+// centralPrefixPaths lists every file currently live under prefix on the
+// central repo's default branch, keyed by its path *relative to prefix*.
+//
+// Shared deliberately by deployFilePreviews (which shows the staff what
+// will change) and snapshotFilesUnderPrefix (which builds the commit that
+// actually changes it). Those two used to compute this separately, and
+// only the preview side did — so a file the staff deleted was shown as
+// "Removed" and then silently survived the merge. Any future change to
+// "what counts as live" has to land in one place for the two to stay
+// honest with each other.
+//
+// A missing prefix subtree just means this department has never deployed
+// anything yet — every file is new, so an empty set (not an error) is the
+// right answer.
+func centralPrefixPaths(ctx *context.Context, centralGitRepo *git.Repository, centralCommit *git.Commit, prefix string) (map[string]bool, error) {
+	paths := map[string]bool{}
+	tree, err := centralCommit.SubTree(ctx, centralGitRepo, prefix)
+	if err != nil {
+		return paths, nil //nolint:nilerr // a missing subtree is "nothing deployed yet", not a failure
+	}
+	entries, err := tree.ListEntriesRecursiveFast(ctx, centralGitRepo)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && !entry.IsSubModule() {
+			paths[entry.Name()] = true
+		}
+	}
+	return paths, nil
 }
 
 // readBlobAt reads one file's content at path out of commit (in gitRepo),
@@ -609,13 +659,18 @@ func DeployPost(ctx *context.Context) {
 		return
 	}
 
-	files, err := snapshotFilesUnderPrefix(ctx, deptRepo, deployPathPrefix(deptRepo.OwnerName, deptRepo.Name))
+	files, err := snapshotFilesUnderPrefix(ctx, deptRepo, central, deployPathPrefix(deptRepo.OwnerName, deptRepo.Name))
 	if err != nil {
 		ctx.ServerError("snapshotFilesUnderPrefix", err)
 		return
 	}
+	// Zero files means "nothing to say": the department repo is empty *and*
+	// nothing of theirs is live on central. An empty repo whose files were
+	// all deleted still produces deletes, and that is a legitimate request —
+	// it's how a department un-deploys. Rejecting on "no uploads" alone would
+	// leave them unable to take their app down.
 	if len(files) == 0 {
-		ctx.HTTPError(http.StatusBadRequest, "repo has no files to deploy")
+		ctx.HTTPError(http.StatusBadRequest, "nothing to deploy: the repository is empty and nothing is currently deployed")
 		return
 	}
 
@@ -654,6 +709,16 @@ func DeployPost(ctx *context.Context) {
 	// Best-effort, same reasoning as the AI review comment below — see
 	// applyDeployLabels (company/labels.go).
 	applyDeployLabels(ctx, central, deptRepo, pullIssue, centralOwner)
+
+	// Attach the permission items to this PR so the admin reviewing the code
+	// sees, on the same screen, what the app is asking to be allowed to do.
+	// Best-effort: the deploy request itself has already been created, and
+	// failing it now over bookkeeping would lose the submission.
+	if requests := collectPermissionRequests(ctx, deptRepo); len(requests) > 0 {
+		if err := SavePermissionRequests(deptRepo.OwnerName, deptRepo.Name, pullIssue.ID, requests); err != nil {
+			log.Error("company: saving permission requests for %s: %v", deptRepo.FullName(), err)
+		}
+	}
 
 	// title (required) + body (optional) as the AI review's own context —
 	// deliberately not `content` above, which also carries "Requested by
@@ -850,13 +915,25 @@ func postAIReviewComment(ctx *context.Context, central *repo_model.Repository, c
 	}
 }
 
-// snapshotFilesUnderPrefix reads every file in repo's default branch and
-// stages it (as a ChangeRepoFile, operation "upload") under the given path
-// prefix, ready to hand to files_service.ChangeRepoFiles against a
-// *different* repo. Content is read fully into memory — fine for the
-// small internal repos this is built for, not for anything approaching
-// Git LFS-sized files.
-func snapshotFilesUnderPrefix(ctx *context.Context, repo *repo_model.Repository, prefix string) ([]*files_service.ChangeRepoFile, error) {
+// snapshotFilesUnderPrefix stages repo's default branch under the given
+// path prefix, ready to hand to files_service.ChangeRepoFiles against the
+// *central* repo: an "upload" for every file that exists now, plus a
+// "delete" for every file that is still live under prefix on central but
+// is gone from repo. The snapshot is a full mirror, so without the deletes
+// a file the staff removed would survive on central forever — the preview
+// (deployFilePreviews) already showed it as "Removed", so the two disagreed
+// and the merge silently kept running deleted code.
+//
+// The deletes are derived from central's *actual* tree via the shared
+// centralPrefixPaths, never from a blanket recursive delete of the prefix:
+// handleCheckErrors (services/repository/files/update.go) verifies every
+// delete target exists *before* running any operation, and its
+// IsErrNotExist escape hatch is upload-only — so a blanket delete would
+// fail the whole submission for a department deploying for the first time.
+//
+// Content is read fully into memory — fine for the small internal repos
+// this is built for, not for anything approaching Git LFS-sized files.
+func snapshotFilesUnderPrefix(ctx *context.Context, repo, central *repo_model.Repository, prefix string) ([]*files_service.ChangeRepoFile, error) {
 	gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, repo)
 	if err != nil {
 		return nil, err
@@ -875,10 +952,12 @@ func snapshotFilesUnderPrefix(ctx *context.Context, repo *repo_model.Repository,
 	}
 
 	files := make([]*files_service.ChangeRepoFile, 0, len(entries))
+	kept := make(map[string]bool, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || entry.IsSubModule() {
 			continue
 		}
+		kept[entry.Name()] = true
 		blob := entry.Blob(gitRepo)
 		// GetBlobBytes treats a non-positive limit as "read nothing", not
 		// "unlimited" — pass the blob's real size instead of -1.
@@ -890,6 +969,28 @@ func snapshotFilesUnderPrefix(ctx *context.Context, repo *repo_model.Repository,
 			Operation:     "upload",
 			TreePath:      prefix + "/" + entry.Name(),
 			ContentReader: bytes.NewReader(content),
+		})
+	}
+
+	centralGitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, central)
+	if err != nil {
+		return nil, err
+	}
+	centralCommit, err := centralGitRepo.GetBranchCommit(ctx, central.DefaultBranch)
+	if err != nil {
+		return nil, err
+	}
+	livePaths, err := centralPrefixPaths(ctx, centralGitRepo, centralCommit, prefix)
+	if err != nil {
+		return nil, err
+	}
+	// Deletes last: the two sets are disjoint by construction (a path is
+	// either still in the department repo or not), so ordering is cosmetic
+	// — ChangeRepoFiles walks opts.Files in slice order.
+	for _, path := range deletePathsFor(kept, livePaths) {
+		files = append(files, &files_service.ChangeRepoFile{
+			Operation: "delete",
+			TreePath:  prefix + "/" + path,
 		})
 	}
 	return files, nil

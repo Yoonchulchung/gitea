@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"runtime"
 
+	"gitea.dev/company"
 	"gitea.dev/models"
 	authmodel "gitea.dev/models/auth"
 	"gitea.dev/modules/cache"
@@ -168,6 +169,8 @@ func InitWebInstalled(ctx context.Context) {
 	mustInitCtx(ctx, actions_service.Init)
 
 	mustInit(repo_service.InitLicenseClassifier)
+
+	company.InitAppPlatform(ctx) // see docs/company/mount-points.md
 
 	// Finally start up the cron
 	cron.Init(ctx)

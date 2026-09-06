@@ -22,6 +22,9 @@
 		data-label-approved="{{ctx.Locale.Tr "company.deploy_status.approved"}}"
 		data-label-rejected="{{ctx.Locale.Tr "company.deploy_status.rejected"}}"
 		data-label-cancelled="{{ctx.Locale.Tr "company.deploy_status.cancelled"}}"
+		data-label-deploying="{{ctx.Locale.Tr "company.deploy_status.deploying"}}"
+		data-label-deployed="{{ctx.Locale.Tr "company.deploy_status.deployed"}}"
+		data-label-deploy_failed="{{ctx.Locale.Tr "company.deploy_status.deploy_failed"}}"
 	></span>
 	{{if not $isTreePathRoot}}
 		{{template "repo/view_file_tree_toggle_button" .}}

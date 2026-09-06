@@ -33,6 +33,13 @@ upstream rebase). Only `custom/conf` (local secrets/paths) stays
   native Gitea screens for non-admin users
 - [patches.md](patches.md) — the running list of every touch point in stock
   Gitea source, however small, with file/line and reason
+- [app-platform.md](app-platform.md) — app deployment platform: architecture,
+  security model, threat analysis, and the decisions behind them
+- [app-platform-impl.md](app-platform-impl.md) — implementation contract for
+  the platform: concurrency, hot-path performance, fail-open/closed rules,
+  security rules, test requirements — read before writing code
+- [app-platform-tasks.md](app-platform-tasks.md) — phased `[ ]` checklist
+  tracking implementation progress
 
 ## Guiding principle
 

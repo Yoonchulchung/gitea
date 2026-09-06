@@ -53,6 +53,12 @@ var uiWhitelist = []string{
 	// (repo.SearchRepo, reqSignIn only) — results are filtered server-side
 	// by the caller's own access, not a jargon-y page a user navigates to.
 	"/repo/search",
+	// Deployed department apps. These are not Gitea pages at all — the
+	// request is proxied to the department's own application — so the gate
+	// has nothing to protect here, and the app's own access mode
+	// (public/login/org) is what decides. Listed explicitly rather than left
+	// to fall through, so it is a decision rather than an accident.
+	"/apps/",
 	// footer theme switcher (list/apply) — cosmetic per-user preference,
 	// no git/admin concepts involved. optSignIn only, same as anonymous
 	// visitors already get.
@@ -174,20 +180,21 @@ func isPrefixAllowed(path string) bool {
 
 // isUserSettingsAllowed is the settings-menu gate: a non-admin may reach
 // their own profile page (bare /user/settings — GET and its own POST) plus
-// the Appearance and Account tabs (including their own sub-actions, e.g.
-// /account/email, /account/delete, /appearance/theme) — everything else
-// under /user/settings/ (change_password, avatar, notifications, security,
-// applications, keys, packages, actions, organization, repos, hooks,
-// blocked_users) stays blocked. Deliberately its own function rather than
-// three plain uiWhitelist entries: uiWhitelist's isPrefixAllowed treats
-// every entry as a prefix, and "/user/settings" as a bare prefix would
-// swallow all of the above right back in.
+// the Appearance and AI tabs (including their own sub-actions, e.g.
+// /appearance/theme) — everything else under /user/settings/ (account,
+// change_password, avatar, notifications, security, applications, keys,
+// packages, actions, organization, repos, hooks, blocked_users) stays
+// blocked. Account is blocked deliberately: it owns email changes, password
+// changes and account deletion, which are administered centrally here
+// rather than self-served. Deliberately its own function rather than plain
+// uiWhitelist entries: uiWhitelist's isPrefixAllowed treats every entry as
+// a prefix, and "/user/settings" as a bare prefix would swallow all of the
+// above right back in.
 func isUserSettingsAllowed(path string) bool {
 	if path == "/user/settings" {
 		return true
 	}
 	return strings.HasPrefix(path, "/user/settings/appearance") ||
-		strings.HasPrefix(path, "/user/settings/account") ||
 		strings.HasPrefix(path, "/user/settings/ai") // everyone's own AI key/model — see company/settings_ai.go
 }
 

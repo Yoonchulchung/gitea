@@ -105,7 +105,7 @@
 				     one (head_navbar.tmpl's CompanyDeployRequestsLink) is deliberately
 				     non-admin-only, see company/gate.go. */}}
 				<a class="item" href="{{.ContextUser.DashboardLink}}/deploy-requests">
-					{{svg "octicon-rocket"}}&nbsp;{{ctx.Locale.Tr "company.deploy_requests.title"}}
+					{{ctx.Locale.Tr "company.deploy_requests.title"}}
 				</a>
 				{{if and .ShowMilestonesDashboardPage (not (and ctx.Consts.RepoUnitTypeIssues.UnitGlobalDisabled ctx.Consts.RepoUnitTypePullRequests.UnitGlobalDisabled))}}
 				<a class="{{if .PageIsMilestonesDashboard}}active {{end}}item" href="{{.ContextUser.OrganisationLink}}/milestones{{if .Team}}/{{PathEscape .Team.Name}}{{end}}">

@@ -171,5 +171,10 @@ func DeployRequestFiles(ctx *context.Context) {
 	ctx.Data["FilesUnavailable"] = filesUnavailable
 	ctx.Data["Comments"] = comments
 	ctx.Data["DeployRequestStatus"] = status
+	// The permissions this request asks for, shown next to the diff that
+	// introduced them: "why does this app suddenly need to reach
+	// erp.internal?" is only answerable with the code in front of you.
+	SetDeployRequestPermissions(ctx, ownerName, repoName, pr.ID)
+	ctx.Data["CanApprovePermissions"] = ctx.Doer.IsAdmin
 	ctx.HTML(http.StatusOK, tplDeployRequestFiles)
 }

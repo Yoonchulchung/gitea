@@ -1296,7 +1296,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 	// end "/{username}/{reponame}/settings"
 
 	// user/org home, including rss feeds like "/{username}/{reponame}.rss"
-	m.Get("/{username}/{reponame}", optSignIn, webAuth.AllowBasic, context.RepoAssignment, context.RepoRefByType(git.RefTypeBranch), repo.SetEditorconfigIfExists, company.RedirectToWorkspaceIfEmpty, repo.Home)
+	m.Get("/{username}/{reponame}", optSignIn, webAuth.AllowBasic, context.RepoAssignment, context.RepoRefByType(git.RefTypeBranch), repo.SetEditorconfigIfExists, company.RedirectToWorkspaceIfEmpty, company.SetAppPermissionData, repo.Home)
 
 	m.Post("/{username}/{reponame}/markup", optSignIn, context.RepoAssignment, reqUnitsWithMarkdown, web.Bind[*structs.MarkupOption](), misc.Markup)
 
@@ -1453,6 +1453,9 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 		// status badge — /{owner}/{repo}/deploy-status. None need branch
 		// parsing (always targets ctx.Repo.Repository's default branch) so
 		// they're not nested under the editor_action group below.
+		m.Get("/{editor_action:_app}", company.AppPage)
+		m.Post("/{editor_action:_app}/env", reqRepoCodeWriter, company.AppEnvSave)
+		m.Post("/{editor_action:_app}/{verb}", reqRepoCodeWriter, company.AppControl)
 		m.Get("/deploy", company.DeployForm)
 		m.Post("/deploy", company.DeployPost)
 		m.Get("/deploy/submit", company.Submitted)

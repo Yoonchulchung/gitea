@@ -57,12 +57,79 @@ func (*deployBranchCleanupNotifier) IssueChangeStatus(ctx context.Context, _ *us
 	cleanupDeployBranch(ctx, issue.PullRequest)
 }
 
-func (*deployBranchCleanupNotifier) MergePullRequest(ctx context.Context, _ *user_model.User, pr *issues_model.PullRequest) {
+func (*deployBranchCleanupNotifier) MergePullRequest(ctx context.Context, doer *user_model.User, pr *issues_model.PullRequest) {
+	queueDeployOnMerge(ctx, doer, pr)
 	cleanupDeployBranch(ctx, pr)
 }
 
-func (*deployBranchCleanupNotifier) AutoMergePullRequest(ctx context.Context, _ *user_model.User, pr *issues_model.PullRequest) {
+func (*deployBranchCleanupNotifier) AutoMergePullRequest(ctx context.Context, doer *user_model.User, pr *issues_model.PullRequest) {
+	queueDeployOnMerge(ctx, doer, pr)
 	cleanupDeployBranch(ctx, pr)
+}
+
+// queueDeployOnMerge marks the department's app as queued the moment an
+// admin merges its Deploy Request.
+//
+// Deliberately only on the merge paths, never from IssueChangeStatus: that
+// one also fires for a rejected or withdrawn request, and those must not
+// look like a pending deploy.
+//
+// Recording this here rather than when a worker eventually picks the job up
+// buys two things. The staff badge flips to "배포 중" at the instant of
+// approval instead of whenever a worker happens to be free. And a record
+// still sitting at `queued` minutes later is a *detectable* "nothing picked
+// this up" — otherwise that failure mode is invisible, which matters most
+// right now, when no deploy worker exists yet at all.
+//
+// Best-effort throughout: this runs inside the merge notification, and a
+// bookkeeping failure must never make the merge itself look broken. The
+// same reasoning the AI review already follows (docs/company/ai-agent.md).
+func queueDeployOnMerge(ctx context.Context, doer *user_model.User, pr *issues_model.PullRequest) {
+	if pr.BaseRepoID != pr.HeadRepoID {
+		return
+	}
+	owner, repo, _, ok := parseDeployBranchName(pr.HeadBranch)
+	if !ok {
+		return
+	}
+	centralOwner, centralName, err := centralDeployOwnerName()
+	if err != nil {
+		return
+	}
+	if err := pr.LoadBaseRepo(ctx); err != nil {
+		log.Error("company: queueDeployOnMerge: LoadBaseRepo: %v", err)
+		return
+	}
+	if pr.BaseRepo.OwnerName != centralOwner || pr.BaseRepo.Name != centralName {
+		return // deploy-shaped branch on some other repo — not ours
+	}
+
+	actor := ""
+	if doer != nil {
+		actor = doer.Name
+	}
+	if err := MutateAppState(owner, repo, func(st *AppState) bool {
+		st.Desired = AppStateRunning // an approved request is a request to be running
+		st.Actual = AppStateQueued
+		st.PRID = pr.ID
+		st.SHA = pr.MergedCommitID
+		st.Reason, st.Message = "", "" // a new attempt clears the previous failure
+		st.AppendHistory(AppHistoryEntry{
+			SHA:    pr.MergedCommitID,
+			Status: AppStateQueued,
+			Actor:  actor,
+		})
+		return true
+	}); err != nil {
+		log.Error("company: queueDeployOnMerge: %s/%s: %v", owner, repo, err)
+	}
+	// The permissions this request asked for take effect before the deploy
+	// that needs them is built — a package approved in the same merge has to
+	// be installable by the worker that picks the job up next.
+	if doer != nil {
+		ApplyPermissionsOnMerge(ctx, doer, owner, repo, pr.ID)
+	}
+	enqueueDeploy(owner, repo, pr.MergedCommitID, pr.ID)
 }
 
 // cleanupDeployBranch deletes pr.HeadBranch on the central deploy repo,

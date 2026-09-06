@@ -1,0 +1,38 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-app-logs")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">
+			<a href="{{AppSubUrl}}/-/admin/company-deploys">앱 배포 관리</a>
+			<span class="text-grey tw-mx-2">/</span>
+			<a href="{{.AdminAppLink}}">{{.App.Owner}}/{{.App.Repo}}</a>
+			<span class="text-grey tw-mx-2">/</span>로그
+		</h4>
+
+		<div class="ui attached segment">
+			<form method="get" class="tw-flex tw-gap-2 tw-items-center">
+				<input class="tw-flex-1" type="search" name="q" value="{{.Query}}" placeholder="검색어 (부분 일치)">
+				{{/* Regexp is opt-in: a user-supplied pattern can backtrack
+				     catastrophically, and the search timeout bounds that but does
+				     not remove it. See company/applogs.go. */}}
+				<label class="tw-flex tw-items-center tw-gap-1 tw-text-13">
+					<input type="checkbox" name="regexp" value="1" {{if .UseRegexp}}checked{{end}}> 정규식
+				</label>
+				<button class="ui tiny primary button">검색</button>
+			</form>
+			{{if .SearchError}}
+				<div class="ui negative message tw-mt-2">검색식이 올바르지 않습니다: {{.SearchError}}</div>
+			{{end}}
+			{{if .Truncated}}
+				<div class="ui warning message tw-mt-2">결과가 너무 많아 일부만 표시했습니다. 검색어를 좁혀 주세요.</div>
+			{{end}}
+		</div>
+
+		<div class="ui attached segment">
+			{{/* Text nodes, never innerHTML: an app prints whatever it wants to
+			     stdout, and "<script>" in a log line must not run in an admin's
+			     session. Go templates escape this by default — do not add a
+			     `safeHTML` here. */}}
+			<pre class="company-log">{{range .Lines}}{{.Text}}
+{{else}}로그가 아직 없습니다.{{end}}</pre>
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}

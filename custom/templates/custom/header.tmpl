@@ -59,4 +59,101 @@
    set by company-deploy-status.ts) — cursor:help hints there's more to see */
 .company-deploy-status-badge.rejected { background: var(--color-error-bg); color: var(--color-error-text); cursor: help; }
 .company-deploy-status-badge.cancelled { background: var(--color-secondary); color: var(--color-text); }
+.company-deploy-status-badge.deploying { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.company-deploy-status-badge.deployed { background: var(--color-success-bg); color: var(--color-success-text); }
+/* same treatment as .rejected: a failed deploy also has a reason worth hovering for */
+.company-deploy-status-badge.deploy_failed { background: var(--color-error-bg); color: var(--color-error-text); cursor: help; }
+</style>
+
+<style>
+/* Deployed-app platform — the repo sidebar panel, the department app screen
+   and the admin dashboards. See docs/company/app-platform.md. */
+.company-app-state {
+	display: inline-flex;
+	align-items: center;
+	padding: .15rem .5rem;
+	border-radius: 1rem;
+	font-size: .78rem;
+	font-weight: 600;
+	white-space: nowrap;
+	background: var(--color-secondary);
+	color: var(--color-text);
+}
+.company-app-state.running { background: var(--color-success-bg); color: var(--color-success-text); }
+.company-app-state.failed,
+.company-app-state.suspended { background: var(--color-error-bg); color: var(--color-error-text); }
+.company-app-state.queued,
+.company-app-state.building,
+.company-app-state.activating { background: var(--color-warning-bg); color: var(--color-warning-text); }
+
+/* Quiet by default: the panel only draws a coloured edge when there is
+   something to act on, so that a department notices it on the day it
+   matters instead of tuning it out. */
+.company-app-panel.has-problem { border-left: 3px solid var(--color-red); padding-left: 8px; }
+.company-app-cause {
+	background: var(--color-error-bg);
+	color: var(--color-error-text);
+	border-radius: 4px;
+	padding: 8px 10px;
+	font-size: .82rem;
+}
+.company-perm-row { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: .82rem; align-items: baseline; }
+.company-perm-label { min-width: 5.5em; color: var(--color-text-light-2); }
+.company-perm-value { font-weight: 600; }
+.company-perm-row.denied .company-perm-value { color: var(--color-error-text); }
+.company-perm-row.pending .company-perm-value { color: var(--color-warning-text); }
+.company-perm-reason { flex-basis: 100%; color: var(--color-text-light-2); font-size: .75rem; font-weight: 400; }
+
+.company-kpis { display: flex; flex-wrap: wrap; gap: 10px; }
+.company-kpi {
+	flex: 1 1 120px;
+	border: 1px solid var(--color-secondary);
+	border-radius: 6px;
+	padding: 10px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.company-kpi b { font-size: 1.5rem; line-height: 1.1; }
+.company-kpi b small { font-size: .8rem; font-weight: 400; color: var(--color-text-light-2); }
+.company-kpi span { font-size: .75rem; color: var(--color-text-light-2); }
+.company-kpi.bad b { color: var(--color-error-text); }
+
+.company-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.company-chart h5 { margin: 0 0 6px; font-size: .82rem; color: var(--color-text-light-2); }
+/* Wide content scrolls inside its own box rather than pushing the page. */
+.company-log {
+	max-height: 60vh;
+	overflow: auto;
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+</style>
+
+<style>
+/* Permission request block on the Deploy Request form. */
+.company-perm-request {
+	border: 1px solid var(--color-warning-border);
+	background: var(--color-warning-bg);
+	border-radius: 6px;
+	padding: 12px 14px;
+	margin-bottom: 12px;
+}
+.company-perm-request-item { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; }
+</style>
+
+<style>
+/* Permission review block on the admin's deploy-request screen. */
+.company-perm-review-header { background: var(--color-warning-bg) !important; }
+.company-perm-review-item {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 8px 0;
+	border-bottom: 1px solid var(--color-secondary);
+}
+.company-perm-review-item:last-child { border-bottom: 0; }
 </style>

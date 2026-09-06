@@ -61,7 +61,7 @@ func loadAIUserConfig(ctx context.Context, userID int64) (aiUserConfig, error) {
 	if err != nil {
 		return aiUserConfig{}, err
 	}
-	apiKey, err := user_model.GetUserSetting(ctx, userID, userSettingAIAPIKey)
+	apiKey, err := getUserSecret(ctx, userID, userSettingAIAPIKey)
 	if err != nil {
 		return aiUserConfig{}, err
 	}

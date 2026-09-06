@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 
+	"gitea.dev/company"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
 
@@ -137,6 +138,7 @@ func NewMainApp(appVer AppVersion) *cli.Command {
 		cmdCert(),
 		newGenerateCommand(),
 		newDocsCommand(),
+		company.NewDeptAppExecCommand(), // see docs/company/patches.md
 	}
 
 	// TODO: we should eventually drop the default command,

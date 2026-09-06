@@ -106,6 +106,61 @@
 </div>
 {{else}}
 {{$canEditDesc := .Permission.CanWrite ctx.Consts.RepoUnitTypeCode}}
+{{/* The app panel, first in the non-admin sidebar. This is the screen a
+     non-developer actually opens, so "what is my app doing and what is it
+     allowed to do" has to be answered here — anywhere else and it will not
+     be found. Rendered only for repositories that have actually been
+     deployed (company.SetAppPermissionData sets nothing otherwise), so a
+     plain repository's sidebar is unchanged. Admins get the far more
+     detailed /-/admin/company-deploys instead, which is why this lives only
+     in the {{else}} branch. */}}
+{{with .CompanyApp}}
+<div class="repo-home-sidebar-top flex-relaxed-list company-app-panel{{if .HasProblem}} has-problem{{end}}">
+	<div class="flex-relaxed-list">
+		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
+			<span>앱</span>
+			<span class="company-app-state {{.Status}}">{{.StatusLabel}}</span>
+		</div>
+
+		{{with .Cause}}
+			{{/* Only rendered when something is actually wrong. */}}
+			<div class="company-app-cause">
+				<div class="tw-font-semibold">{{.Summary}}</div>
+				{{if .Detail}}<div class="tw-text-12 tw-mt-1">{{.Detail}}</div>{{end}}
+			</div>
+		{{end}}
+
+		<a class="flex-text-block muted" href="{{AppSubUrl}}{{.AppURL}}" target="_blank" rel="noopener">
+			{{svg "octicon-link-external"}} 앱 열기
+		</a>
+
+		<div class="repo-home-sidebar-header flex-text-block"><span>앱 권한</span></div>
+		{{range .Rows}}
+			<div class="company-perm-row {{.State}}">
+				<span class="company-perm-label">{{.Label}}</span>
+				<span class="company-perm-value">{{.Value}}</span>
+				{{/* The reason is the point of showing a denial at all: without it
+				     the person still has to go and ask an administrator. */}}
+				{{if .Reason}}<span class="company-perm-reason">{{.Reason}}</span>{{end}}
+			</div>
+		{{end}}
+
+		{{if .MemoryLimit}}
+			{{/* Usage next to the limit, not the limit alone — otherwise nobody
+			     has grounds to judge whether to ask for more. */}}
+			<div class="company-perm-row allowed">
+				<span class="company-perm-label">메모리</span>
+				<span class="company-perm-value">{{.MemoryLimit}}MB 중 {{.MemoryUsed}}MB 사용</span>
+			</div>
+		{{end}}
+
+		<div class="tw-flex tw-gap-2 tw-mt-2">
+			<a class="ui tiny basic button" href="{{.AppLink}}">앱 관리</a>
+			<a class="ui tiny basic button" href="{{.DeployLink}}">권한 요청하기</a>
+		</div>
+	</div>
+</div>
+{{end}}
 <div class="repo-home-sidebar-top flex-relaxed-list">
 	<div class="flex-relaxed-list">
 		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">

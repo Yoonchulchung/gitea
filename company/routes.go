@@ -14,6 +14,7 @@ package company
 
 import (
 	"gitea.dev/modules/web"
+	"gitea.dev/modules/web/routing"
 )
 
 // RegisterRoutes builds the /company route tree for signed-in, non-admin
@@ -25,6 +26,17 @@ import (
 // to their department's native dashboard by the gate itself (gate.go,
 // redirectToDepartment), not routed through an intermediate page here.
 func RegisterRoutes(m *web.Router) {
+	// Deployed apps. Registered without optSignIn on purpose: an app is
+	// independent of Gitea's authentication unless its department opts in, and
+	// optSignIn is per-group rather than global, so this stays anonymous even
+	// with REQUIRE_SIGNIN_VIEW on — /api/healthz does the same. The access
+	// mode is enforced inside AppProxy instead (company/proxy.go).
+	//
+	// MarkLongPolling keeps a slow app from being logged and treated as a slow
+	// Gitea request; apps stream and hold connections open.
+	m.Any("/apps/{owner}/{repo}", routing.MarkLongPolling(), AppProxy)
+	m.Any("/apps/{owner}/{repo}/*", routing.MarkLongPolling(), AppProxy)
+
 	m.Group("/company", func() {
 		m.Post("/repo-description/{owner}/{repo}", UpdateDescription)
 		m.Post("/deploy-request/{id}/cancel", CancelDeployRequest)
@@ -49,4 +61,17 @@ func RegisterRoutes(m *web.Router) {
 // adminReq middleware for free — see docs/company/mount-points.md.
 func RegisterAdminRoutes(m *web.Router) {
 	m.Get("/company-activity", AdminActivity)
+	// App deployment management — see docs/company/app-platform.md. Kept
+	// under "/-/admin" rather than a repo-scoped path on purpose: these
+	// pages carry logs and failure detail, and isRepoScopedAllow
+	// (company/gate.go) is *default-allow* for repo sub-paths, so a
+	// /{owner}/{repo}/… route would be reachable by non-admins the moment
+	// it existed.
+	m.Get("/company-deploys", AdminDeploys)
+	m.Group("/company-deploys/{owner}/{repo}", func() {
+		m.Get("", AdminApp)
+		m.Get("/logs", AdminAppLogs)
+		m.Get("/metrics", AdminAppMetrics)
+		m.Post("/{verb}", AdminAppControl)
+	})
 }

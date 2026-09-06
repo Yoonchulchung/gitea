@@ -1,0 +1,120 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-app")}}
+	<div class="admin-setting-content">
+
+		<h4 class="ui top attached header">
+			<a href="{{AppSubUrl}}/-/admin/company-deploys">앱 배포 관리</a>
+			<span class="text-grey tw-mx-2">/</span>{{.App.Owner}}/{{.App.Repo}}
+			<div class="ui right">
+				{{template "company/admin_deploys_status" .App}}
+			</div>
+		</h4>
+
+		<div class="ui attached segment">
+			{{/* Controls first: an admin opening this page during an incident is
+			     here to do something, not to read. */}}
+			<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
+				<a class="ui tiny basic button" href="{{.AppURL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} 앱 열기</a>
+				<a class="ui tiny basic button" href="{{.AdminAppLink}}/logs">{{svg "octicon-log" 14}} 로그</a>
+				{{if .AppRepo}}<a class="ui tiny basic button" href="{{.AppRepo.Link}}">{{svg "octicon-repo" 14}} 저장소</a>{{end}}
+				<div class="tw-flex-1"></div>
+				{{if eq .App.Actual "running"}}
+					<form method="post" action="{{.AdminAppLink}}/restart">{{.CsrfTokenHtml}}<button class="ui tiny button">재시작</button></form>
+					<form method="post" action="{{.AdminAppLink}}/stop">{{.CsrfTokenHtml}}<button class="ui tiny button">중지</button></form>
+				{{else if eq .App.Actual "suspended"}}
+					<form method="post" action="{{.AdminAppLink}}/resume">{{.CsrfTokenHtml}}<button class="ui tiny primary button">정지 해제</button></form>
+				{{else}}
+					<form method="post" action="{{.AdminAppLink}}/start">{{.CsrfTokenHtml}}<button class="ui tiny primary button">시작</button></form>
+				{{end}}
+				{{if ne .App.Actual "suspended"}}
+					{{/* Suspend is the platform-protection verb: unlike a department's
+					     stop, the department cannot undo it. The reason is required
+					     because "an administrator stopped this" with no explanation
+					     leaves them nothing to act on. */}}
+					<form method="post" action="{{.AdminAppLink}}/suspend" class="tw-flex tw-gap-1">
+						{{.CsrfTokenHtml}}
+						<input class="tw-w-48" type="text" name="reason" placeholder="정지 사유" required>
+						<button class="ui tiny red basic button">강제 정지</button>
+					</form>
+				{{end}}
+				<form method="post" action="{{.AdminAppLink}}/remove" data-company-confirm="이 앱을 플랫폼에서 완전히 제거합니다. 코드는 배포 저장소에 남지만 실행 중인 앱과 환경변수는 삭제됩니다. 계속할까요?">
+					{{.CsrfTokenHtml}}<button class="ui tiny red button">제거</button>
+				</form>
+			</div>
+		</div>
+
+		{{if or (not .Sandboxed) (not .LimitsEnforced)}}
+			<div class="ui attached warning message">
+				{{if not .Sandboxed}}
+					<div><strong>이 앱은 격리 없이 실행됩니다.</strong> {{.SandboxDetail}}</div>
+				{{end}}
+				{{if not .LimitsEnforced}}
+					<div>{{.LimitsDetail}}</div>
+				{{end}}
+			</div>
+		{{end}}
+
+		<div class="ui attached segment">
+			<div class="company-kpis">
+				<div class="company-kpi"><b>{{.Summary.Requests}}</b><span>요청</span></div>
+				<div class="company-kpi"><b>{{.Summary.Users}}</b><span>사용자{{if eq .Settings.Access "public"}} (IP 기준){{end}}</span></div>
+				<div class="company-kpi"><b>{{printf "%.1f" .Summary.ErrorRate}}%</b><span>에러율</span></div>
+				<div class="company-kpi"><b>{{.Summary.P95}}ms</b><span>응답시간 p95</span></div>
+				<div class="company-kpi"><b>{{.Summary.MemMaxMB}}<small>/{{.MemoryLimitMB}}MB</small></b><span>메모리 최대</span></div>
+				{{if .Summary.Blocked}}<div class="company-kpi bad"><b>{{.Summary.Blocked}}</b><span>차단된 다운로드</span></div>{{end}}
+			</div>
+			<div class="tw-mt-2">
+				{{range $r := (StringUtils.Split "1h,24h,7d,30d" ",")}}
+					<a class="ui tiny {{if eq $.Window $r}}primary{{else}}basic{{end}} button" href="?range={{$r}}">{{$r}}</a>
+				{{end}}
+			</div>
+			{{/* Distinct visitors cannot be summed across five-minute windows
+			     without counting someone twice, so this is the busiest single
+			     window, not a total. Saying so here is cheaper than an admin
+			     drawing the wrong conclusion from it. */}}
+			<div class="text-grey tw-text-12 tw-mt-2">사용자 수는 5분 구간 중 가장 많았던 값입니다(합계가 아닙니다). 메모리는 프로세스 트리 합산이라 공유 메모리가 중복 계산되어 실제보다 크게 나옵니다.</div>
+		</div>
+
+		<div class="ui attached segment company-charts"
+			data-points="{{.ChartPoints}}"
+			data-annotations="{{.ChartAnnotations}}"
+			data-memory-limit="{{.MemoryLimitMB}}">
+			<div class="company-chart"><h5>요청 수 · 에러</h5><canvas data-chart="requests" height="120"></canvas></div>
+			<div class="company-chart"><h5>메모리 (MB) · CPU (%)</h5><canvas data-chart="resources" height="120"></canvas></div>
+			<div class="company-chart"><h5>응답시간 p95 (ms)</h5><canvas data-chart="latency" height="120"></canvas></div>
+		</div>
+
+		<h4 class="ui top attached header tw-mt-4">환경변수</h4>
+		<div class="ui attached segment">
+			{{if .EnvError}}
+				<div class="ui negative message tw-m-0">{{.EnvError}}</div>
+			{{else if .EnvNames}}
+				{{if .EnvRestartRequired}}
+					<div class="ui warning message tw-mt-0">저장된 환경변수가 실행 중인 값과 다릅니다. 적용하려면 재시작이 필요합니다.</div>
+				{{end}}
+				{{/* Names only, never values — see company/envstore.go. */}}
+				<div>{{range .EnvNames}}<span class="ui label tw-mr-1">{{.}}</span>{{end}}</div>
+				<div class="text-grey tw-text-12 tw-mt-2">값은 암호화되어 저장되며 다시 표시되지 않습니다. 값 변경은 부서가 저장소의 앱 화면에서 합니다.</div>
+			{{else}}
+				<span class="text-grey">설정된 환경변수가 없습니다.</span>
+			{{end}}
+		</div>
+
+		<h4 class="ui top attached header">이력</h4>
+		<div class="ui attached table segment">
+			<table class="ui very basic table">
+				<tbody>
+					{{range .App.History}}
+						<tr>
+							<td class="tw-w-1/6 tw-text-13">{{DateUtils.TimeSince .At}}</td>
+							<td class="tw-w-1/6">{{.Status}}</td>
+							<td class="tw-w-1/6 tw-text-13">{{.Actor}}</td>
+							<td class="tw-text-13">{{.Reason}}{{if .SHA}} <span class="text-grey">{{ShortSha .SHA}}</span>{{end}}</td>
+						</tr>
+					{{else}}
+						<tr><td class="text-grey">아직 이력이 없습니다.</td></tr>
+					{{end}}
+				</tbody>
+			</table>
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}

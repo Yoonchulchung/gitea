@@ -45,7 +45,12 @@ func AISettings(ctx *gitea_context.Context) {
 		ctx.ServerError("GetUserSetting", err)
 		return
 	}
-	apiKeySet, err := user_model.GetUserSetting(ctx, ctx.Doer.ID, userSettingAIAPIKey)
+	// Read raw, not via getUserSecret: this page only needs "is a key
+	// stored?", and the stored value being non-empty answers that whether
+	// it is encrypted or legacy plaintext. Decrypting here would be work
+	// for a value we deliberately never show, and would drag the plaintext
+	// migration into every settings page load.
+	apiKeyStored, err := user_model.GetUserSetting(ctx, ctx.Doer.ID, userSettingAIAPIKey)
 	if err != nil {
 		ctx.ServerError("GetUserSetting", err)
 		return
@@ -56,7 +61,7 @@ func AISettings(ctx *gitea_context.Context) {
 	ctx.Data["Provider"] = provider
 	ctx.Data["ModelID"] = modelID
 	ctx.Data["ReasoningEffort"] = reasoningEffort
-	ctx.Data["APIKeySet"] = apiKeySet != "" // never echo the key itself back into the form
+	ctx.Data["APIKeySet"] = apiKeyStored != "" // never echo the key itself back into the form
 	ctx.Data["GatewayConfigured"] = aiGatewayURL() != ""
 	ctx.HTML(http.StatusOK, tplSettingsAI)
 }
@@ -89,7 +94,7 @@ func AISettingsPost(ctx *gitea_context.Context) {
 		return
 	}
 	if apiKey != "" {
-		if err := user_model.SetUserSetting(ctx, ctx.Doer.ID, userSettingAIAPIKey, apiKey); err != nil {
+		if err := setUserSecret(ctx, ctx.Doer.ID, userSettingAIAPIKey, apiKey); err != nil {
 			ctx.ServerError("SetUserSetting", err)
 			return
 		}
@@ -121,7 +126,7 @@ func AIListModels(ctx *gitea_context.Context) {
 
 	apiKey := strings.TrimSpace(ctx.Req.FormValue("api_key"))
 	if apiKey == "" {
-		saved, err := user_model.GetUserSetting(ctx, ctx.Doer.ID, userSettingAIAPIKey)
+		saved, err := getUserSecret(ctx, ctx.Doer.ID, userSettingAIAPIKey)
 		if err != nil {
 			ctx.ServerError("GetUserSetting", err)
 			return

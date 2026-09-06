@@ -4,7 +4,7 @@
 		<a href="{{.Repo.Link}}" class="muted company-deploy-back">{{svg "octicon-chevron-left" 15}}{{.Repo.Name}}</a>
 
 		<div class="company-deploy-title">
-			<h1>{{svg "octicon-rocket" 22 "tw-mr-1"}}{{ctx.Locale.Tr "company.deploy.title"}}</h1>
+			<h1>{{ctx.Locale.Tr "company.deploy.title"}}</h1>
 			{{if .DeployRequestStatus}}
 				<span class="company-deploy-status-badge {{.DeployRequestStatus.Status}}">
 					{{svg .DeployStatusIcon 13}}{{ctx.Locale.Tr (printf "company.deploy_status.%s" .DeployRequestStatus.Status)}} - {{DateUtils.AbsoluteShort .DeployRequestStatus.Date}}
@@ -46,8 +46,32 @@
 				<label>{{ctx.Locale.Tr "company.deploy.message_label"}}</label>
 				<textarea name="message" rows="3" placeholder="{{ctx.Locale.Tr "company.deploy.message_placeholder"}}"></textarea>
 			</div>
+			{{/* Permission items, detected from the files being deployed rather
+			     than asked for on a blank form — a non-developer handed an empty
+			     permissions form fills in either nothing or something unusable.
+			     The person supplies only the reason, which is required: an
+			     operator who is not a developer cannot judge "allow outbound
+			     access to api.foo.com?" on its own. See company/permissions.go. */}}
+			{{with .PermissionRequests}}
+				<div class="company-perm-request">
+					<div class="company-deploy-section-lbl">이번 배포에 필요한 승인</div>
+					{{range .}}
+						<label class="company-perm-request-item">
+							<input type="checkbox" name="perm_{{.Kind}}_{{.Value}}" value="1" checked>
+							<span>
+								<strong>{{.Label}}</strong> — {{.Detail}}
+								{{if .Evidence}}<span class="text-grey tw-text-12 tw-block">{{.Evidence}}</span>{{end}}
+							</span>
+						</label>
+					{{end}}
+					<div class="field tw-mt-2">
+						<label>사유 <span class="text-grey tw-text-12">(관리자가 판단할 수 있도록 왜 필요한지 적어 주세요)</span></label>
+						<input type="text" name="perm_reason" placeholder="예: 엑셀 보고서를 만들기 위해 openpyxl 이 필요합니다" required>
+					</div>
+				</div>
+			{{end}}
 			<button type="submit" id="submit-button" class="ui primary button">
-				{{svg "octicon-rocket" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.deploy.submit_button"}}
+				{{ctx.Locale.Tr "company.deploy.submit_button"}}
 			</button>
 		</form>
 

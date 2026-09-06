@@ -1,8 +1,10 @@
 <!--
 	Override of templates/user/settings/navbar.tmpl. Only the tabs
 	non-admins are actually allowed to reach (company/gate.go's
-	isUserSettingsAllowed) are shown to them — Profile, Account,
-	Appearance. Admins get the full, untouched native menu.
+	isUserSettingsAllowed) are shown to them — Profile, Appearance, AI.
+	Account is admin-only: it owns email/password changes and account
+	deletion, administered centrally rather than self-served.
+	Admins get the full, untouched native menu.
 	Keep this in sync with the upstream file; diff it on every Gitea
 	upgrade — see docs/company/architecture.md on custom/templates drift.
 -->
@@ -12,7 +14,7 @@
 		<a class="{{if .PageIsSettingsProfile}}active {{end}}item" href="{{AppSubUrl}}/user/settings">
 			{{ctx.Locale.Tr "settings.profile"}}
 		</a>
-		{{if not ($.UserDisabledFeatures.Contains "manage_credentials" "deletion")}}
+		{{if and $.IsAdmin (not ($.UserDisabledFeatures.Contains "manage_credentials" "deletion"))}}
 		<a class="{{if .PageIsSettingsAccount}}active {{end}}item" href="{{AppSubUrl}}/user/settings/account">
 			{{ctx.Locale.Tr "settings.account"}}
 		</a>

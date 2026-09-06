@@ -1,0 +1,20 @@
+{{/* One app's state as a coloured word. Takes an *AppState as its dot.
+     Shared by the list and the "조치 필요" section so the same state never
+     reads differently in two places on one screen. */}}
+<span class="company-deploy-state {{.Actual}}">
+	{{if eq .Actual "running"}}
+		{{svg "octicon-check-circle" 13}}실행 중
+	{{else if eq .Actual "failed"}}
+		{{svg "octicon-x-circle" 13}}실패
+	{{else if eq .Actual "suspended"}}
+		{{svg "octicon-blocked" 13}}관리자 정지
+	{{else if eq .Actual "queued"}}
+		{{svg "octicon-clock" 13}}대기 중
+	{{else if eq .Actual "building"}}
+		{{svg "octicon-sync" 13}}빌드 중
+	{{else if eq .Actual "activating"}}
+		{{svg "octicon-sync" 13}}적용 중
+	{{else}}
+		{{svg "octicon-circle-slash" 13}}중지됨
+	{{end}}
+</span>

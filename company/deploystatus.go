@@ -67,6 +67,9 @@ type deployRequestStatus struct {
 func deployStatusFor(ctx *context.Context, pr *issues_model.PullRequest) (*deployRequestStatus, error) {
 	if pr.Issue.IsClosed {
 		if pr.HasMerged {
+			if runtime := runtimeStatusFor(pr); runtime != nil {
+				return runtime, nil
+			}
 			return &deployRequestStatus{Status: "approved", Date: pr.MergedUnix}, nil
 		}
 		cancelled, err := wasCancelledByRequester(ctx, pr.Issue.ID)
@@ -80,6 +83,46 @@ func deployStatusFor(ctx *context.Context, pr *issues_model.PullRequest) (*deplo
 		return &deployRequestStatus{Status: status, Date: pr.Issue.ClosedUnix}, nil
 	}
 	return &deployRequestStatus{Status: "pending", Date: pr.Issue.CreatedUnix}, nil
+}
+
+// runtimeStatusFor replaces the flat "approved" (= merged) with what the
+// app is *actually* doing now, or nil when there's nothing better to say.
+//
+// The mapping is done here in Go rather than in the template on purpose:
+// staff must never see "rolled_back" as its own word. To a non-developer it
+// reads like a distinct fourth outcome they're expected to act on, when the
+// only thing they need to know is that the deploy did not take. Everything
+// that isn't running collapses into one failure word, and the *reason* is
+// what carries the detail — in plain language, elsewhere on the page.
+//
+// Returns nil (falling back to "approved") when this PR isn't the one that
+// produced the live state, so an old request in a list doesn't claim
+// credit for a later deploy's outcome.
+func runtimeStatusFor(pr *issues_model.PullRequest) *deployRequestStatus {
+	owner, repo, _, ok := parseDeployBranchName(pr.HeadBranch)
+	if !ok {
+		return nil
+	}
+	st := LoadAppState(owner, repo)
+	if st.PRID != pr.ID || st.UpdatedAt == 0 {
+		return nil // predates this feature, or belongs to a different request
+	}
+
+	var status string
+	switch st.Actual {
+	case AppStateQueued, AppStateBuilding, AppStateActivating:
+		status = "deploying"
+	case AppStateRunning:
+		status = "deployed"
+	case AppStateFailed:
+		status = "deploy_failed"
+	default:
+		// stopped/suspended are deliberate, not deploy outcomes — the badge
+		// answers "did my deploy work?", and the app's on/off state is shown
+		// by its own control panel instead.
+		return nil
+	}
+	return &deployRequestStatus{Status: status, Date: timeutil.TimeStamp(st.UpdatedAt)}
 }
 
 // rejectionReasons returns every comment on pr's issue except the automatic

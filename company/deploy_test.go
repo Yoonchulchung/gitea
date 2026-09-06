@@ -9,6 +9,54 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func pathSet(paths ...string) map[string]bool {
+	m := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		m[p] = true
+	}
+	return m
+}
+
+// The absence of these deletes was a real bug: a file the staff removed was
+// shown as "Removed" in the deploy preview and then silently survived the
+// merge, so central kept serving code nobody could see any more.
+func TestDeletePathsFor(t *testing.T) {
+	t.Run("first-ever deploy has nothing live, so no deletes", func(t *testing.T) {
+		assert.Empty(t, deletePathsFor(pathSet("main.py", "lib/a.py"), pathSet()))
+	})
+
+	t.Run("unchanged tree produces no deletes", func(t *testing.T) {
+		files := pathSet("main.py", "lib/a.py")
+		assert.Empty(t, deletePathsFor(files, files))
+	})
+
+	t.Run("removed files are deleted", func(t *testing.T) {
+		got := deletePathsFor(pathSet("main.py"), pathSet("main.py", "old.py", "lib/gone.py"))
+		assert.Equal(t, []string{"lib/gone.py", "old.py"}, got)
+	})
+
+	t.Run("deleting every file still yields deletes — this is how a department un-deploys", func(t *testing.T) {
+		got := deletePathsFor(pathSet(), pathSet("main.py", "lib/a.py"))
+		assert.Equal(t, []string{"lib/a.py", "main.py"}, got)
+	})
+
+	t.Run("rename deletes only the old path", func(t *testing.T) {
+		got := deletePathsFor(pathSet("new.py"), pathSet("old.py"))
+		assert.Equal(t, []string{"old.py"}, got)
+	})
+
+	t.Run("a path that became a directory deletes the old file", func(t *testing.T) {
+		// central has file "a"; the department replaced it with a dir "a/b"
+		got := deletePathsFor(pathSet("a/b"), pathSet("a"))
+		assert.Equal(t, []string{"a"}, got)
+	})
+
+	t.Run("output is sorted so commit contents are deterministic", func(t *testing.T) {
+		live := pathSet("z.py", "a.py", "m.py")
+		assert.Equal(t, []string{"a.py", "m.py", "z.py"}, deletePathsFor(pathSet(), live))
+	})
+}
+
 // row is a plain-value mirror of deploySplitRow for test assertions —
 // comparing template.HTML content directly is brittle against
 // modules/highlight's exact markup, so these only check line numbers/types.

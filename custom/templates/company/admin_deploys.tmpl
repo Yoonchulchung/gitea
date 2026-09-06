@@ -1,0 +1,99 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-deploys")}}
+	<div class="admin-setting-content">
+
+		{{if .Attention}}
+			{{/* Only rendered when there is something to act on. A section that
+			     is always present stops being read — see docs/company/app-platform.md
+			     on the dashboard layout. */}}
+			<h4 class="ui top attached header company-deploys-attention-header">
+				{{svg "octicon-alert" 16 "tw-mr-2"}}조치 필요 ({{len .Attention}})
+			</h4>
+			<div class="ui attached table segment">
+				<table class="ui very basic table">
+					<tbody>
+						{{range .Attention}}
+							<tr>
+								<td class="tw-w-1/3">
+									{{if .Repo}}
+										<a href="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .State.Owner}}/{{PathEscape .State.Repo}}">{{.State.Owner}}/{{.State.Repo}}</a>
+									{{else}}
+										{{.State.Owner}}/{{.State.Repo}}
+									{{end}}
+								</td>
+								<td>
+									{{template "company/admin_deploys_status" .State}}
+									{{if not .Repo}}<span class="text-red tw-ml-2">저장소가 없습니다 — 이름이 바뀌었거나 삭제됨</span>{{end}}
+									{{if and (eq .State.Actual "running") (not .State.Sandboxed)}}<span class="text-red tw-ml-2">샌드박스 없이 실행 중</span>{{end}}
+									{{if .State.Reason}}<span class="text-grey tw-ml-2">{{.State.Reason}}</span>{{end}}
+								</td>
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			</div>
+		{{end}}
+
+		<h4 class="ui top attached header">
+			앱 배포 관리 ({{.CountTotal}})
+			<div class="ui right">
+				<span class="text-grey tw-text-13">실행중 {{.CountRunning}} · 중지 {{.CountStopped}} · 실패 {{.CountFailed}}</span>
+			</div>
+		</h4>
+		<div class="ui attached table segment">
+			<table class="ui very basic table">
+				<thead>
+					<tr>
+						<th class="tw-w-1/12">상태</th>
+						<th>앱</th>
+						<th class="tw-w-1/6">배포</th>
+						<th class="tw-w-1/6">헬스</th>
+					</tr>
+				</thead>
+				<tbody>
+					{{range .Rows}}
+						<tr>
+							<td>{{template "company/admin_deploys_status" .State}}</td>
+							<td>
+								{{if .Repo}}
+									<a href="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .State.Owner}}/{{PathEscape .State.Repo}}">{{.State.Owner}}/{{.State.Repo}}</a>
+									<a class="muted tw-ml-2 tw-text-12" href="{{.Repo.Link}}">{{svg "octicon-link-external" 12}}</a>
+								{{else}}
+									{{.State.Owner}}/{{.State.Repo}}
+								{{end}}
+							</td>
+							<td class="tw-text-13">
+								{{if .State.UpdatedAt}}
+									{{DateUtils.TimeSince .State.UpdatedAt}}
+								{{else}}
+									<span class="text-grey">배포한 적 없음</span>
+								{{end}}
+							</td>
+							<td class="tw-text-13">
+								{{if eq .State.Health.State "up"}}
+									<span class="text-green">정상</span>
+								{{else if eq .State.Health.State "down"}}
+									<span class="text-red">응답 없음</span>
+								{{else}}
+									<span class="text-grey">—</span>
+								{{end}}
+								{{/* A health result with no timestamp is indistinguishable from a
+								     stale one, so always show when it was taken. */}}
+								{{if .State.Health.CheckedAt}}<span class="text-grey">· {{DateUtils.TimeSince .State.Health.CheckedAt}}</span>{{end}}
+							</td>
+						</tr>
+					{{else}}
+						<tr><td colspan="4" class="text-grey">아직 부서 저장소가 없습니다.</td></tr>
+					{{end}}
+				</tbody>
+			</table>
+		</div>
+	</div>
+<style>
+.company-deploys-attention-header { background: var(--color-error-bg) !important; }
+.company-deploy-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.company-deploy-state.running { color: var(--color-success-text); }
+.company-deploy-state.failed, .company-deploy-state.suspended { color: var(--color-error-text); }
+.company-deploy-state.queued, .company-deploy-state.building, .company-deploy-state.activating { color: var(--color-warning-text); }
+.company-deploy-state.stopped { color: var(--color-text-light-2); }
+</style>
+{{template "admin/layout_footer" .}}
