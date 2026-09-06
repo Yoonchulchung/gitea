@@ -124,6 +124,22 @@
 /* The row for a deploy that has not finished. Tinted rather than badged alone:
    it is the only row whose outcome is still unknown, and someone scanning the
    table should not have to read the status column to notice it. */
+/* The preflight report. Status first and fixed-width so the eye runs down the
+   column and stops at the one line that is not "확인됨". */
+.company-preflight-list { margin-top: 8px; }
+.company-preflight-row {
+	display: grid;
+	grid-template-columns: 5.5rem minmax(6rem, 10rem) 1fr;
+	gap: 8px;
+	padding: 6px 0;
+	border-top: 1px solid var(--color-secondary);
+	font-size: .82rem;
+	align-items: baseline;
+}
+.company-preflight-detail { white-space: pre-wrap; overflow-wrap: anywhere; }
+.company-preflight-ok { color: var(--color-success-text); }
+.company-preflight-warn { color: var(--color-warning-text); }
+.company-preflight-error { color: var(--color-error-text); }
 .company-attempt-live > td { background: var(--color-warning-bg); }
 .company-log-time {
 	color: var(--color-text-light-3);

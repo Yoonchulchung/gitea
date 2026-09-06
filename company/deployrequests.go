@@ -336,3 +336,37 @@ func RepoCreateForOrg(ctx *context.Context) {
 func RepoCreateForOrgPost(ctx *context.Context) {
 	webrepo.CreatePost(ctx)
 }
+
+// openDeployRequestFor returns this repository's request that is still open,
+// or nil.
+//
+// The deploy form is where someone goes to ask for something, and it said
+// nothing about the request they had already made. So an unanswered request
+// looked like no request, and the way to find out was to submit another —
+// which supersedes the first and moves it to the back of nobody's queue.
+func openDeployRequestFor(ctx *context.Context, deptOwner, deptName string) *issues_model.PullRequest {
+	centralOwner, centralName, err := centralDeployOwnerName()
+	if err != nil {
+		return nil
+	}
+	central, err := repo_model.GetRepositoryByOwnerAndName(ctx, centralOwner, centralName)
+	if err != nil {
+		return nil
+	}
+	var prs []*issues_model.PullRequest
+	if err := db.GetEngine(ctx).
+		Join("INNER", "issue", "issue.id = pull_request.issue_id").
+		Where("pull_request.base_repo_id = ?", central.ID).
+		And("pull_request.head_repo_id = ?", central.ID).
+		And("pull_request.head_branch LIKE ?", deployBranchPrefix(deptOwner, deptName)+"%").
+		And("issue.is_closed = ?", false).
+		OrderBy("pull_request.id DESC").
+		Limit(1).
+		Find(&prs); err != nil || len(prs) == 0 {
+		return nil
+	}
+	if err := prs[0].LoadIssue(ctx); err != nil {
+		return nil
+	}
+	return prs[0]
+}

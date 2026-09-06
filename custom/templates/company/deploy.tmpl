@@ -54,6 +54,51 @@
 			     The person supplies only the reason, which is required: an
 			     operator who is not a developer cannot judge "allow outbound
 			     access to api.foo.com?" on its own. See company/permissions.go. */}}
+			{{with .OpenRequest}}
+				{{/* An unanswered request looked like no request, and the only way
+				     to find out was to submit another — which supersedes the first
+				     and starts the wait over. */}}
+				<div class="ui warning message">
+					<div class="header">이미 제출한 요청이 관리자 승인을 기다리고 있습니다</div>
+					<div class="tw-mt-1">{{.Issue.Title}}</div>
+					{{with $.OpenRequestItems}}
+						<div class="tw-text-13 tw-mt-1">
+							요청한 항목:
+							{{range $i, $item := .}}{{if $i}}, {{end}}{{$item.Label}} ({{$item.Detail}}){{end}}
+						</div>
+					{{end}}
+					<div class="tw-text-13 tw-mt-2">
+						새 요청을 제출하면 이 요청은 자동으로 취소되고 처음부터 다시 기다리게 됩니다.
+						더 이상 필요 없다면 아래에서 취소해 주세요.
+					</div>
+					<form method="post" action="{{AppSubUrl}}/company/deploy-request/{{.ID}}/cancel" class="tw-mt-2 tw-flex tw-gap-2 tw-flex-wrap tw-items-center"
+						data-company-confirm="이 배포 요청을 취소합니다. 계속할까요?">
+						{{$.CsrfTokenHtml}}
+						<input type="hidden" name="org" value="{{$.Repository.OwnerName}}">
+						{{/* Required by the handler, and worth requiring: the admin
+						     watching this request disappear should be told why. */}}
+						<input type="text" name="reason" class="tw-flex-1" required autocomplete="off"
+							placeholder="취소 사유 (예: 코드를 더 고쳐야 해서 다시 요청하겠습니다)">
+						<button class="ui basic red button">요청 취소</button>
+					</form>
+				</div>
+			{{end}}
+
+			{{/* Asked before the request is written, rather than answered by a
+			     failed build after an admin has already approved it — see
+			     company/preflight.go. */}}
+			<div class="company-preflight">
+				<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
+					<button type="button" class="ui basic button" data-company-preflight="{{.PreflightLink}}">
+						{{svg "octicon-checklist" 14}} 배포 가능한지 검사
+					</button>
+					<span class="text-grey tw-text-12">
+						지금 코드로 배포가 되는지 미리 확인합니다. 아무것도 설치하거나 실행하지 않고, 몇 초 걸립니다.
+					</span>
+				</div>
+				<div class="tw-mt-2" data-company-preflight-result></div>
+			</div>
+
 			<div class="company-perm-request">
 				{{with .PermissionRequests}}
 					<div class="company-deploy-section-lbl">이번 배포에 필요한 승인</div>

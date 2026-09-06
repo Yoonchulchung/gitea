@@ -1461,6 +1461,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 		m.Post("/{editor_action:_app}/{verb}", reqRepoCodeWriter, company.AppControl)
 		m.Get("/deploy", company.DeployForm)
 		m.Post("/deploy", company.DeployPost)
+		m.Post("/deploy/check", company.DeployPreflight)
 		m.Get("/deploy/submit", company.Submitted)
 		m.Get("/deploy-status", company.DeployStatus)
 		m.Group("", func() {

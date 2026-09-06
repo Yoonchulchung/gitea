@@ -212,6 +212,14 @@ func DeployForm(ctx *context.Context) {
 	// or something unusable. They supply only the reason. See
 	// company/permissions.go.
 	deploySettings := SettingsFor(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name)
+	ctx.Data["PreflightLink"] = preflightLink(ctx.Repo.Repository)
+	// Shown so an unanswered request does not look like no request. Without it
+	// the only way to find out was to submit another, which supersedes the
+	// first and starts the wait again.
+	if open := openDeployRequestFor(ctx, ctx.Repo.Owner.Name, ctx.Repo.Repository.Name); open != nil {
+		ctx.Data["OpenRequest"] = open
+		ctx.Data["OpenRequestItems"] = LoadPermissionRequests(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name, open.ID)
+	}
 	ctx.Data["DownloadAllowed"] = deploySettings.Download.Policy == "allow"
 	ctx.Data["OutboundAllowed"] = allowedOutboundHosts(deploySettings)
 	ctx.Data["PermissionRequests"] = DetectPermissionRequests(

@@ -96,9 +96,10 @@ func resolveSet(ctx context.Context, requirements string) ([]resolvedPackage, er
 	cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + dir, "TMPDIR=" + dir, "LANG=C.UTF-8"}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// The output names the index and the local paths pip tried, so it goes
-		// to the log rather than to a caller that might show it.
-		log.Warn("company: resolving dependencies: %v: %s", err, strings.TrimSpace(string(out)))
-		return nil, err
+		// to the log in full and to the caller as a classified error.
+		text := strings.TrimSpace(string(out))
+		log.Warn("company: resolving dependencies: %v: %s", err, text)
+		return nil, &resolveError{output: text, unreachable: indexUnreachable(text)}
 	}
 
 	body2, err := os.ReadFile(reportFile)
@@ -221,4 +222,55 @@ func namedPackages(requirements string) map[string]bool {
 		}
 	}
 	return out
+}
+
+// resolveError separates "these versions cannot be installed" from "the
+// package index could not be reached".
+//
+// The difference decides what happens next. A version conflict is the
+// department's to fix and is worth stopping a request for. An unreachable
+// index is the platform's problem, and refusing to accept requests while it
+// lasts would punish the wrong people for it.
+type resolveError struct {
+	output      string
+	unreachable bool
+}
+
+func (e *resolveError) Error() string { return e.output }
+
+// indexUnreachable recognises a network failure in pip's own words. Erring
+// towards "unreachable" on anything ambiguous: mistaking a real conflict for
+// an outage costs a wasted approval, while mistaking an outage for a conflict
+// tells a department their code is broken when it is not.
+func indexUnreachable(output string) bool {
+	lower := strings.ToLower(output)
+	for _, marker := range []string{
+		"no matching distribution found",
+		"could not find a version that satisfies",
+		"resolutionimpossible",
+		"conflict is caused by",
+	} {
+		if strings.Contains(lower, marker) {
+			return false // pip resolved and said no
+		}
+	}
+	return true
+}
+
+// resolveFailureSummary is the part of pip's output worth showing.
+//
+// pip prints its whole search on failure, ending with the sentence that
+// matters. The tail is kept and the paths are stripped, because this reaches
+// a department and the rest names the server's directories.
+func resolveFailureSummary(output string) string {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	kept := make([]string, 0, 3)
+	for i := len(lines) - 1; i >= 0 && len(kept) < 3; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || strings.HasPrefix(line, "[notice]") {
+			continue
+		}
+		kept = append([]string{line}, kept...)
+	}
+	return RedactServerPaths(strings.Join(kept, "\n"))
 }
