@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // The real output that broke the sidebar: pip prints a Collecting/Downloading
@@ -84,4 +85,33 @@ func TestNoReleaseCausePointsAtDeploying(t *testing.T) {
 	cause := DepartmentCause(&AppState{Actual: AppStateFailed, Reason: ReasonNoRelease})
 	assert.Equal(t, "deploy", cause.Action)
 	assert.Contains(t, cause.Summary, "배포")
+}
+
+// Pressing start on an app whose build failed must not replace the reason it
+// failed. "There is nothing to run" is a consequence of that failure, and it
+// is the one message that tells nobody what to fix.
+func TestFailedStartKeepsTheDeployFailure(t *testing.T) {
+	withTempAppData(t)
+	require.NoError(t, MutateAppState("PO", "app", func(st *AppState) bool {
+		st.Actual = AppStateFailed
+		st.Reason = ReasonInstallFailed
+		st.Message = "ERROR: No matching distribution found for pydantic-core==2.14.1"
+		return true
+	}))
+
+	// No release exists, so this fails with errNoRelease.
+	require.Error(t, supervisorFor("PO", "app").Start())
+
+	st := LoadAppState("PO", "app")
+	assert.Equal(t, ReasonInstallFailed, st.Reason, "the actionable cause survives")
+	assert.Contains(t, DepartmentCause(st).Detail, "pydantic-core")
+}
+
+// An app nobody has ever deployed is a different situation, and gets a
+// message that says what to do rather than stating a fact.
+func TestNeverDeployedSaysWhatToDo(t *testing.T) {
+	cause := DepartmentCause(&AppState{Actual: AppStateFailed, Reason: ReasonNoRelease})
+	assert.Equal(t, "deploy", cause.Action)
+	assert.Contains(t, cause.Detail, "배포 요청")
+	assert.NotContains(t, cause.Summary, "성공적으로", "a bare statement of fact is not a next step")
 }

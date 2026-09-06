@@ -104,10 +104,14 @@ func DepartmentCause(st *AppState) *AppCause {
 			Detail:  "이전 버전은 그대로 동작하고 있습니다. 잠시 뒤 다시 배포해 주세요.",
 		}
 	case ReasonNoRelease:
+		// Only ever reached when no deploy has been attempted at all — a
+		// failed one keeps its own reason (company/appproc.go), because that
+		// is the thing to fix and this sentence is not.
 		return &AppCause{
-			Summary: "아직 성공적으로 배포된 버전이 없습니다",
-			Detail:  "배포 요청이 승인되고 빌드까지 끝나야 앱을 시작할 수 있습니다.",
-			Action:  "deploy", ActionLabel: "배포 요청하기",
+			Summary: "아직 배포되지 않았습니다",
+			Detail: "코드를 올린 뒤 [배포 요청]을 하면, 관리자 승인과 빌드가 끝나는 대로 " +
+				"앱이 자동으로 시작됩니다.",
+			Action: "deploy", ActionLabel: "배포 요청하기",
 		}
 	case ReasonContractViolation:
 		return &AppCause{

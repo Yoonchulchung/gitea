@@ -34,7 +34,7 @@ import (
 // errNoRelease means start was pressed before any deploy ever succeeded —
 // a different situation from an app that is broken, and the only one the
 // department fixes by deploying rather than by editing code.
-var errNoRelease = userErrorf("이 앱은 아직 성공적으로 배포된 적이 없습니다")
+var errNoRelease = userErrorf("실행할 수 있는 버전이 없습니다. 배포가 끝나야 시작할 수 있습니다.")
 
 const (
 	// stopGracePeriod is how long a process gets to finish in-flight
@@ -425,6 +425,15 @@ func (s *appSupervisor) startProcess() (int, error) {
 		// only if it was written for a department in the first place.
 		userMsg, _ := userMessage(startErr)
 		_ = MutateAppState(s.owner, s.repo, func(st *AppState) bool {
+			// A failed start must not erase why the last deploy failed.
+			// "There is no release to run" is a consequence of that failure,
+			// not a separate problem, and it is the one message that tells
+			// nobody what to fix — so pressing start on an app whose build
+			// broke would otherwise replace "openpyxl could not be
+			// installed" with a sentence carrying no next step.
+			if reason == ReasonNoRelease && st.Actual == AppStateFailed && st.Reason != "" {
+				return false
+			}
 			st.Actual = AppStateFailed
 			st.Reason = reason
 			st.Message = startErr.Error()
