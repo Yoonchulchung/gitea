@@ -91,7 +91,7 @@
 						     week or restarted a minute ago, which is the first thing
 						     anyone asks when something looks wrong. */}}
 						{{if and .Running .StartedAt}}
-							<span class="text-grey tw-text-12" data-tooltip-content="{{DateUtils.AbsoluteShort .StartedAt}}">{{DateUtils.TimeSince .StartedAt}} 시작</span>
+							<span class="text-grey tw-text-12" data-tooltip-content="{{DateUtils.AbsoluteShort .StartedAt}}">{{ctx.Locale.Tr "company.sidebar.started_ago" (DateUtils.TimeSince .StartedAt)}}</span>
 						{{end}}
 						<span class="company-app-state {{.Status}}" data-tooltip-content="{{ctx.Locale.Tr .StatusLabel}}">{{ctx.Locale.Tr .StatusLabel}}</span>
 						{{if .CanControl}}
@@ -101,14 +101,14 @@
 								     runaway app would mean nothing. */}}
 							{{else if .Running}}
 								<form method="post" action="{{.AppLink}}/stop" class="company-app-action"
-									data-company-confirm="앱을 중지하면 지금 사용 중인 사람들이 접속할 수 없게 됩니다. 계속할까요?">
+									data-company-confirm="{{ctx.Locale.Tr "company.app.stop_confirm"}}">
 									{{$.CsrfTokenHtml}}
-									<button class="ui compact small basic button">중지</button>
+									<button class="ui compact small basic button">{{ctx.Locale.Tr "company.app.stop"}}</button>
 								</form>
 							{{else if .CanStart}}
 								<form method="post" action="{{.AppLink}}/start" class="company-app-action">
 									{{$.CsrfTokenHtml}}
-									<button class="ui compact small basic button">시작</button>
+									<button class="ui compact small basic button">{{ctx.Locale.Tr "company.app.start"}}</button>
 								</form>
 							{{/* Nothing built yet: pressing start could only fail, so it is
 							     not offered. The sidebar panel says to deploy instead. */}}
@@ -122,7 +122,7 @@
 						{{if .CanRedeploy}}
 							<form method="post" action="{{.AppLink}}/redeploy" class="company-app-action">
 								{{$.CsrfTokenHtml}}
-								<button class="ui compact small basic button">다시 배포</button>
+								<button class="ui compact small basic button">{{ctx.Locale.Tr "company.app.redeploy"}}</button>
 							</form>
 						{{end}}
 					{{end}}

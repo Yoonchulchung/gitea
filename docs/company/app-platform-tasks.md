@@ -229,7 +229,8 @@
 - [x] i18n 1단계 — 상태 배지·실패 원인·이력 어휘를 로케일 키로 (en-US/ko-KR). AppCause 는 키(고정문)와
   데이터(관리자 입력·pip 출력)를 분리. **남은 것: 페이지별 템플릿 산문과 Go 플래시 메시지** — 규모가
   커서(약 500곳) 화면 단위로 이어서 진행
-- [ ] i18n 2단계 — 템플릿 산문 (app.tmpl, deploy.tmpl, admin\_\*.tmpl, 사이드바)
+- [x] i18n 2단계 일부 — app.tmpl 전체(51키), 사이드바·헤더(8키), history_table, 대시보드 경고,
+  정책 탭 신규 문구. **남음**: deploy.tmpl, app_history/app_logs, admin\_\* 산문
 - [ ] i18n 3단계 — Go 플래시·userError 메시지 (audienceError 를 키 기반으로)
 
 ## 6. 제어 + 부서 화면
@@ -282,22 +283,33 @@
 - [x] merge 시 승인분 `apps.yml` 커밋 (`company/permissions_commit.go`) — 작성자=관리자이므로 **커밋 자체가 감사 기록**, 낙관적 재시도 3회, 커밋 후 인메모리 정책 즉시 갱신
   - [x] 파싱 불가한 기존 `apps.yml`은 **덮어쓰지 않고 거부** (관리자가 손으로 쓴 내용을 날리지 않는다)
   - [x] 기동 시 `LoadAppsConfigFromRepo` — 재시작해도 승인된 정책이 유지된다 (없으면 전 앱이 조용히 기본값으로 되돌아간다)
-- [ ] 정책 탭 `/-/admin/company-deploys/policy` — 허용 패키지 전체 목록, 대기 요청 모음, git log 링크
+- [x] 정책 탭 — `/-/admin/company-packages` 가 그 역할 (허용 패키지 전체 목록 + git log 링크는
+  기존, **승인 대기 모음**을 추가). 열린 요청 전부를 오래된 것부터 나열하고 검토 화면으로 연결 —
+  이전에는 각 org 대시보드에만 있어 아무도 안 여는 org 의 요청이 방치될 수 있었다
 - [x] 관리자 navbar 오버라이드 — 두 링크(배포 관리 + 기존 company-activity). `custom/templates/admin/` 첫 오버라이드이고, **기존 `company-activity`는 지금까지 링크가 아예 없어 URL 직접 입력으로만 접근 가능**했다. `patches.md` 기록 완료
 - [x] 테스트: 감지(미승인 패키지만·넓힐 때만·근거 있을 때만), 반영(`allowExtra`·거부는 무시·PEP 503 중복 방지), PR id 키잉, 권한 파일이 앱 목록에 안 섞이는지
 - [ ] 검증: 거부 항목이 부서 화면에 사유와 함께 보이고 요청으로 이어지는지 (실제 브라우저)
 
 ## 8. 송신 브로커 (외부 통신 필요 부서가 생길 때)
 
-- [ ] 브로커 엔드포인트 — 호스트·메서드·경로 허용 목록, 관리자 자격증명 주입, 전수 감사 로그
-- [ ] `network.mode: broker` 배선 + 부서용 호출 규약 문서화 (3줄 정형 코드)
-- [ ] `open` 모드 관리자 경고 표시
+- [x] 브로커 엔드포인트 (`company/broker.go`) — 앱별 `run/broker.sock` 리스너, 호스트·메서드·경로
+  매칭(대소문자 무시, `*` 는 명시된 프리픽스만), **거부 포함 전수 감사** `logs/broker.log`,
+  밖으로는 항상 https. 정책은 요청마다 재조회 — 관리자 변경이 다음 호출에 적용된다
+  - [ ] 관리자 자격증명 주입 — 의도적으로 미룸: 비밀을 apps.yml(git)에 둘 수 없어 envstore 패턴의
+    암호화 저장소 + 관리 UI가 필요하다 (app-platform.md 에 기록)
+- [x] `network.mode: broker` 배선 — 앱 시작 시 브로커 기동(실패하면 시작도 실패), 중지 시 함께 종료,
+  `BROKER_SOCKET` 환경변수 주입. 규약 3줄(httpx UDS, URL 은 `http://`)은 app-platform.md 에 문서화 —
+  `https://` 로 쓰면 클라이언트가 브로커 자체에 TLS 를 시도한다
+- [x] `open` 모드 관리자 경고 — 대시보드 행에 '외부 통신 제한 없음' 빨간 표시. 아무도 못 보는 예외는
+  예외가 아니게 되기 때문
 
 ## 9. 마무리
 
 - [ ] 운영자 리허설 — **비개발자가 셸·YAML·git 없이**: 승인, 거부(사유), 한도 상향, 재시작, 실패 원인 파악. **하나라도 파일을 열어야 하면 설계 결함**
-- [ ] 업스트림 머지 리허설 — 드리프트 검사 스크립트 실행 (`custom/templates` 전 파일 대조)
-- [ ] `architecture.md`에 이 플랫폼 반영 (push mirror 서술 교체)
+- [x] 드리프트 검사 스크립트 (`docs/company/scripts/check-template-drift.sh`) — merge-base 이후
+  업스트림이 바꾼 원본 중 우리가 오버라이드한 것을 나열. 실행해 보니 다음 머지에서 손볼 2건을
+  미리 찾아냈다 (`repo/commit_page.tmpl`, `repo/issue/view_content.tmpl` — 아직 머지 전이라 현재는 정상)
+- [x] `architecture.md` 갱신 — push mirror 서술을 실제 흐름(빌드→스왑→`/apps/` 프록시)으로 교체
 - [ ] 전 구간 E2E — 편집→요청→승인→배포→`/apps/` 응답→배지 "배포됨"
 
 ---

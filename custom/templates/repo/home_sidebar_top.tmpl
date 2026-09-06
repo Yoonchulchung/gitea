@@ -129,20 +129,20 @@
 		     about one. */}}
 		<div class="flex-relaxed-list company-app-panel">
 			<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
-				<span>앱</span>
-				<span class="text-grey tw-text-12 tw-font-normal">아직 배포되지 않음</span>
+				<span>{{ctx.Locale.Tr "company.sidebar.app"}}</span>
+				<span class="text-grey tw-text-12 tw-font-normal">{{ctx.Locale.Tr "company.sidebar.not_deployed"}}</span>
 			</div>
 			{{if .CanControl}}
 				<div class="tw-flex tw-gap-2 tw-flex-wrap">
-					<a class="ui compact tiny basic button" href="{{.AppLink}}">앱 관리</a>
-					<a class="ui compact tiny basic button" href="{{.DeployLink}}">배포 요청하기</a>
+					<a class="ui compact tiny basic button" href="{{.AppLink}}">{{ctx.Locale.Tr "company.app.title"}}</a>
+					<a class="ui compact tiny basic button" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_deploy"}}</a>
 				</div>
 			{{end}}
 		</div>
 	{{else}}
 	<div class="flex-relaxed-list company-app-panel">
 		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
-			<span>앱</span>
+			<span>{{ctx.Locale.Tr "company.sidebar.app"}}</span>
 			<span class="tw-flex tw-items-center tw-gap-2">
 				{{/* Beside the state rather than inside the message: "it broke" and
 				     "it broke four minutes ago" are both about the state, and this
@@ -151,7 +151,7 @@
 					<span class="text-grey tw-text-12 tw-font-normal" data-tooltip-content="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</span>
 				{{end}}{{end}}
 				{{if and $.CompanyApp.Running $.CompanyApp.StartedAt}}
-					<span class="text-grey tw-text-12 tw-font-normal" data-tooltip-content="{{DateUtils.AbsoluteShort $.CompanyApp.StartedAt}}">{{DateUtils.TimeSince $.CompanyApp.StartedAt}} 시작</span>
+					<span class="text-grey tw-text-12 tw-font-normal" data-tooltip-content="{{DateUtils.AbsoluteShort $.CompanyApp.StartedAt}}">{{ctx.Locale.Tr "company.sidebar.started_ago" (DateUtils.TimeSince $.CompanyApp.StartedAt)}}</span>
 				{{end}}
 				<span class="company-app-state {{$.CompanyApp.Status}}">{{ctx.Locale.Tr $.CompanyApp.StatusLabel}}</span>
 			</span>
@@ -169,10 +169,10 @@
 		{{end}}
 
 		<a class="flex-text-block muted" href="{{AppSubUrl}}{{.AppURL}}" target="_blank" rel="noopener">
-			{{svg "octicon-link-external"}} 앱 열기
+			{{svg "octicon-link-external"}} {{ctx.Locale.Tr "company.sidebar.open_app"}}
 		</a>
 
-		<div class="repo-home-sidebar-header flex-text-block"><span>앱 권한</span></div>
+		<div class="repo-home-sidebar-header flex-text-block"><span>{{ctx.Locale.Tr "company.sidebar.perms"}}</span></div>
 		{{range .Rows}}
 			<div class="company-perm-row {{.State}}">
 				<span class="company-perm-label">{{.Label}}</span>
@@ -187,18 +187,18 @@
 			{{/* Usage next to the limit, not the limit alone — otherwise nobody
 			     has grounds to judge whether to ask for more. */}}
 			<div class="company-perm-row allowed">
-				<span class="company-perm-label">메모리</span>
+				<span class="company-perm-label">{{ctx.Locale.Tr "company.sidebar.memory"}}</span>
 				{{/* A dash, not a zero, where nothing measured it. */}}
-				<span class="company-perm-value">{{if .MemoryMeasured}}{{.MemoryLimit}}MB 중 {{.MemoryUsed}}MB 사용{{else}}한도 {{.MemoryLimit}}MB{{end}}</span>
+				<span class="company-perm-value">{{if .MemoryMeasured}}{{ctx.Locale.Tr "company.sidebar.memory_used" .MemoryUsed .MemoryLimit}}{{else}}{{ctx.Locale.Tr "company.sidebar.memory_limit" .MemoryLimit}}{{end}}</span>
 			</div>
 		{{end}}
 
 		<div class="tw-flex tw-gap-2 tw-mt-2 tw-flex-wrap">
-			<a class="ui tiny basic button" href="{{.AppLink}}">앱 관리</a>
+			<a class="ui tiny basic button" href="{{.AppLink}}">{{ctx.Locale.Tr "company.app.title"}}</a>
 			{{/* Straight to the logs from the panel that just said something is
 			     wrong — the next question after "why" is always "show me". */}}
-			{{if .CanControl}}<a class="ui tiny basic button" href="{{.AppLink}}/logs">로그</a>{{end}}
-			<a class="ui tiny basic button" href="{{.DeployLink}}">권한 요청하기</a>
+			{{if .CanControl}}<a class="ui tiny basic button" href="{{.AppLink}}/logs">{{ctx.Locale.Tr "company.app.logs"}}</a>{{end}}
+			<a class="ui tiny basic button" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_permission"}}</a>
 		</div>
 	</div>
 	{{end}}

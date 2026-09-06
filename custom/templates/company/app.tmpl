@@ -4,7 +4,7 @@
 	<div class="ui container">
 
 		<h2 class="tw-flex tw-items-center tw-gap-3">
-			앱 관리
+			{{ctx.Locale.Tr "company.app.title"}}
 			<span class="company-app-state {{.App.Actual}}">{{ctx.Locale.Tr .StatusLabel}}</span>
 		</h2>
 
@@ -32,51 +32,50 @@
 			     failed while the previous version kept serving — so the app looks
 			     fine and their change is simply not live. */}}
 			<div class="ui warning message">
-				<div class="header">승인이 필요해 새 버전이 적용되지 못했습니다</div>
+				<div class="header">{{ctx.Locale.Tr "company.app.blocked_header"}}</div>
 				<div class="tw-mt-1">
-					필요한 패키지: <span class="tw-font-mono">{{StringUtils.Join .MissingPackages ", "}}</span>
+					{{ctx.Locale.Tr "company.app.blocked_packages"}}: <span class="tw-font-mono">{{StringUtils.Join .MissingPackages ", "}}</span>
 				</div>
 				<div class="tw-text-13 tw-mt-1">
-					직접 적은 패키지가 아니라, 그 패키지들이 필요로 하는 것입니다.
-					지금은 이전 버전이 계속 실행 중이라 앱은 정상으로 보이지만, 최근 변경은 반영되지 않았습니다.
+					{{ctx.Locale.Tr "company.app.blocked_explain"}}
 				</div>
-				<a class="ui small primary button tw-mt-2" href="{{.DeployLink}}">승인 요청하기</a>
+				<a class="ui small primary button tw-mt-2" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_approval"}}</a>
 			</div>
 		{{end}}
 		<div class="ui segment">
 			<div class="tw-flex tw-items-center tw-gap-3 tw-flex-wrap">
-				<a class="ui basic button" href="{{.AppURL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} 앱 열어보기</a>
-				{{if .CanControl}}<a class="ui basic button" href="{{.AppLink}}/logs">{{svg "octicon-log" 14}} 로그</a>{{end}}
-				{{if .CanControl}}<a class="ui basic button" href="{{.AppLink}}/history">{{svg "octicon-history" 14}} 배포 이력</a>{{end}}
+				<a class="ui basic button" href="{{.AppURL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} {{ctx.Locale.Tr "company.app.open"}}</a>
+				{{if .CanControl}}<a class="ui basic button" href="{{.AppLink}}/logs">{{svg "octicon-log" 14}} {{ctx.Locale.Tr "company.app.logs"}}</a>{{end}}
+				{{if .CanControl}}<a class="ui basic button" href="{{.AppLink}}/history">{{svg "octicon-history" 14}} {{ctx.Locale.Tr "company.app.deploy_history"}}</a>{{end}}
 				<div class="tw-flex-1"></div>
 				{{if .CanControl}}
 					{{if eq .App.Actual "suspended"}}
 						{{/* Deliberately no start button: an app an administrator stopped
 						     stays stopped, or protecting the platform would mean nothing.
 						     The reason is in the message above so they know who to ask. */}}
-						<span class="text-grey">관리자가 정지시킨 앱은 부서에서 다시 시작할 수 없습니다.</span>
+						<span class="text-grey">{{ctx.Locale.Tr "company.app.suspended_note"}}</span>
 					{{else if eq .App.Actual "running"}}
-						<form method="post" action="{{.AppLink}}/restart">{{.CsrfTokenHtml}}<button class="ui button">재시작</button></form>
-						<form method="post" action="{{.AppLink}}/stop" data-company-confirm="앱을 중지하면 지금 사용 중인 사람들이 접속할 수 없게 됩니다. 계속할까요?">
-							{{.CsrfTokenHtml}}<button class="ui button">중지</button>
+						<form method="post" action="{{.AppLink}}/restart">{{.CsrfTokenHtml}}<button class="ui button">{{ctx.Locale.Tr "company.app.restart"}}</button></form>
+						<form method="post" action="{{.AppLink}}/stop" data-company-confirm="{{ctx.Locale.Tr "company.app.stop_confirm"}}">
+							{{.CsrfTokenHtml}}<button class="ui button">{{ctx.Locale.Tr "company.app.stop"}}</button>
 						</form>
 					{{else if .App.HasRelease}}
-						<form method="post" action="{{.AppLink}}/start">{{.CsrfTokenHtml}}<button class="ui primary button">시작</button></form>
+						<form method="post" action="{{.AppLink}}/start">{{.CsrfTokenHtml}}<button class="ui primary button">{{ctx.Locale.Tr "company.app.start"}}</button></form>
 					{{else}}
 						{{/* Nothing built yet — a start button here could only fail. */}}
-						<a class="ui primary button" href="{{.DeployLink}}">배포 요청하기</a>
+						<a class="ui primary button" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_deploy"}}</a>
 					{{end}}
 					{{if .App.SHA}}
 						<form method="post" action="{{.AppLink}}/redeploy">
-							{{.CsrfTokenHtml}}<button class="ui basic button">다시 배포</button>
+							{{.CsrfTokenHtml}}<button class="ui basic button">{{ctx.Locale.Tr "company.app.redeploy"}}</button>
 						</form>
 					{{end}}
 					{{/* Only offered when there is somewhere to go: a button that can
 					     only fail is worse than no button. */}}
 					{{if .Previous.Exists}}
 						<form method="post" action="{{.AppLink}}/rollback"
-							data-company-confirm="지금 실행 중인 버전을 내리고 {{if .Previous.SHA}}{{ShortSha .Previous.SHA}}{{else}}그 이전{{end}} 버전으로 되돌립니다. 계속할까요?">
-							{{.CsrfTokenHtml}}<button class="ui basic button">이전 버전으로</button>
+							data-company-confirm="{{ctx.Locale.Tr "company.app.rollback_confirm" (Iif .Previous.SHA (ShortSha .Previous.SHA) (ctx.Locale.Tr "company.app.rollback_prior"))}}">
+							{{.CsrfTokenHtml}}<button class="ui basic button">{{ctx.Locale.Tr "company.app.rollback"}}</button>
 						</form>
 					{{end}}
 				{{end}}
@@ -87,37 +86,36 @@
 			{{if .Running.Exists}}
 				<div class="tw-mt-3 tw-pt-3 tw-border-t tw-text-13 tw-flex tw-gap-6 tw-flex-wrap">
 					<span>
-						<span class="text-grey">실행 중인 버전</span>
-						<span class="tw-font-mono tw-ml-2">{{if .Running.SHA}}{{ShortSha .Running.SHA}}{{else}}알 수 없음{{end}}</span>
-						<span class="text-grey tw-ml-2" title="{{DateUtils.AbsoluteShort .Running.BuiltAt}}">{{DateUtils.TimeSince .Running.BuiltAt}} 배포</span>
+						<span class="text-grey">{{ctx.Locale.Tr "company.app.running_version"}}</span>
+						<span class="tw-font-mono tw-ml-2">{{if .Running.SHA}}{{ShortSha .Running.SHA}}{{else}}{{ctx.Locale.Tr "company.app.version_unknown"}}{{end}}</span>
+						<span class="text-grey tw-ml-2" title="{{DateUtils.AbsoluteShort .Running.BuiltAt}}">{{ctx.Locale.Tr "company.app.deployed_ago" (DateUtils.TimeSince .Running.BuiltAt)}}</span>
 					</span>
 					{{if .Previous.Exists}}
 						<span>
-							<span class="text-grey">되돌릴 버전</span>
-							<span class="tw-font-mono tw-ml-2">{{if .Previous.SHA}}{{ShortSha .Previous.SHA}}{{else}}알 수 없음{{end}}</span>
-							<span class="text-grey tw-ml-2" title="{{DateUtils.AbsoluteShort .Previous.BuiltAt}}">{{DateUtils.TimeSince .Previous.BuiltAt}} 배포</span>
+							<span class="text-grey">{{ctx.Locale.Tr "company.app.rollback_target"}}</span>
+							<span class="tw-font-mono tw-ml-2">{{if .Previous.SHA}}{{ShortSha .Previous.SHA}}{{else}}{{ctx.Locale.Tr "company.app.version_unknown"}}{{end}}</span>
+							<span class="text-grey tw-ml-2" title="{{DateUtils.AbsoluteShort .Previous.BuiltAt}}">{{ctx.Locale.Tr "company.app.deployed_ago" (DateUtils.TimeSince .Previous.BuiltAt)}}</span>
 						</span>
 					{{else}}
-						<span class="text-grey">되돌릴 이전 버전이 없습니다</span>
+						<span class="text-grey">{{ctx.Locale.Tr "company.app.no_rollback_target"}}</span>
 					{{end}}
 				</div>
 			{{end}}
 		</div>
 
-		<h3>환경변수</h3>
+		<h3>{{ctx.Locale.Tr "company.app.env_header"}}</h3>
 		<div class="ui segment">
 			<p class="text-grey tw-text-13">
-				데이터베이스 주소나 API 키처럼 코드에 넣으면 안 되는 값을 여기에 저장합니다.
-				값은 암호화되어 저장되고, 저장한 뒤에는 다시 보이지 않습니다.
-				<strong>바꾼 값은 앱을 재시작해야 적용됩니다.</strong>
+				{{ctx.Locale.Tr "company.app.env_explain"}}
+				<strong>{{ctx.Locale.Tr "company.app.env_restart_note"}}</strong>
 			</p>
 			{{if .EnvError}}
 				<div class="ui negative message">{{.EnvError}}</div>
 			{{end}}
 			{{if .EnvRestartRequired}}
 				<div class="ui warning message">
-					저장한 환경변수가 아직 적용되지 않았습니다.
-					<form method="post" action="{{.AppLink}}/restart" class="tw-inline">{{.CsrfTokenHtml}}<button class="ui tiny primary button">지금 재시작</button></form>
+					{{ctx.Locale.Tr "company.app.env_pending"}}
+					<form method="post" action="{{.AppLink}}/restart" class="tw-inline">{{.CsrfTokenHtml}}<button class="ui tiny primary button">{{ctx.Locale.Tr "company.app.restart_now"}}</button></form>
 				</div>
 			{{end}}
 			{{if .CanControl}}
@@ -128,20 +126,20 @@
 					<table class="ui very basic table company-env-table">
 						<thead>
 							<tr>
-								<th class="company-env-select"><input type="checkbox" data-company-env-all aria-label="전체 선택"></th>
-								<th>이름</th>
-								<th>값</th>
+								<th class="company-env-select"><input type="checkbox" data-company-env-all aria-label="{{ctx.Locale.Tr "company.app.env_select_all"}}"></th>
+								<th>{{ctx.Locale.Tr "company.app.env_name"}}</th>
+								<th>{{ctx.Locale.Tr "company.app.env_value"}}</th>
 							</tr>
 						</thead>
 						<tbody data-company-env-rows>
 							{{range $i, $name := .EnvNames}}
 								<tr>
-									<td class="company-env-select"><input type="checkbox" name="env_delete_{{$i}}" value="1" data-company-env-delete aria-label="{{$name}} 삭제"></td>
+									<td class="company-env-select"><input type="checkbox" name="env_delete_{{$i}}" value="1" data-company-env-delete aria-label="{{ctx.Locale.Tr "company.app.env_delete" $name}}"></td>
 									<td><input type="text" name="env_name_{{$i}}" value="{{$name}}" readonly></td>
 									{{/* Blank means "leave it alone" — the same (변경하지 않음)
 									     convention as the AI settings screen, so nobody has to
 									     retype a secret they cannot see. */}}
-									<td><input type="password" name="env_value_{{$i}}" placeholder="(변경하지 않음)" autocomplete="new-password"></td>
+									<td><input type="password" name="env_value_{{$i}}" placeholder="{{ctx.Locale.Tr "company.app.env_unchanged"}}" autocomplete="new-password"></td>
 								</tr>
 							{{end}}
 							{{/* An unsaved row is selectable too: it is the row most likely
@@ -150,9 +148,9 @@
 							     there is nothing on the server to delete — so the JS removes
 							     it from the form instead. */}}
 							<tr>
-								<td class="company-env-select"><input type="checkbox" data-company-env-delete data-company-env-new aria-label="이 행 선택"></td>
+								<td class="company-env-select"><input type="checkbox" data-company-env-delete data-company-env-new aria-label="{{ctx.Locale.Tr "company.app.env_select_row"}}"></td>
 								<td><input type="text" name="env_name_new0" placeholder="NEW_VARIABLE"></td>
-								<td><input type="password" name="env_value_new0" placeholder="값" autocomplete="new-password"></td>
+								<td><input type="password" name="env_value_new0" placeholder="{{ctx.Locale.Tr "company.app.env_value"}}" autocomplete="new-password"></td>
 							</tr>
 						</tbody>
 					</table>
@@ -160,21 +158,21 @@
 					     name so a new row cannot collide with one already on the page. */}}
 					<template data-company-env-template>
 						<tr>
-							<td class="company-env-select"><input type="checkbox" data-company-env-delete data-company-env-new aria-label="이 행 선택"></td>
+							<td class="company-env-select"><input type="checkbox" data-company-env-delete data-company-env-new aria-label="{{ctx.Locale.Tr "company.app.env_select_row"}}"></td>
 							<td><input type="text" data-name-prefix="env_name_" placeholder="NEW_VARIABLE"></td>
-							<td><input type="password" data-name-prefix="env_value_" placeholder="값" autocomplete="new-password"></td>
+							<td><input type="password" data-name-prefix="env_value_" placeholder="{{ctx.Locale.Tr "company.app.env_value"}}" autocomplete="new-password"></td>
 						</tr>
 					</template>
 					<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
-						<button class="ui primary button">저장</button>
-						<button class="ui basic button" data-company-env-add type="button">{{svg "octicon-plus" 14}} 항목 추가</button>
+						<button class="ui primary button">{{ctx.Locale.Tr "save"}}</button>
+						<button class="ui basic button" data-company-env-add type="button">{{svg "octicon-plus" 14}} {{ctx.Locale.Tr "company.app.env_add"}}</button>
 						<div class="tw-flex-1"></div>
-						<button class="ui basic red button" data-company-env-remove>선택한 항목 삭제</button>
+						<button class="ui basic red button" data-company-env-remove>{{ctx.Locale.Tr "company.app.env_remove_selected"}}</button>
 					</div>
 				</form>
 			{{end}}
 			{{if .EnvHistory}}
-				<h4 class="tw-mt-4">변경 이력</h4>
+				<h4 class="tw-mt-4">{{ctx.Locale.Tr "company.app.env_history"}}</h4>
 				{{/* Which keys changed and when, never the values. A secret's rotation
 				     time is something an incident investigation regularly needs. */}}
 				<table class="ui very basic table tw-text-13">
@@ -184,8 +182,8 @@
 								<td class="tw-w-1/4">{{DateUtils.TimeSince .At}}</td>
 								<td class="tw-w-1/4">{{.Actor}}</td>
 								<td>
-									{{if .Set}}변경: {{StringUtils.Join .Set ", "}}{{end}}
-									{{if .Unset}}삭제: {{StringUtils.Join .Unset ", "}}{{end}}
+									{{if .Set}}{{ctx.Locale.Tr "company.app.env_changed"}}: {{StringUtils.Join .Set ", "}}{{end}}
+									{{if .Unset}}{{ctx.Locale.Tr "company.app.env_removed"}}: {{StringUtils.Join .Unset ", "}}{{end}}
 								</td>
 							</tr>
 						{{end}}
@@ -194,7 +192,7 @@
 			{{end}}
 		</div>
 
-		<h3>권한 현황</h3>
+		<h3>{{ctx.Locale.Tr "company.app.perm_header"}}</h3>
 		<div class="ui segment">
 			{{/* Denied and pending first in the reader's eye, because those are the
 			     lines that answer "why doesn't my app work" — a panel listing only
@@ -206,9 +204,9 @@
 						<tr>
 							<td class="tw-w-1/6">{{.Label}}</td>
 							<td class="tw-w-1/6">
-								{{if eq .State "allowed"}}<span class="company-app-state running">허용됨</span>
-								{{else if eq .State "pending"}}<span class="company-app-state building">승인 대기</span>
-								{{else}}<span class="company-app-state failed">차단됨</span>{{end}}
+								{{if eq .State "allowed"}}<span class="company-app-state running">{{ctx.Locale.Tr "company.app.perm_allowed"}}</span>
+								{{else if eq .State "pending"}}<span class="company-app-state building">{{ctx.Locale.Tr "company.app.perm_pending"}}</span>
+								{{else}}<span class="company-app-state failed">{{ctx.Locale.Tr "company.app.perm_denied"}}</span>{{end}}
 							</td>
 							<td>
 								{{.Value}}
@@ -224,28 +222,27 @@
 				     are different answers, and a screen that cannot tell them apart
 				     sends the department to ask an administrator either way. */}}
 				<div class="ui info message tw-mt-2">
-					<div class="header">관리자 승인을 기다리는 요청</div>
+					<div class="header">{{ctx.Locale.Tr "company.app.pending_header"}}</div>
 					<table class="ui very basic table tw-text-13 tw-mt-1">
 						<tbody>
 							{{range .PendingRequests}}
 								<tr>
 									<td class="tw-w-1/4">{{.Label}}</td>
-									<td>{{.Detail}}{{if .Reason}}<span class="text-grey tw-text-12 tw-block">사유: {{.Reason}}</span>{{end}}</td>
+									<td>{{.Detail}}{{if .Reason}}<span class="text-grey tw-text-12 tw-block">{{ctx.Locale.Tr "company.app.pending_reason"}}: {{.Reason}}</span>{{end}}</td>
 								</tr>
 							{{end}}
 						</tbody>
 					</table>
 				</div>
 			{{else}}
-				<a class="ui basic button tw-mt-2" href="{{.DeployLink}}">권한 요청하기</a>
+				<a class="ui basic button tw-mt-2" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_permission"}}</a>
 			{{end}}
 		</div>
 
-		<h3>접근 권한</h3>
+		<h3>{{ctx.Locale.Tr "company.app.access_header"}}</h3>
 		<div class="ui segment">
 			<p class="text-grey tw-text-13">
-				지금 이 앱을 누가 열어볼 수 있는지 정합니다. 범위를 <strong>좁히는 것</strong>은 바로 적용되고,
-				<strong>넓히는 것</strong>은 더 많은 사람에게 자료가 보이게 되므로 배포 요청으로 승인을 받아야 합니다.
+				{{ctx.Locale.Tr "company.app.access_explain"}}
 			</p>
 			{{/* Each option says what happens, not what it is called: the person
 			     choosing is deciding an outcome, not picking a keyword. */}}
@@ -261,17 +258,17 @@
 								<strong>{{.Label}}</strong>
 								<span class="text-grey tw-ml-2">— {{.Explain}}</span>
 								{{if .NeedsRequest}}
-									<a class="tw-ml-2 tw-text-13" href="{{$.DeployLink}}">승인이 필요합니다 →</a>
+									<a class="tw-ml-2 tw-text-13" href="{{$.DeployLink}}">{{ctx.Locale.Tr "company.app.access_needs_request"}}</a>
 								{{end}}
 							</span>
 						</label>
 					</div>
 				{{end}}
-				{{if .CanControl}}<button class="ui primary button tw-mt-2">적용</button>{{end}}
+				{{if .CanControl}}<button class="ui primary button tw-mt-2">{{ctx.Locale.Tr "company.app.apply"}}</button>{{end}}
 			</form>
 		</div>
 
-		<h3>최근 이력</h3>
+		<h3>{{ctx.Locale.Tr "company.app.recent_history"}}</h3>
 		<div class="ui segment">
 			{{/* Words instead of state-machine vocabulary — see
 			     custom/templates/company/history_table.tmpl. No raw codes here:
