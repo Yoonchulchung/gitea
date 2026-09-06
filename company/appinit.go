@@ -22,6 +22,13 @@ func InitAppPlatform(ctx context.Context) {
 	// packages an admin approved last week stop being installable.
 	LoadAppsConfigFromRepo(ctx)
 
+	if available, detail := PythonStatus(); !available {
+		// Every department app is a Python app, so this stops the platform
+		// dead. Said at boot rather than discovered through the first deploy,
+		// where it would surface as a package problem and send a department
+		// editing requirements.txt against it.
+		log.Error("company: no usable Python — no app can be built: %s", detail)
+	}
 	if available, detail := SandboxStatus(); !available {
 		// Not fatal here — whether an app may start unsandboxed is decided per
 		// start (appsandbox.go). But an operator has to learn this at boot,

@@ -114,6 +114,12 @@ func departmentCause(st *AppState) *AppCause {
 			// it is department-safe by definition.
 			Detail: st.UserMessage,
 		}
+	case ReasonNoPython:
+		return &AppCause{
+			Summary:   "서버에 파이썬이 준비되어 있지 않습니다",
+			Detail:    "부서에서 고칠 수 있는 문제가 아닙니다. 관리자에게 알려 주세요.",
+			AdminHint: "python3 과 python3-venv 를 설치하거나, [company] PYTHON_PATH 로 경로를 지정하세요. 이 상태에서는 어떤 앱도 빌드되지 않습니다.",
+		}
 	case ReasonSandboxUnavailable:
 		return &AppCause{
 			Summary:   "서버 설정 문제로 앱을 안전하게 실행할 수 없습니다",

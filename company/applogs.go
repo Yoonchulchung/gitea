@@ -33,10 +33,15 @@ const (
 	logSearchTimeout = 5 * time.Second
 )
 
-// LogLine is one line of app output.
+// LogLine is one line of output.
 type LogLine struct {
 	Text string
 	File string
+	// Build marks a line that came from a deploy rather than from the running
+	// app. Both matter and both are kept, but "pip could not find that
+	// version" and "the app raised an exception" are different kinds of
+	// answer and mixing them silently makes neither readable.
+	Build bool
 }
 
 // LogQuery is a search over an app's logs.
@@ -104,7 +109,7 @@ func ReadAppLogs(owner, repo string, query LogQuery) ([]LogLine, bool, error) {
 				ring = ring[1:]
 				truncated = true
 			}
-			ring = append(ring, LogLine{Text: line, File: name})
+			ring = append(ring, LogLine{Text: line, File: name, Build: strings.HasPrefix(name, buildLogName)})
 		}
 		_ = f.Close()
 		if truncated && time.Now().After(deadline) {
@@ -114,28 +119,45 @@ func ReadAppLogs(owner, repo string, query LogQuery) ([]LogLine, bool, error) {
 	return ring, truncated, nil
 }
 
-// rotatedLogFiles lists an app's log files oldest first: app.log.5 … app.log.1,
-// then the live app.log.
+// rotatedLogFiles lists an app's log files oldest first.
+//
+// Build output comes first as a block, then the running app's. They are
+// separate files with no shared clock, so interleaving them would imply an
+// ordering that is not there; a reader looking for why a deploy failed wants
+// the build half anyway, and it is at the top.
 func rotatedLogFiles(dir string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
-	var rotated []string
-	live := ""
+	var buildRotated, appRotated []string
+	buildLive, appLive := "", ""
 	for _, e := range entries {
 		name := e.Name()
+		path := filepath.Join(dir, name)
 		switch {
-		case name == "app.log":
-			live = filepath.Join(dir, name)
-		case strings.HasPrefix(name, "app.log."):
-			rotated = append(rotated, filepath.Join(dir, name))
+		case name == buildLogName:
+			buildLive = path
+		case strings.HasPrefix(name, buildLogName+"."):
+			buildRotated = append(buildRotated, path)
+		case name == appLogName:
+			appLive = path
+		case strings.HasPrefix(name, appLogName+"."):
+			appRotated = append(appRotated, path)
 		}
 	}
 	// Higher suffix means older, so descending order puts the oldest first.
-	slices.SortFunc(rotated, func(a, b string) int { return strings.Compare(b, a) })
-	if live != "" {
-		rotated = append(rotated, live)
+	older := func(a, b string) int { return strings.Compare(b, a) }
+	slices.SortFunc(buildRotated, older)
+	slices.SortFunc(appRotated, older)
+
+	files := buildRotated
+	if buildLive != "" {
+		files = append(files, buildLive)
 	}
-	return rotated
+	files = append(files, appRotated...)
+	if appLive != "" {
+		files = append(files, appLive)
+	}
+	return files
 }

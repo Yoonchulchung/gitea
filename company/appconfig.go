@@ -94,7 +94,17 @@ type AppDependencies struct {
 
 // AppSettings is one app's effective policy, after defaults are merged in.
 type AppSettings struct {
-	Enabled      *bool           `yaml:"enabled"`
+	Enabled *bool `yaml:"enabled"`
+	// BasePackages are installed into every app's environment whether or not
+	// its requirements.txt asks for them.
+	//
+	// A department writing a FastAPI app should not have to know that
+	// pydantic exists, let alone which version of it has wheels for the
+	// host's interpreter — that is how "pydantic==2.5.0" ends up in a
+	// requirements.txt and fails on a Python nobody told them about. The
+	// platform provides the stack it advertises; the department's file is
+	// for what they need *on top* of it.
+	BasePackages []string        `yaml:"basePackages"`
 	Access       string          `yaml:"access"`
 	Install      []string        `yaml:"install"`
 	Start        string          `yaml:"start"`
@@ -118,13 +128,18 @@ type AppsConfig struct {
 // explicit, reviewable line in git.
 func builtinDefaults() AppSettings {
 	return AppSettings{
-		Access:     AccessPublic, // deployed apps are independent of Gitea auth by default
-		Install:    []string{"pip install --only-binary=:all: -r requirements.txt"},
-		Start:      "uvicorn main:app --uds ${SOCKET} --root-path ${ROOT_PATH}",
-		HealthPath: "/health",
-		Limits:     AppLimits{MemoryMB: 192, Processes: 64, OpenFiles: 4096, TmpMB: 64},
-		Network:    AppNetwork{Mode: NetworkNone},
-		Download:   AppDownload{Policy: "block", MaxResponseBytes: 5 << 20},
+		Access: AccessPublic, // deployed apps are independent of Gitea auth by default
+		// Deliberately unpinned. These have to install against whatever
+		// interpreter the host has, and a pin whose wheels predate it breaks
+		// every app at once. An admin who wants reproducibility can pin them
+		// on the admin page, knowingly.
+		BasePackages: []string{"fastapi", "uvicorn", "pydantic"},
+		Install:      []string{"pip install --only-binary=:all: -r requirements.txt"},
+		Start:        "uvicorn main:app --uds ${SOCKET} --root-path ${ROOT_PATH}",
+		HealthPath:   "/health",
+		Limits:       AppLimits{MemoryMB: 192, Processes: 64, OpenFiles: 4096, TmpMB: 64},
+		Network:      AppNetwork{Mode: NetworkNone},
+		Download:     AppDownload{Policy: "block", MaxResponseBytes: 5 << 20},
 	}
 }
 
@@ -145,6 +160,11 @@ func (c *AppsConfig) EffectiveSettings(owner, repo string) AppSettings {
 		}
 		if len(s.Install) > 0 {
 			out.Install = s.Install
+		}
+		// Replaced rather than accumulated: this is the platform's own stack,
+		// and an admin narrowing it for one app means exactly that.
+		if len(s.BasePackages) > 0 {
+			out.BasePackages = s.BasePackages
 		}
 		if s.Start != "" {
 			out.Start = s.Start
@@ -187,8 +207,13 @@ func (c *AppsConfig) EffectiveSettings(owner, repo string) AppSettings {
 }
 
 // AllowedPackages is the flattened allowlist for one app.
+//
+// Base packages are always on it: the platform chose them, so requiring an
+// admin to approve them again would be approving their own decision.
 func (s AppSettings) AllowedPackages() []string {
-	return append(append([]string{}, s.Dependencies.Allow...), s.Dependencies.AllowExtra...)
+	out := append([]string{}, s.Dependencies.Allow...)
+	out = append(out, s.Dependencies.AllowExtra...)
+	return append(out, BasePackageNames(s.BasePackages)...)
 }
 
 // IsEnabled reports whether the app should be deployed at all. Unset means

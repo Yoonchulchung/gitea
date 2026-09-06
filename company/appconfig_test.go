@@ -20,7 +20,12 @@ func TestBuiltinDefaultsAreSafe(t *testing.T) {
 	s := cfg.EffectiveSettings("PO", "app")
 	assert.Equal(t, NetworkNone, s.Network.Mode)
 	assert.Equal(t, "block", s.Download.Policy)
-	assert.Empty(t, s.AllowedPackages(), "nothing is installable until an admin approves it")
+	// The platform's own stack is allowed by construction — requiring an
+	// admin to approve their own choice would be theatre. Everything beyond
+	// it still needs approval.
+	assert.ElementsMatch(t, []string{"fastapi", "uvicorn", "pydantic"}, s.AllowedPackages())
+	assert.Empty(t, s.Dependencies.Allow, "nothing a department asks for is pre-approved")
+	assert.Empty(t, s.Dependencies.AllowExtra)
 	assert.True(t, s.IsEnabled(), "an app nobody has written a line for still deploys")
 	assert.Positive(t, s.Limits.MemoryMB)
 	assert.Positive(t, s.Limits.TmpMB, "an unbounded tmpfs would eat host RAM")
@@ -57,11 +62,12 @@ apps:
 	// allowExtra accumulates onto the shared base rather than replacing it —
 	// otherwise every per-app entry has to restate the common packages, and
 	// the day someone forgets, the app loses packages it already had.
-	assert.ElementsMatch(t, []string{"fastapi", "uvicorn", "openpyxl"}, hr.AllowedPackages())
+	assert.Subset(t, hr.AllowedPackages(), []string{"fastapi", "uvicorn", "openpyxl"})
 
 	po := cfg.EffectiveSettings("PO", "readme")
 	assert.Equal(t, AccessLogin, po.Access, "an empty entry inherits defaults")
-	assert.ElementsMatch(t, []string{"fastapi", "uvicorn"}, po.AllowedPackages())
+	assert.Subset(t, po.AllowedPackages(), []string{"fastapi", "uvicorn"})
+	assert.NotContains(t, po.AllowedPackages(), "openpyxl", "another department's approval does not leak")
 
 	assert.False(t, cfg.EffectiveSettings("LEGACY", "tool").IsEnabled())
 	assert.Equal(t, AccessLogin, cfg.EffectiveSettings("NEW", "repo").Access,
@@ -128,4 +134,38 @@ func TestDefaultMemoryFitsManyAppsOnOneHost(t *testing.T) {
 func TestWatchdogAllowsForResidentOverhead(t *testing.T) {
 	assert.Greater(t, memoryWatchdogHeadroom, 1.0,
 		"RSS legitimately exceeds the heap by the size of the mapped runtime")
+}
+
+// A department writing a FastAPI app should not have to know pydantic
+// exists, let alone which of its versions has wheels for the host's
+// interpreter — that is how "pydantic==2.5.0" ends up in a requirements.txt
+// and fails on a Python nobody told them about.
+func TestBasePackagesAreProvidedAndAllowed(t *testing.T) {
+	cfg, err := ParseAppsConfig([]byte(""))
+	require.NoError(t, err)
+	s := cfg.EffectiveSettings("PO", "app")
+
+	assert.Contains(t, s.BasePackages, "fastapi")
+	for _, p := range s.BasePackages {
+		assert.NotContains(t, p, "==", "unpinned, so they install against whatever interpreter the host has")
+	}
+	assert.Subset(t, s.AllowedPackages(), BasePackageNames(s.BasePackages))
+}
+
+func TestBasePackagesCanBeOverridden(t *testing.T) {
+	cfg, err := ParseAppsConfig([]byte(`
+defaults:
+  basePackages: [fastapi==0.121.1, uvicorn]
+apps:
+  LEGACY/flask-app:
+    basePackages: [flask, gunicorn]
+`))
+	require.NoError(t, err)
+
+	// Replaced, not accumulated: an admin narrowing the stack for one app
+	// means exactly that.
+	assert.Equal(t, []string{"flask", "gunicorn"}, cfg.EffectiveSettings("LEGACY", "flask-app").BasePackages)
+	assert.Equal(t, []string{"fastapi==0.121.1", "uvicorn"}, cfg.EffectiveSettings("PO", "other").BasePackages)
+	assert.Contains(t, cfg.EffectiveSettings("PO", "other").AllowedPackages(), "fastapi",
+		"the pin is stripped for allowlist comparison")
 }

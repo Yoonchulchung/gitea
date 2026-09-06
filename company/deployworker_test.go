@@ -42,9 +42,13 @@ func TestRequirementsKey(t *testing.T) {
 	b, _ := ParseRequirements("uvicorn==0.30.6\nfastapi==0.115.0")
 	c, _ := ParseRequirements("fastapi==0.115.1\nuvicorn==0.30.6")
 
-	assert.Equal(t, requirementsKey(a), requirementsKey(b), "file order must not change the key")
-	assert.NotEqual(t, requirementsKey(a), requirementsKey(c), "a version bump must rebuild")
-	assert.NotEqual(t, requirementsKey(a), requirementsKey(nil))
+	base := []string{"fastapi", "uvicorn"}
+	assert.Equal(t, requirementsKey(a, base), requirementsKey(b, base), "file order must not change the key")
+	assert.NotEqual(t, requirementsKey(a, base), requirementsKey(c, base), "a version bump must rebuild")
+	assert.NotEqual(t, requirementsKey(a, base), requirementsKey(nil, base))
+	// The base list is part of the environment, so changing it must not reuse
+	// a venv assembled from the old stack.
+	assert.NotEqual(t, requirementsKey(a, base), requirementsKey(a, []string{"fastapi"}))
 }
 
 // current must never be absent, even for an instant: the proxy reads it and

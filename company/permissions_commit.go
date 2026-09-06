@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 
 	repo_model "gitea.dev/models/repo"
 	user_model "gitea.dev/models/user"
@@ -194,4 +195,68 @@ func LoadAppsConfigFromRepo(ctx context.Context) {
 		return
 	}
 	SetAppsConfig(cfg)
+}
+
+// CommitBasePackages replaces the platform-provided package list.
+//
+// Written to the same file, by the same route, as an approved permission:
+// policy lives in git so that "who changed what every app installs, and
+// when" is a question git answers on its own. An admin never edits the YAML —
+// the form does it for them.
+func CommitBasePackages(ctx context.Context, doer *user_model.User, packages []string) error {
+	centralOwner, centralName, err := centralDeployOwnerName()
+	if err != nil {
+		return err
+	}
+	central, err := repo_model.GetRepositoryByOwnerAndName(ctx, centralOwner, centralName)
+	if err != nil {
+		return err
+	}
+
+	var lastErr error
+	for attempt := range commitRetries {
+		current, existed, err := readAppsConfigFile(ctx, central)
+		if err != nil {
+			return err
+		}
+		current.Version = 1
+		current.Defaults.BasePackages = packages
+
+		body, marshalErr := yaml.Marshal(current)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		operation := "update"
+		if !existed {
+			operation = "create"
+		}
+		message := fmt.Sprintf("chore(apps): set base packages\n\nChanged by %s: %s.",
+			doer.Name, strings.Join(packages, ", "))
+		if attempt > 0 {
+			message += fmt.Sprintf("\n\n(retry %d after a concurrent update)", attempt)
+		}
+
+		_, lastErr = files_service.ChangeRepoFiles(ctx, central, doer, &files_service.ChangeRepoFilesOptions{
+			OldBranch: central.DefaultBranch,
+			NewBranch: central.DefaultBranch,
+			Message:   message,
+			Files: []*files_service.ChangeRepoFile{{
+				Operation:     operation,
+				TreePath:      appsConfigPath,
+				ContentReader: bytes.NewReader(body),
+			}},
+		})
+		if lastErr == nil {
+			// In force immediately: without this the commit lands and nothing
+			// changes until a restart, and the admin who just added a package
+			// would watch the next deploy fail without it.
+			if parsed, perr := ParseAppsConfig(body); perr == nil {
+				SetAppsConfig(parsed)
+			} else {
+				SetAppsConfigError(perr)
+			}
+			return nil
+		}
+	}
+	return lastErr
 }

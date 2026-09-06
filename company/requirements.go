@@ -172,3 +172,63 @@ func DeniedPackages(reqs []Requirement, allowed []string) []Requirement {
 	}
 	return denied
 }
+
+// validBasePackage is a name, optionally pinned. Unlike a department's
+// requirements.txt this may be unpinned, and that is deliberate: the base
+// packages are the platform's own, and the Python they have to work with is
+// whatever the host provides. Pinning fastapi to a version whose wheels
+// predate the host's interpreter breaks every app at once — exactly the
+// failure this list exists to prevent.
+var validBasePackage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*(?:==[A-Za-z0-9][A-Za-z0-9.!+*_-]*)?$`)
+
+// ParseBasePackages reads the admin-managed list of packages installed into
+// every app, one per line, and reports every bad entry rather than the first.
+func ParseBasePackages(content string) (packages, problems []string) {
+	seen := map[string]bool{}
+	for i, raw := range strings.Split(content, "\n") {
+		line := strings.TrimSpace(raw)
+		if idx := strings.Index(line, "#"); idx >= 0 {
+			line = strings.TrimSpace(line[:idx])
+		}
+		if line == "" {
+			continue
+		}
+		// The same redirections a requirements.txt may not use. An admin is
+		// trusted, but a base package installs into *every* app, so a typo
+		// that fetches from an arbitrary URL is worth catching here too.
+		denied := false
+		for _, d := range requirementPrefixDenied {
+			if strings.HasPrefix(strings.ToLower(line), d.prefix) {
+				problems = append(problems, fmt.Sprintf("%d번째 줄: %s", i+1, d.reason))
+				denied = true
+				break
+			}
+		}
+		if denied {
+			continue
+		}
+		if !validBasePackage.MatchString(line) {
+			problems = append(problems, fmt.Sprintf("%d번째 줄 %q — 이름 또는 이름==버전 형태여야 합니다", i+1, line))
+			continue
+		}
+		name, _, _ := strings.Cut(line, "==")
+		key := normalizePackageName(name)
+		if seen[key] {
+			problems = append(problems, fmt.Sprintf("%d번째 줄 %q — 이미 위에 있습니다", i+1, name))
+			continue
+		}
+		seen[key] = true
+		packages = append(packages, line)
+	}
+	return packages, problems
+}
+
+// BasePackageNames strips the version pins, for allowlist comparison.
+func BasePackageNames(packages []string) []string {
+	names := make([]string, 0, len(packages))
+	for _, p := range packages {
+		name, _, _ := strings.Cut(p, "==")
+		names = append(names, name)
+	}
+	return names
+}

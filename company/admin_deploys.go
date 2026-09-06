@@ -6,9 +6,11 @@ package company
 import (
 	"net/http"
 	"sort"
+	"strings"
 
 	"gitea.dev/models/db"
 	repo_model "gitea.dev/models/repo"
+	"gitea.dev/modules/setting"
 	"gitea.dev/modules/templates"
 	"gitea.dev/services/context"
 )
@@ -98,6 +100,21 @@ func AdminDeploys(ctx *context.Context) {
 		}
 	}
 
+	// The build environment, on the page an admin already opens — a missing
+	// interpreter or a broken base package list stops every deploy, and
+	// finding that out through a failed deploy is finding out too late.
+	pythonOK, pythonDetail := PythonStatus()
+	sandboxOK, sandboxDetail := SandboxStatus()
+	settings := SettingsFor("", "") // defaults only: base packages are instance-wide
+	_, _, configErr := AppsConfigSnapshot()
+
+	ctx.Data["PythonOK"] = pythonOK
+	ctx.Data["PythonDetail"] = pythonDetail
+	ctx.Data["SandboxOK"] = sandboxOK
+	ctx.Data["SandboxDetail"] = sandboxDetail
+	ctx.Data["BasePackages"] = strings.Join(settings.BasePackages, "\n")
+	ctx.Data["ConfigError"] = configErr
+
 	ctx.Data["Title"] = "App deployments"
 	ctx.Data["Rows"] = rows
 	ctx.Data["Attention"] = attention
@@ -121,4 +138,26 @@ func needsAttention(st *AppState) bool {
 	// unsandboxed got there through an explicit admin opt-in — worth
 	// keeping visible rather than letting it fade into the list.
 	return st.Actual == AppStateRunning && !st.Sandboxed
+}
+
+// AdminSetBasePackages replaces the packages every app gets.
+//
+// Committed to apps.yml rather than stored anywhere else, so the change is a
+// commit authored by the admin who made it — see company/permissions_commit.go
+// on why policy lives in git.
+func AdminSetBasePackages(ctx *context.Context) {
+	packages, problems := ParseBasePackages(ctx.FormString("packages"))
+	if len(problems) > 0 {
+		ctx.Flash.Error(strings.Join(problems, " / "))
+		ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys")
+		return
+	}
+	if err := CommitBasePackages(ctx, ctx.Doer, packages); err != nil {
+		ctx.Flash.Error(AdminError(err))
+	} else {
+		// Says what actually happened: existing apps keep the environment they
+		// were built with until something rebuilds them.
+		ctx.Flash.Success("기본 패키지를 저장했습니다. 새로 배포되는 앱부터 적용됩니다.")
+	}
+	ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys")
 }

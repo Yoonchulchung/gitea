@@ -572,9 +572,23 @@ func ReconcileApps() {
 // past the size cap. Rotation is by rename so an open file handle in the
 // previous process keeps writing to the rotated file rather than failing.
 func openAppLog(dir string) (*os.File, error) {
+	return openRotatingLog(dir, appLogName)
+}
+
+// appLogName and buildLogName are the two streams an app produces: what it
+// printed while running, and what its deploys printed while building it.
+const (
+	appLogName   = "app.log"
+	buildLogName = "build.log"
+)
+
+// openRotatingLog opens one of them, rotating first if it has grown past the
+// size cap. Rotation is by rename so an open handle in another process keeps
+// writing to the rotated file rather than failing.
+func openRotatingLog(dir, name string) (*os.File, error) {
 	const maxBytes = 10 << 20
 	const keep = 5
-	file := filepath.Join(dir, "app.log")
+	file := filepath.Join(dir, name)
 	if fi, err := os.Stat(file); err == nil && fi.Size() > maxBytes {
 		for i := keep - 1; i >= 1; i-- {
 			_ = os.Rename(fmt.Sprintf("%s.%d", file, i), fmt.Sprintf("%s.%d", file, i+1))

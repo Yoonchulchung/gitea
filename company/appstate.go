@@ -63,6 +63,7 @@ const (
 	ReasonContractViolation  = "contract_violation" // no main.py
 	ReasonRolledBack         = "rolled_back"
 	ReasonNoRelease          = "no_release" // start pressed before any deploy succeeded
+	ReasonNoPython           = "no_python"  // the host has no usable interpreter
 )
 
 // appHistoryLimit bounds the per-app history. It doubles as the rollback

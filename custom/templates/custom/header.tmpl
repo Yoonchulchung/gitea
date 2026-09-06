@@ -180,3 +180,11 @@
    button row's layout. */
 .company-app-action { display: inline-flex; margin: 0; }
 </style>
+
+<style>
+/* Build output inside the log viewer. Distinguishing it matters: "pip could
+   not find that version" and "the app raised an exception" are different
+   kinds of answer, and a reader scanning for one should not have to parse
+   the other. */
+.company-log-build { color: var(--color-text-light-2); }
+</style>

@@ -1,6 +1,42 @@
 {{template "admin/layout_head" (dict "pageClass" "admin company-deploys")}}
 	<div class="admin-setting-content">
 
+		{{/* The build environment, before the app list: a missing interpreter or
+		     an unparsable policy file stops every deploy, and an admin should
+		     not learn that from a failed deploy. */}}
+		{{if or (not .PythonOK) (not .SandboxOK) .ConfigError}}
+			<div class="ui attached warning message">
+				{{if not .PythonOK}}<div><strong>파이썬을 사용할 수 없습니다 — 어떤 앱도 빌드되지 않습니다.</strong> {{.PythonDetail}}</div>{{end}}
+				{{if not .SandboxOK}}<div><strong>앱을 격리할 수 없습니다.</strong> {{.SandboxDetail}}</div>{{end}}
+				{{if .ConfigError}}<div><strong>apps.yml 을 읽지 못해 직전 정상 설정을 유지 중입니다.</strong> {{.ConfigError}}</div>{{end}}
+			</div>
+		{{end}}
+
+		<h4 class="ui top attached header">기본 제공 패키지</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13 tw-mt-0">
+				모든 앱에 자동으로 설치됩니다. 부서는 <code>requirements.txt</code> 에
+				<strong>추가로 필요한 것만</strong> 적으면 됩니다.
+				한 줄에 하나씩, <code>이름</code> 또는 <code>이름==버전</code>.
+				{{if .PythonOK}}<br>이 서버의 파이썬: <code>{{.PythonDetail}}</code>{{end}}
+			</p>
+			<form method="post" action="{{AppSubUrl}}/-/admin/company-deploys/base-packages" class="ui form">
+				{{.CsrfTokenHtml}}
+				<textarea name="packages" rows="5" class="tw-font-mono">{{.BasePackages}}</textarea>
+				<div class="tw-flex tw-items-center tw-gap-3 tw-mt-2">
+					<button class="ui primary button">저장</button>
+					{{/* Said plainly because it is the question an admin asks next:
+					     an environment is built once and reused, so changing this
+					     does not reach apps that are already running. */}}
+					<span class="text-grey tw-text-12">저장하면 <code>.company/apps.yml</code> 에 커밋되고, 새로 배포되는 앱부터 적용됩니다.</span>
+				</div>
+			</form>
+			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">
+				버전을 고정하지 않는 편을 권합니다. 고정한 버전의 휠이 이 서버의 파이썬보다 오래되면
+				<strong>모든 앱이 한꺼번에 빌드 실패</strong>합니다.
+			</p>
+		</div>
+
 		{{if .Attention}}
 			{{/* Only rendered when there is something to act on. A section that
 			     is always present stops being read — see docs/company/app-platform.md

@@ -23,6 +23,7 @@ import (
 	"gitea.dev/modules/json"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/process"
+	"gitea.dev/modules/util"
 )
 
 // Building a release means running `pip install`, which takes minutes for
@@ -135,6 +136,34 @@ func failDeploy(owner, repo, reason, message string, userMessage ...string) {
 	}
 }
 
+// appendBuildLog records one deploy's output so it survives the next one.
+//
+// Before this the only copy lived in AppState.Message, which the following
+// deploy overwrote — so the log of the failure someone is trying to
+// understand was gone by the time they went looking, and comparing "it broke
+// the same way last time" against anything was impossible.
+//
+// Best-effort: a deploy must not fail because its own log could not be
+// written.
+func appendBuildLog(p appPaths, sha, outcome, output string) {
+	if err := os.MkdirAll(p.logs, 0o700); err != nil {
+		log.Error("company: build log directory: %v", err)
+		return
+	}
+	f, err := openRotatingLog(p.logs, buildLogName)
+	if err != nil {
+		log.Error("company: opening the build log: %v", err)
+		return
+	}
+	defer func() { _ = f.Close() }()
+
+	header := fmt.Sprintf("\n===== %s  %s  %s =====\n",
+		time.Now().Format(time.RFC3339), outcome, util.TruncateRunes(sha, 12))
+	if _, err := f.WriteString(header + strings.TrimRight(output, "\n") + "\n"); err != nil {
+		log.Error("company: writing the build log: %v", err)
+	}
+}
+
 func runDeploy(ctx context.Context, job deployJob) {
 	owner, repo := job.Owner, job.Repo
 	settings := SettingsFor(owner, repo)
@@ -158,15 +187,21 @@ func runDeploy(ctx context.Context, job deployJob) {
 	p := appPathsFor(owner, repo)
 	release := releaseDir(p, job.SHA)
 	if err := buildRelease(ctx, job, p, release, settings); err != nil {
+		appendBuildLog(p, job.SHA, "FAILED", err.Error())
 		if denied, ok := errors.AsType[*packagesDeniedError](err); ok {
 			// Written by us and naming the packages, so it is the one thing
 			// the department needs in order to fix this.
 			failDeploy(owner, repo, ReasonPackageDenied, denied.Error(), denied.Error())
 			return
 		}
+		if errors.Is(err, errNoPython) {
+			failDeploy(owner, repo, ReasonNoPython, AdminError(err), DepartmentSafeError("build", err))
+			return
+		}
 		failDeploy(owner, repo, ReasonInstallFailed, err.Error())
 		return
 	}
+	appendBuildLog(p, job.SHA, "OK", "build succeeded")
 
 	if err := activateRelease(owner, repo, p, release, job.SHA, settings); err != nil {
 		log.Error("company: %s/%s: activation failed: %v", owner, repo, err)
@@ -198,7 +233,8 @@ func buildRelease(ctx context.Context, job deployJob, p appPaths, release string
 	reqPath := filepath.Join(appDir, "requirements.txt")
 	body, err := os.ReadFile(reqPath)
 	if errors.Is(err, os.ErrNotExist) {
-		// An app with no dependencies still needs an interpreter for uvicorn.
+		// No requirements.txt is the normal case for an app that only uses
+		// what the platform provides.
 		return buildVenv(ctx, p, release, nil, settings)
 	}
 	if err != nil {
@@ -297,7 +333,15 @@ func safeJoin(base, rel string) (string, error) {
 // the common case — a code change with unchanged dependencies — skips pip
 // entirely and deploys in seconds instead of minutes.
 func buildVenv(ctx context.Context, p appPaths, release string, reqs []Requirement, settings AppSettings) error {
-	key := requirementsKey(reqs)
+	python, err := pythonPath()
+	if err != nil {
+		// Checked before anything else: without an interpreter nothing here
+		// can work, and the failure must not arrive dressed as a dependency
+		// problem a department would try to fix in requirements.txt.
+		return err
+	}
+
+	key := requirementsKey(reqs, settings.BasePackages)
 	venv := filepath.Join(p.home, "venvs", key)
 	link := filepath.Join(release, ".venv")
 
@@ -311,17 +355,15 @@ func buildVenv(ctx context.Context, p appPaths, release string, reqs []Requireme
 		buildCtx, cancel := context.WithTimeout(ctx, installTimeout)
 		defer cancel()
 
-		if out, err := runBuildCmd(buildCtx, "python3", "-m", "venv", venv); err != nil {
+		if out, err := runBuildCmd(buildCtx, python, "-m", "venv", venv); err != nil {
 			_ = os.RemoveAll(venv)
 			return fmt.Errorf("creating the Python environment failed: %w\n%s", err, out)
 		}
-		if len(reqs) > 0 {
-			if err := installRequirements(buildCtx, venv, reqs, settings); err != nil {
-				// A half-installed venv would be reused by the next deploy and
-				// fail in a way that looks unrelated to this one.
-				_ = os.RemoveAll(venv)
-				return err
-			}
+		if err := installIntoVenv(buildCtx, venv, reqs, settings); err != nil {
+			// A half-installed venv would be reused by the next deploy and
+			// fail in a way that looks unrelated to this one.
+			_ = os.RemoveAll(venv)
+			return err
 		}
 	}
 
@@ -332,17 +374,38 @@ func buildVenv(ctx context.Context, p appPaths, release string, reqs []Requireme
 	return os.Symlink(venv, link)
 }
 
-func installRequirements(ctx context.Context, venv string, reqs []Requirement, settings AppSettings) error {
-	pip := filepath.Join(venv, "bin", "pip")
-	args := []string{"install", "--only-binary=:all:", "--no-input", "--disable-pip-version-check"}
-	for _, r := range reqs {
-		args = append(args, r.Raw)
+// installIntoVenv installs the platform's own stack, then the department's
+// additions, and checks only the difference against the allowlist.
+//
+// Two phases rather than one because of what the check means. The allowlist
+// answers "may this department use this package", and fastapi's own
+// dependency tree — starlette, anyio, typing-extensions and a dozen more —
+// was never a department's choice. Installing the base first and treating
+// whatever it drags in as the baseline keeps the check about the thing it is
+// actually policing.
+func installIntoVenv(ctx context.Context, venv string, reqs []Requirement, settings AppSettings) error {
+	if len(settings.BasePackages) > 0 {
+		if err := pipInstall(ctx, venv, settings.BasePackages); err != nil {
+			// The department did not ask for these and cannot fix them.
+			return audienceError(
+				"서버가 기본 제공하는 패키지를 설치하지 못했습니다. 관리자에게 알려 주세요.",
+				"기본 패키지 설치 실패 — 관리자 화면에서 목록을 확인하세요: "+err.Error())
+		}
 	}
-	// --only-binary=:all: means wheels only, so no setup.py runs during
-	// install. Package code executes later, when the app imports it — by
-	// then it is inside the sandbox. See docs/company/app-platform.md.
-	if out, err := runBuildCmd(ctx, pip, args...); err != nil {
-		return fmt.Errorf("installing dependencies failed: %w\n%s", err, lastLines(out, 30))
+	baseline, err := installedPackages(ctx, venv)
+	if err != nil {
+		return err
+	}
+	if len(reqs) == 0 {
+		return nil
+	}
+
+	raw := make([]string, 0, len(reqs))
+	for _, r := range reqs {
+		raw = append(raw, r.Raw)
+	}
+	if err := pipInstall(ctx, venv, raw); err != nil {
+		return err
 	}
 
 	// pip resolves transitive dependencies, which the requirements file never
@@ -351,21 +414,53 @@ func installRequirements(ctx context.Context, venv string, reqs []Requirement, s
 	// to run — nothing executed, wheels only — and then the *result* is
 	// checked. Anything unapproved fails the deploy before it is ever
 	// imported.
-	extra, err := unapprovedInstalled(ctx, venv, settings)
+	extra, err := unapprovedInstalled(ctx, venv, settings, baseline)
 	if err != nil {
 		return err
 	}
 	if len(extra) > 0 {
-		return &packagesDeniedError{message: "these packages are required by your dependencies but are not approved yet: " +
+		return &packagesDeniedError{message: "이 패키지들이 의존성으로 필요한데 아직 승인되지 않았습니다: " +
 			strings.Join(extra, ", ")}
 	}
 	return nil
 }
 
+// pipInstall runs one install step.
+//
+// --only-binary=:all: means wheels only, so no setup.py runs during install.
+// Package code executes later, when the app imports it — by then it is inside
+// the sandbox. See docs/company/app-platform.md.
+func pipInstall(ctx context.Context, venv string, packages []string) error {
+	args := append([]string{"install", "--only-binary=:all:", "--no-input", "--disable-pip-version-check"}, packages...)
+	if out, err := runBuildCmd(ctx, filepath.Join(venv, "bin", "pip"), args...); err != nil {
+		return fmt.Errorf("installing dependencies failed: %w\n%s", err, lastLines(out, 30))
+	}
+	return nil
+}
+
+// installedPackages lists what is in the environment now, normalised.
+func installedPackages(ctx context.Context, venv string) (map[string]bool, error) {
+	out, err := runBuildCmd(ctx, filepath.Join(venv, "bin", "pip"), "list", "--format=json")
+	if err != nil {
+		return nil, fmt.Errorf("listing installed packages failed: %w", err)
+	}
+	var installed []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(out), &installed); err != nil {
+		return nil, fmt.Errorf("listing installed packages produced unreadable output: %w", err)
+	}
+	names := make(map[string]bool, len(installed))
+	for _, pkg := range installed {
+		names[normalizePackageName(pkg.Name)] = true
+	}
+	return names, nil
+}
+
 // pipBaseline are the packages every venv has by construction.
 var pipBaseline = []string{"pip", "setuptools", "wheel", "pkg-resources"}
 
-func unapprovedInstalled(ctx context.Context, venv string, settings AppSettings) ([]string, error) {
+func unapprovedInstalled(ctx context.Context, venv string, settings AppSettings, baseline map[string]bool) ([]string, error) {
 	out, err := runBuildCmd(ctx, filepath.Join(venv, "bin", "pip"), "list", "--format=json")
 	if err != nil {
 		return nil, fmt.Errorf("listing installed packages failed: %w", err)
@@ -383,9 +478,13 @@ func unapprovedInstalled(ctx context.Context, venv string, settings AppSettings)
 	}
 	var extra []string
 	for _, pkg := range installed {
-		if !allowed[normalizePackageName(pkg.Name)] {
-			extra = append(extra, pkg.Name)
+		name := normalizePackageName(pkg.Name)
+		// Anything the platform's own stack brought in is not the
+		// department's choice and is not theirs to have approved.
+		if baseline[name] || allowed[name] {
+			continue
 		}
+		extra = append(extra, pkg.Name)
 	}
 	slices.Sort(extra)
 	return extra, nil
@@ -574,11 +673,14 @@ func formatDeniedPackages(denied []Requirement) string {
 
 // requirementsKey identifies an exact dependency set, so an unchanged one
 // reuses its venv.
-func requirementsKey(reqs []Requirement) string {
-	raw := make([]string, 0, len(reqs))
+func requirementsKey(reqs []Requirement, base []string) string {
+	raw := make([]string, 0, len(reqs)+len(base))
 	for _, r := range reqs {
 		raw = append(raw, r.Name+"=="+r.Version)
 	}
+	// The base list is part of the environment, so changing it has to build a
+	// new one rather than reuse a venv assembled from the old stack.
+	raw = append(raw, base...)
 	slices.Sort(raw) // order in the file must not produce a different venv
 	sum := sha256.Sum256([]byte(strings.Join(raw, "\n")))
 	return hex.EncodeToString(sum[:16])
