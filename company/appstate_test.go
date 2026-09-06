@@ -32,7 +32,10 @@ func TestAppKeyAvoidsCollisions(t *testing.T) {
 	// file, or one department's state would silently overwrite another's.
 	assert.NotEqual(t, appKey("a-b", "c"), appKey("a", "b-c"))
 	assert.NotEqual(t, appKey("x", "y.z"), appKey("x.y", "z"))
-	assert.Len(t, appKey("PO", "app"), 64) // full sha256 hex — no truncation to collide on
+	// Truncated to appKeyLength so the app's socket path fits in sun_path —
+	// see TestSocketPathFitsInSunPath. 64 bits is still far more than the
+	// number of department apps that will ever exist.
+	assert.Len(t, appKey("PO", "app"), appKeyLength)
 }
 
 func TestAppStateRoundTrip(t *testing.T) {
@@ -185,4 +188,18 @@ func TestMutateAppStateIsSerialized(t *testing.T) {
 	// History is capped, so the observable invariant is "the cap is full" —
 	// if writes were lost we would see fewer.
 	assert.Len(t, LoadAppState("PO", "app").History, appHistoryLimit)
+}
+
+// The socket lives under a directory named by this key, and sun_path is
+// limited to 104 bytes on macOS and 108 on Linux. A full 64-character digest
+// pushed it past that and every app failed to bind with "AF_UNIX path too
+// long" — from inside asyncio, where it named neither the path nor the limit.
+func TestSocketPathFitsInSunPath(t *testing.T) {
+	prev := setting.AppDataPath
+	// A deep but entirely ordinary deployment location.
+	setting.AppDataPath = "/home/gitea-service-account/production/gitea/data"
+	t.Cleanup(func() { setting.AppDataPath = prev })
+
+	socket := appPathsFor("PROCUREMENT", "quarterly-report-generator").socket
+	assert.Less(t, len(socket), maxUnixSocketPath, "socket path: %s", socket)
 }

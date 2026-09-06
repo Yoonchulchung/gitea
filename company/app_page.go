@@ -26,7 +26,10 @@ import (
 // deliberately absent — those are on the admin pages, because an app's
 // output can contain the data it handles. See docs/company/app-platform.md.
 
-const tplApp templates.TplName = "company/app"
+const (
+	tplApp     templates.TplName = "company/app"
+	tplAppLogs templates.TplName = "company/app_logs"
+)
 
 // AppPage renders the department's app screen.
 func AppPage(ctx *context.Context) {
@@ -192,4 +195,40 @@ func departmentStatusLabel(st *AppState) string {
 	default:
 		return "중지됨"
 	}
+}
+
+// AppLogs shows a department its own app's output.
+//
+// This was admin-only at first, on the grounds that an app prints whatever it
+// prints and that can include the data it handles. That reasoning does not
+// survive the permission it is gated on: everyone who reaches this page can
+// already push code to the app, and someone who can change what it prints
+// does not need a log viewer to read its data. Withholding the logs from
+// them protected nothing and sent every failure to an administrator.
+//
+// Read-only members of the repository are a different matter and still see
+// none of this — the route requires write access, not read.
+func AppLogs(ctx *context.Context) {
+	owner := ctx.Repo.Owner.Name
+	name := ctx.Repo.Repository.Name
+
+	query := LogQuery{
+		Text:   ctx.FormString("q"),
+		Regexp: ctx.FormBool("regexp"),
+		Limit:  ctx.FormInt("limit"),
+	}
+	lines, truncated, err := ReadAppLogs(owner, name, query)
+
+	ctx.Data["Title"] = "앱 로그"
+	ctx.Data["App"] = LoadAppState(owner, name)
+	ctx.Data["Lines"] = lines
+	ctx.Data["Truncated"] = truncated
+	ctx.Data["Query"] = query.Text
+	ctx.Data["UseRegexp"] = query.Regexp
+	if err != nil {
+		// A bad regexp is the reader's own typo, not a server error.
+		ctx.Data["SearchError"] = err.Error()
+	}
+	ctx.Data["AppLink"] = ctx.Repo.RepoLink + "/_app"
+	ctx.HTML(http.StatusOK, tplAppLogs)
 }

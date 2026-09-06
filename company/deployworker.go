@@ -517,7 +517,7 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 	// startProcess, not Start: the state must not say "running" until the
 	// health check passes, or a release that never answers shows a green
 	// badge for the whole check window before flipping to failed.
-	pid, startErr := s.startProcess()
+	pid, startErr := s.startProcess(true)
 	if startErr == nil {
 		if err := waitHealthy(p.socket, settings); err == nil {
 			return MutateAppState(owner, repo, func(st *AppState) bool {

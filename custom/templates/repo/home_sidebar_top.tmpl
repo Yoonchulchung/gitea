@@ -166,8 +166,11 @@
 			</div>
 		{{end}}
 
-		<div class="tw-flex tw-gap-2 tw-mt-2">
+		<div class="tw-flex tw-gap-2 tw-mt-2 tw-flex-wrap">
 			<a class="ui tiny basic button" href="{{.AppLink}}">앱 관리</a>
+			{{/* Straight to the logs from the panel that just said something is
+			     wrong — the next question after "why" is always "show me". */}}
+			{{if .CanControl}}<a class="ui tiny basic button" href="{{.AppLink}}/logs">로그</a>{{end}}
 			<a class="ui tiny basic button" href="{{.DeployLink}}">권한 요청하기</a>
 		</div>
 	</div>

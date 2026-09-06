@@ -68,7 +68,10 @@ func RegisterAdminRoutes(m *web.Router) {
 	// /{owner}/{repo}/… route would be reachable by non-admins the moment
 	// it existed.
 	m.Get("/company-deploys", AdminDeploys)
-	m.Post("/company-deploys/base-packages", AdminSetBasePackages)
+	// Package policy is its own page: the dashboard is about what is
+	// happening now, this is about what every app may install.
+	m.Get("/company-packages", AdminPackages)
+	m.Post("/company-packages/base", AdminSetBasePackages)
 	m.Group("/company-deploys/{owner}/{repo}", func() {
 		m.Get("", AdminApp)
 		m.Get("/logs", AdminAppLogs)

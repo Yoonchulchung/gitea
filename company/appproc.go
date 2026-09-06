@@ -56,6 +56,11 @@ const (
 	// being visibly down.
 	crashRestartLimit = 3
 	crashRestartDelay = 5 * time.Second
+
+	// maxUnixSocketPath is the smaller of the two platform limits for
+	// sun_path — 104 on macOS and the BSDs, 108 on Linux — so a path that
+	// fits here fits everywhere this runs.
+	maxUnixSocketPath = 104
 )
 
 // appPaths is the on-disk layout for one app. Everything lives under
@@ -232,6 +237,16 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 			return err
 		}
 	}
+	// Checked here rather than left to the app: uvicorn reports this as
+	// "OSError: AF_UNIX path too long" from deep inside asyncio, which says
+	// nothing about which path or what the limit is.
+	if len(s.paths.socket) >= maxUnixSocketPath {
+		return audienceError(
+			"서버 설정 문제로 앱을 시작할 수 없습니다. 관리자에게 알려 주세요.",
+			fmt.Sprintf("소켓 경로가 %d바이트로 커널 한도(%d)를 넘습니다: %s — APP_DATA_PATH 를 더 짧은 경로로 옮겨야 합니다",
+				len(s.paths.socket), maxUnixSocketPath, s.paths.socket))
+	}
+
 	// A socket left behind by a process that died without cleaning up makes
 	// bind() fail with "address already in use". Safe to remove here because
 	// we only reach this point with no live child of our own.
@@ -321,7 +336,7 @@ func (s *appSupervisor) watchExit(cmd *exec.Cmd, logFile *os.File) {
 
 	time.Sleep(crashRestartDelay)
 	if st := LoadAppState(s.owner, s.repo); st.Desired == AppStateRunning {
-		if err := s.Start(); err != nil {
+		if _, err := s.startProcess(false); err != nil {
 			log.Error("company: %s/%s: restart after crash failed: %v", s.owner, s.repo, err)
 		}
 	}
@@ -375,7 +390,7 @@ func (s *appSupervisor) stopLocked() {
 // show the department a green badge for the whole check window and only then
 // flip to failed.
 func (s *appSupervisor) Start() error {
-	pid, err := s.startProcess()
+	pid, err := s.startProcess(true)
 	if err != nil {
 		return err
 	}
@@ -399,7 +414,13 @@ func (s *appSupervisor) Start() error {
 
 // startProcess launches the app and returns its pid. It records failures —
 // those are unambiguous — but leaves success for the caller to declare.
-func (s *appSupervisor) startProcess() (int, error) {
+//
+// freshAttempt distinguishes a start someone asked for from one the crash
+// watcher is retrying. Resetting the counter on every start meant the
+// watcher's own restart cleared the tally it had just incremented, so
+// crashRestartLimit was never reached: an app that died immediately was
+// respawned every five seconds forever while its state still read "running".
+func (s *appSupervisor) startProcess(freshAttempt bool) (int, error) {
 	settings := SettingsFor(s.owner, s.repo)
 	if !settings.IsEnabled() {
 		return 0, audienceError(
@@ -422,7 +443,9 @@ func (s *appSupervisor) startProcess() (int, error) {
 	}
 
 	s.mu.Lock()
-	s.crashes = 0
+	if freshAttempt {
+		s.crashes = 0
+	}
 	startErr := s.startLocked(settings, appEnv, envVer)
 	pid := 0
 	if s.cmd != nil && s.cmd.Process != nil {

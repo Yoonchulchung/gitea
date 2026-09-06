@@ -153,9 +153,17 @@ type AppState struct {
 // names (modules/validation/helpers.go), so any flat join genuinely
 // collides — "a-b/c" and "a/b-c" would land on the same file. Same reason
 // company/workspace_tmp.go hashes its own keys.
+// The prefix length is not cosmetic. The app's unix socket lives under a
+// directory named by this key, and sun_path is limited to 104 bytes on
+// macOS and 108 on Linux — a full 64-character digest pushed the socket
+// past it and every app failed to bind with "AF_UNIX path too long".
+// Sixteen hex characters is 64 bits of digest, which for a few hundred
+// department apps is not a collision anyone will see.
+const appKeyLength = 16
+
 func appKey(owner, repo string) string {
 	sum := sha256.Sum256([]byte(owner + "/" + repo))
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:])[:appKeyLength]
 }
 
 func appStateDir() string {
