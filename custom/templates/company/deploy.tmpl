@@ -171,8 +171,11 @@
 					<input type="text" name="perm_reason" value="{{$.SubmittedReason}}" placeholder="예: 엑셀 보고서를 만들기 위해 openpyxl 이 필요합니다" autocomplete="off">
 				</div>
 			</div>
+			{{/* The label is wrapped so the loading state can hide it: .is-loading
+			     dims child *elements*, and a bare text node would stay visible
+			     behind the spinner. */}}
 			<button type="submit" id="submit-button" class="ui primary button">
-				{{ctx.Locale.Tr "company.deploy.submit_button"}}
+				<span>{{ctx.Locale.Tr "company.deploy.submit_button"}}</span>
 			</button>
 		</form>
 

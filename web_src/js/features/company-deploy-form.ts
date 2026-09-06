@@ -109,3 +109,40 @@ export function initCompanyDeployForm(): void {
     apply();
   });
 }
+
+// Submitting a deploy request is slow — the platform resolves the dependency
+// tree with pip before it writes anything — and a form that looks inert for
+// several seconds gets clicked again.
+//
+// A second click is not a cosmetic problem: each submission opens a pull
+// request and supersedes the previous one, so double-clicking creates a
+// request and immediately cancels it, leaving the department waiting on
+// something an admin already saw closed.
+//
+// Deliberately not a fake progress bar. The submission is an ordinary form
+// POST, so the page has no way to know which step the server is on, and
+// inventing stages would tell someone something the platform does not know.
+// An indeterminate indicator with an honest sentence is what there is.
+export function initCompanyDeploySubmit(): void {
+  const form = document.querySelector<HTMLFormElement>('#deploy-form');
+  const button = form?.querySelector<HTMLButtonElement>('#submit-button');
+  if (!form || !button) return;
+
+  let submitting = false;
+  form.addEventListener('submit', () => {
+    // Only fires once the browser's own validation has passed, so an
+    // incomplete form never gets stuck showing "submitting".
+    if (submitting) return;
+    submitting = true;
+
+    // After the event has begun: the form data is already serialized by now,
+    // so disabling the button cannot drop a field.
+    button.classList.add('is-loading');
+    button.disabled = true;
+
+    const note = document.createElement('div');
+    note.className = 'text-grey tw-text-13 tw-mt-2';
+    note.textContent = '배포할 수 있는 상태인지 확인하고 요청을 만드는 중입니다. 몇 초 걸릴 수 있습니다.';
+    button.insertAdjacentElement('afterend', note);
+  });
+}
