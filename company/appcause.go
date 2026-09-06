@@ -60,7 +60,16 @@ func DepartmentCause(st *AppState) *AppCause {
 }
 
 func departmentCause(st *AppState) *AppCause {
-	if st.Actual != AppStateFailed && st.Actual != AppStateSuspended {
+	// Keyed on the reason, not on Actual. A build that fails leaves the
+	// previous version running — that is the point of swapping last — so the
+	// app is Running *and* something went wrong, and keying on Actual would
+	// hide the failure precisely when the department needs to see it. The
+	// same held for a successful rollback, which is Running with a reason
+	// worth reading.
+	//
+	// Reasons are cleared the moment a deploy or start succeeds, so a stale
+	// one cannot linger here.
+	if st.Reason == "" {
 		return nil
 	}
 	switch st.Reason {

@@ -335,6 +335,16 @@ func (st *AppState) IsBusy() bool {
 	return false
 }
 
+// IsSwapping is the few seconds in which the `current` symlink is repointed
+// and the new process is started.
+//
+// Distinguished from IsBusy because they are not the same restriction. While
+// a deploy is queued or building, the previously deployed app is running
+// normally and nothing is being touched — the department must keep control
+// of it. Only the swap itself is delicate enough to refuse a concurrent
+// start.
+func (st *AppState) IsSwapping() bool { return st.Actual == AppStateActivating }
+
 // ListAppStates returns every app that has state on disk, sorted by
 // owner/repo so the admin list doesn't reshuffle between page loads.
 // Unreadable files are skipped, not fatal — one corrupt record must not
@@ -376,8 +386,12 @@ func ListAppStates() []*AppState {
 // the admin's only remaining option would be to take away their controls
 // entirely. See docs/company/app-platform.md.
 func (st *AppState) CanTransition(action string, isAdmin bool) (bool, string) {
-	if st.IsBusy() && action != "suspend" {
-		return false, "a deploy is in progress — try again once it finishes"
+	// Stopping is always allowed. An app that is misbehaving has to be
+	// stoppable whatever else is going on, and a department that submitted a
+	// new deploy request has not given up control of the version currently
+	// serving their users.
+	if st.IsSwapping() && action != "suspend" && action != "stop" {
+		return false, "새 버전으로 교체하는 중입니다 — 잠시 뒤 다시 시도해 주세요"
 	}
 	switch action {
 	case "start", "restart", "rollback", "redeploy":

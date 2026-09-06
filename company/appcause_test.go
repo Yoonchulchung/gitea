@@ -155,3 +155,81 @@ func TestRedeployWithoutAnyDeploy(t *testing.T) {
 	assert.Contains(t, AdminError(err), "기록된 커밋")
 	assert.Contains(t, DepartmentSafeError("ctx", err), "배포된 적이 없")
 }
+
+// The version currently serving users belongs to the department whatever
+// else is going on. A new deploy request — queued, building, or failed —
+// must not take away control of what is already running.
+func TestControlSurvivesAFailedRedeploy(t *testing.T) {
+	withTempAppData(t)
+
+	// A previous deploy succeeded and the app is running.
+	require.NoError(t, MutateAppState("PO", "app", func(st *AppState) bool {
+		st.Desired, st.Actual = AppStateRunning, AppStateRunning
+		st.HasRelease = true
+		return true
+	}))
+
+	// A new deploy is submitted and its build fails. Nothing was swapped, so
+	// the old version is still serving.
+	failBuild("PO", "app", ReasonInstallFailed, "pip said no", AppStateRunning, "설치 실패")
+
+	st := LoadAppState("PO", "app")
+	assert.Equal(t, ReasonInstallFailed, st.Reason, "the failure is recorded")
+	assert.Equal(t, AppStateRunning, st.Actual,
+		"...but the running version is not reported as dead")
+
+	ok, why := st.CanTransition("stop", false)
+	assert.True(t, ok, "the department can still stop what is running: %s", why)
+
+	// And they can still see why the deploy failed, even though the app runs.
+	require.NotNil(t, DepartmentCause(st))
+	assert.Contains(t, DepartmentCause(st).Summary, "패키지")
+}
+
+// Queued and building touch nothing — the previous version is serving
+// normally. Only the swap itself is delicate enough to refuse a start.
+func TestOnlyTheSwapBlocksControl(t *testing.T) {
+	for _, state := range []string{AppStateQueued, AppStateBuilding} {
+		st := &AppState{Actual: state, HasRelease: true}
+		for _, action := range []string{"start", "stop", "restart"} {
+			ok, why := st.CanTransition(action, false)
+			assert.True(t, ok, "%s during %s: %s", action, state, why)
+		}
+	}
+
+	swapping := &AppState{Actual: AppStateActivating, HasRelease: true}
+	ok, _ := swapping.CanTransition("start", false)
+	assert.False(t, ok, "starting mid-swap would race the deploy's own start")
+	ok, _ = swapping.CanTransition("stop", false)
+	assert.True(t, ok, "but stopping is always allowed — it is the safety valve")
+}
+
+// A rollback leaves the app running, and the reason it happened is worth
+// reading. Keying the cause on Actual hid it.
+func TestRollbackIsVisibleWhileRunning(t *testing.T) {
+	cause := DepartmentCause(&AppState{Actual: AppStateRunning, Reason: ReasonRolledBack})
+	require.NotNil(t, cause)
+	assert.Contains(t, cause.Summary, "이전 버전")
+}
+
+// Only two states survive a build that never reached the swap: Running,
+// because those users are still being served, and Suspended, because an
+// admin stopped the app on purpose. Everything else means nothing is
+// serving, which is a failure.
+func TestOnlyServingStatesSurviveABuildFailure(t *testing.T) {
+	withTempAppData(t)
+	for prior, want := range map[string]string{
+		AppStateRunning:   AppStateRunning,
+		AppStateSuspended: AppStateSuspended,
+		AppStateStopped:   AppStateFailed,
+		AppStateBuilding:  AppStateFailed,
+		"":                AppStateFailed,
+	} {
+		require.NoError(t, MutateAppState("PO", "app", func(st *AppState) bool {
+			st.Actual = prior
+			return true
+		}))
+		failBuild("PO", "app", ReasonInstallFailed, "pip said no", prior)
+		assert.Equal(t, want, LoadAppState("PO", "app").Actual, "prior %q", prior)
+	}
+}

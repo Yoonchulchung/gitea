@@ -92,8 +92,11 @@ func TestEnqueueDeployRejectsWhenFull(t *testing.T) {
 
 	assert.Len(t, deployQueue, 1)
 	st := LoadAppState("PO", "second")
-	assert.Equal(t, AppStateFailed, st.Actual)
 	assert.Equal(t, ReasonDeployQueueFull, st.Reason)
+	// A rejected queue entry never touched the app, so an app that was
+	// already running keeps running and keeps its controls. This one had
+	// never deployed, so there is nothing to preserve.
+	assert.Equal(t, AppStateFailed, st.Actual)
 
 	// The accepted job carries no failure: enqueueDeploy only records the
 	// rejection, leaving the queued state its caller already wrote.

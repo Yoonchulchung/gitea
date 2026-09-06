@@ -104,8 +104,9 @@ func enqueueDeploy(owner, repo, sha string, prID int64) {
 	default:
 		// Never block the caller: this runs inside a merge notification, and
 		// a full queue must not hold up the merge.
-		failDeploy(owner, repo, ReasonDeployQueueFull,
-			"the deploy queue is full; the previously deployed version is still running")
+		failBuild(owner, repo, ReasonDeployQueueFull,
+			"the deploy queue is full; the previously deployed version is still running",
+			LoadAppState(owner, repo).Actual)
 	}
 }
 
@@ -117,14 +118,38 @@ func enqueueDeploy(owner, repo, sha string, prID int64) {
 // filesystem path. userMessage is the half a department may see, and is
 // empty unless there is something specific worth telling them beyond the
 // sentence DepartmentCause already has for the reason code.
-func failDeploy(owner, repo, reason, message string, userMessage ...string) {
+func failDeploy(owner, repo, reason, message string) {
+	recordDeployFailure(owner, repo, reason, message, AppStateFailed)
+}
+
+// failBuild records a failure that happened before anything was swapped.
+//
+// The build phase never touches the running process — that is the whole
+// reason the swap happens last — so the previously deployed version is still
+// serving and `restore` is the state it was in before this attempt began.
+// Marking it failed took its stop button away and offered a start button for
+// something already running, which is the department losing control of the
+// version their users are on because of a *later* request that did not work.
+func failBuild(owner, repo, reason, message, restore string, userMessage ...string) {
+	// Two states survive an attempt that never reached the swap. Running,
+	// because those users are still being served by the previous version and
+	// the department still owns it. Suspended, because an admin stopped this
+	// app on purpose and a failed build is not a reason to undo that.
+	// Everything else means nothing is serving, which is a failure.
+	if restore != AppStateRunning && restore != AppStateSuspended {
+		restore = AppStateFailed
+	}
+	recordDeployFailure(owner, repo, reason, message, restore, userMessage...)
+}
+
+func recordDeployFailure(owner, repo, reason, message, actual string, userMessage ...string) {
 	log.Error("company: deploy %s/%s failed (%s): %s", owner, repo, reason, message)
 	safe := ""
 	if len(userMessage) > 0 {
 		safe = userMessage[0]
 	}
 	if err := MutateAppState(owner, repo, func(st *AppState) bool {
-		st.Actual = AppStateFailed
+		st.Actual = actual
 		st.FailedAt = time.Now().Unix()
 		st.Reason = reason
 		st.Message = message
@@ -167,8 +192,11 @@ func appendBuildLog(p appPaths, sha, outcome, output string) {
 func runDeploy(ctx context.Context, job deployJob) {
 	owner, repo := job.Owner, job.Repo
 	settings := SettingsFor(owner, repo)
+	// What the app was doing before this attempt. Every failure below happens
+	// before the swap, so this is what it is still doing.
+	priorActual := LoadAppState(owner, repo).Actual
 	if !settings.IsEnabled() {
-		failDeploy(owner, repo, ReasonContractViolation, "this app is disabled by an administrator")
+		failBuild(owner, repo, ReasonContractViolation, "this app is disabled by an administrator", priorActual)
 		return
 	}
 
@@ -191,14 +219,14 @@ func runDeploy(ctx context.Context, job deployJob) {
 		if denied, ok := errors.AsType[*packagesDeniedError](err); ok {
 			// Written by us and naming the packages, so it is the one thing
 			// the department needs in order to fix this.
-			failDeploy(owner, repo, ReasonPackageDenied, denied.Error(), denied.Error())
+			failBuild(owner, repo, ReasonPackageDenied, denied.Error(), priorActual, denied.Error())
 			return
 		}
 		if errors.Is(err, errNoPython) {
-			failDeploy(owner, repo, ReasonNoPython, AdminError(err), DepartmentSafeError("build", err))
+			failBuild(owner, repo, ReasonNoPython, AdminError(err), priorActual, DepartmentSafeError("build", err))
 			return
 		}
-		failDeploy(owner, repo, ReasonInstallFailed, AdminError(err))
+		failBuild(owner, repo, ReasonInstallFailed, AdminError(err), priorActual)
 		return
 	}
 	appendBuildLog(p, job.SHA, "OK", "build succeeded")
@@ -502,6 +530,10 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 		return true
 	})
 
+	// A stop pressed while this was building is a decision, not a race to
+	// lose: the new release is put in place but not started.
+	stayStopped := LoadAppState(owner, repo).Desired == AppStateStopped
+
 	s.mu.Lock()
 	s.stopLocked()
 	s.mu.Unlock()
@@ -512,6 +544,17 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 	}
 	if previous != "" {
 		_ = swapSymlink(p.previous, previous)
+	}
+
+	if stayStopped {
+		return MutateAppState(owner, repo, func(st *AppState) bool {
+			st.Actual = AppStateStopped
+			st.HasRelease = true
+			st.SHA = sha
+			st.Reason, st.Message, st.UserMessage = "", "", ""
+			st.AppendHistory(AppHistoryEntry{Status: AppStateStopped, SHA: sha, Reason: "deployed while stopped"})
+			return true
+		})
 	}
 
 	// startProcess, not Start: the state must not say "running" until the

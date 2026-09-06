@@ -140,8 +140,16 @@ func TestCanTransition(t *testing.T) {
 		{"admin can resume a suspended app", AppStateSuspended, "resume", true, true},
 		{"resume is meaningless when not suspended", AppStateRunning, "resume", true, false},
 
-		{"mid-deploy blocks restart", AppStateBuilding, "restart", true, false},
-		{"mid-deploy still allows an admin suspend", AppStateBuilding, "suspend", true, true},
+		// A queued or building deploy touches nothing — the previously
+		// deployed version is serving normally, and the department has not
+		// given up control of it by asking for a new one.
+		{"a building deploy does not block restart", AppStateBuilding, "restart", true, true},
+		{"nor stop", AppStateBuilding, "stop", false, true},
+		{"nor an admin suspend", AppStateBuilding, "suspend", true, true},
+		// The swap itself is the few seconds where a concurrent start would
+		// race the deploy's own.
+		{"the swap blocks start", AppStateActivating, "start", true, false},
+		{"but never blocks stop — it is the safety valve", AppStateActivating, "stop", false, true},
 
 		{"unknown action is refused", AppStateRunning, "explode", true, false},
 	}
