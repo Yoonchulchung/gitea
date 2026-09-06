@@ -8,14 +8,18 @@
 		</h2>
 
 		<div class="ui segment">
-			<form method="get" class="tw-flex tw-gap-2 tw-items-center">
-				<input class="tw-flex-1" type="search" name="q" value="{{.Query}}" placeholder="검색어 (예: 패키지 이름, 오류 메시지)">
+			{{/* `ui form` so the input gets the instance's own field styling — a
+			     bare <input> outside one is the browser's, which is a different
+			     height from the button beside it. Full-size button for the same
+			     reason: a small one does not line up with a standard field. */}}
+			<form method="get" class="ui form tw-flex tw-gap-2 tw-items-end">
+				<div class="field tw-flex-1 tw-mb-0"><input type="search" name="q" value="{{.Query}}" placeholder="검색어 (예: 패키지 이름, 오류 메시지)"></div>
 				{{/* Regexp is opt-in: a pattern can backtrack catastrophically, and
 				     the search timeout bounds that but does not remove it. */}}
-				<label class="tw-flex tw-items-center tw-gap-1 tw-text-13">
+				<label class="tw-flex tw-items-center tw-gap-1 tw-text-13 tw-pb-2">
 					<input type="checkbox" name="regexp" value="1" {{if .UseRegexp}}checked{{end}}> 정규식
 				</label>
-				<button class="ui small primary button">검색</button>
+				<button class="ui primary button">검색</button>
 			</form>
 			{{if .SearchError}}
 				<div class="ui negative message tw-mt-2">검색식이 올바르지 않습니다: {{.SearchError}}</div>
