@@ -45,27 +45,26 @@
 			     to find out was to submit another — which supersedes the first
 			     and starts the wait over. */}}
 			<div class="ui warning message">
-				<div class="header">이미 제출한 요청이 관리자 승인을 기다리고 있습니다</div>
+				<div class="header">{{ctx.Locale.Tr "company.deploy.open_request_header"}}</div>
 				<div class="tw-mt-1">{{.Issue.Title}}</div>
 				{{with $.OpenRequestItems}}
 					<div class="tw-text-13 tw-mt-1">
-						요청한 항목:
+						{{ctx.Locale.Tr "company.deploy.open_request_items"}}
 						{{range $i, $item := .}}{{if $i}}, {{end}}{{$item.Label}} ({{$item.Detail}}){{end}}
 					</div>
 				{{end}}
 				<div class="tw-text-13 tw-mt-2">
-					새 요청을 제출하면 이 요청은 자동으로 취소되고 처음부터 다시 기다리게 됩니다.
-					더 이상 필요 없다면 아래에서 취소해 주세요.
+						{{ctx.Locale.Tr "company.deploy.open_request_note"}}
 				</div>
 				<form method="post" action="{{AppSubUrl}}/company/deploy-request/{{.ID}}/cancel" class="tw-mt-2 tw-flex tw-gap-2 tw-flex-wrap tw-items-center"
-					data-company-confirm="이 배포 요청을 취소합니다. 계속할까요?">
+					data-company-confirm="{{ctx.Locale.Tr "company.deploy.cancel_confirm"}}">
 					{{$.CsrfTokenHtml}}
 					<input type="hidden" name="org" value="{{$.Repository.OwnerName}}">
 					{{/* Required by the handler, and worth requiring: the admin
 					     watching this request disappear should be told why. */}}
 					<input type="text" name="reason" class="tw-flex-1" required autocomplete="off"
-						placeholder="취소 사유 (예: 코드를 더 고쳐야 해서 다시 요청하겠습니다)">
-					<button class="ui basic red button">요청 취소</button>
+						placeholder="{{ctx.Locale.Tr "company.deploy.cancel_reason_placeholder"}}">
+					<button class="ui basic red button">{{ctx.Locale.Tr "company.deploy.cancel_request"}}</button>
 				</form>
 			</div>
 		{{end}}
@@ -100,7 +99,7 @@
 						{{range .Checks}}
 							<div class="company-preflight-row">
 								<span class="company-preflight-{{.Status}}">
-									{{if eq .Status "ok"}}확인됨{{else if eq .Status "warn"}}확인 필요{{else}}고쳐야 함{{end}}
+									{{if eq .Status "ok"}}{{ctx.Locale.Tr "company.deploy.check_ok"}}{{else if eq .Status "warn"}}{{ctx.Locale.Tr "company.deploy.check_warn"}}{{else}}{{ctx.Locale.Tr "company.deploy.check_error"}}{{end}}
 								</span>
 								<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong>
 								{{/* pip's own words and a package name the department wrote —
@@ -114,7 +113,7 @@
 
 			<div class="company-perm-request">
 				{{with .PermissionRequests}}
-					<div class="company-deploy-section-lbl">이번 배포에 필요한 승인</div>
+					<div class="company-deploy-section-lbl">{{ctx.Locale.Tr "company.deploy.approvals_needed"}}</div>
 					{{range .}}
 						<label class="company-perm-request-item">
 							<input type="checkbox" name="perm_{{.Kind}}_{{.Value}}" value="1" checked>
@@ -130,41 +129,41 @@
 				     "this needs to hand people a file". Those are intentions, and
 				     without somewhere to say them a department that needs one had
 				     no route to a request at all. */}}
-				<div class="company-deploy-section-lbl tw-mt-3">추가로 요청할 것이 있나요?</div>
+				<div class="company-deploy-section-lbl tw-mt-3">{{ctx.Locale.Tr "company.deploy.anything_else"}}</div>
 				{{if not .DownloadAllowed}}
 					<label class="company-perm-request-item">
 						<input type="checkbox" name="perm_want_download" value="1">
 						<span>
-							<strong>파일 다운로드 허용</strong>
+							<strong>{{ctx.Locale.Tr "company.deploy.want_download"}}</strong>
 							<span class="text-grey tw-text-12 tw-block">
-								엑셀·PDF 처럼 파일을 내려받게 해야 한다면 선택하세요. 지금은 화면에 보여주는 것만 됩니다.
+								{{ctx.Locale.Tr "company.deploy.want_download_note"}}
 							</span>
 						</span>
 					</label>
 				{{end}}
 				<div class="field tw-mt-2">
-					<label>외부 통신 <span class="text-grey tw-text-12">(다른 시스템의 자료를 가져와야 할 때만 적으세요)</span></label>
+					<label>{{ctx.Locale.Tr "company.deploy.want_outbound"}} <span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.deploy.want_outbound_note"}}</span></label>
 					<div class="tw-flex tw-gap-2 tw-flex-wrap">
 						<input type="text" name="perm_want_host" class="tw-flex-1"
-							placeholder="주소 붙여넣기 (예: https://erp.internal.company.com/api)" autocomplete="off">
+							placeholder="{{ctx.Locale.Tr "company.deploy.host_placeholder"}}" autocomplete="off">
 						{{/* Fomantic dropdown, as on /user/settings/ai — a bare <select>
 						     is the browser's own widget and looks like nothing else here. */}}
 						<div class="ui selection dropdown">
 							<input type="hidden" name="perm_want_methods" value="GET">
 							<div class="text"></div> {{svg "octicon-triangle-down" 14 "dropdown icon"}}
 							<div class="menu">
-								<div class="item" data-value="GET">읽기만 (GET)</div>
-								<div class="item" data-value="GET,POST">읽기와 보내기 (GET, POST)</div>
+								<div class="item" data-value="GET">{{ctx.Locale.Tr "company.adminapp.method_get"}}</div>
+								<div class="item" data-value="GET,POST">{{ctx.Locale.Tr "company.adminapp.method_getpost"}}</div>
 							</div>
 						</div>
 					</div>
 					<span class="text-grey tw-text-12">
-						{{if .OutboundAllowed}}현재 허용: {{StringUtils.Join .OutboundAllowed ", "}}{{else}}지금은 외부 통신이 모두 차단되어 있습니다.{{end}}
+						{{if .OutboundAllowed}}{{ctx.Locale.Tr "company.deploy.outbound_current" (StringUtils.Join .OutboundAllowed ", ")}}{{else}}{{ctx.Locale.Tr "company.deploy.outbound_none"}}{{end}}
 					</span>
 				</div>
 
 				<div class="field tw-mt-2">
-					<label>사유 <span class="text-grey tw-text-12">(관리자가 판단할 수 있도록 왜 필요한지 적어 주세요)</span></label>
+					<label>{{ctx.Locale.Tr "company.deploy.reason"}} <span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.deploy.reason_note"}}</span></label>
 						{{/* autocomplete off: the browser offers what was typed into this field on
 						     a previous request, and a reason carried over from a different
 						     approval is worse than no reason — the admin reads it as though it
@@ -174,7 +173,7 @@
 					     the person cannot see is indistinguishable from a broken
 					     button. The reason is required where it matters — an item
 					     without one is what the admin sees. */}}
-					<input type="text" name="perm_reason" value="{{$.SubmittedReason}}" placeholder="예: 엑셀 보고서를 만들기 위해 openpyxl 이 필요합니다" autocomplete="off">
+					<input type="text" name="perm_reason" value="{{$.SubmittedReason}}" placeholder="{{ctx.Locale.Tr "company.deploy.reason_placeholder"}}" autocomplete="off">
 				</div>
 			</div>
 			{{/* The label is wrapped so the loading state can hide it: .is-loading

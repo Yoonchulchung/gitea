@@ -1,10 +1,10 @@
 {{template "admin/layout_head" (dict "pageClass" "admin company-app-logs")}}
 	<div class="admin-setting-content">
 		<h4 class="ui top attached header">
-			<a href="{{AppSubUrl}}/-/admin/company-deploys">앱 배포 관리</a>
+			<a href="{{AppSubUrl}}/-/admin/company-deploys">{{ctx.Locale.Tr "company.admin.deploys_nav"}}</a>
 			<span class="text-grey tw-mx-2">/</span>
 			<a href="{{.AdminAppLink}}">{{.App.Owner}}/{{.App.Repo}}</a>
-			<span class="text-grey tw-mx-2">/</span>로그
+			<span class="text-grey tw-mx-2">/</span>{{ctx.Locale.Tr "company.admin.logs_title"}}
 		</h4>
 
 		<div class="ui attached segment">
@@ -13,20 +13,20 @@
 			     height from the button beside it. Full-size button for the same
 			     reason: a small one does not line up with a standard field. */}}
 			<form method="get" class="ui form tw-flex tw-gap-2 tw-items-end">
-				<div class="field tw-flex-1 tw-mb-0"><input type="search" name="q" value="{{.Query}}" placeholder="검색어 (부분 일치)"></div>
+				<div class="field tw-flex-1 tw-mb-0"><input type="search" name="q" value="{{.Query}}" placeholder="{{ctx.Locale.Tr "company.logs.search_placeholder_admin"}}"></div>
 				{{/* Regexp is opt-in: a user-supplied pattern can backtrack
 				     catastrophically, and the search timeout bounds that but does
 				     not remove it. See company/applogs.go. */}}
 				<label class="tw-flex tw-items-center tw-gap-1 tw-text-13 tw-pb-2">
-					<input type="checkbox" name="regexp" value="1" {{if .UseRegexp}}checked{{end}}> 정규식
+					<input type="checkbox" name="regexp" value="1" {{if .UseRegexp}}checked{{end}}> {{ctx.Locale.Tr "company.logs.regexp"}}
 				</label>
-				<button class="ui primary button">검색</button>
+				<button class="ui primary button">{{ctx.Locale.Tr "company.logs.search"}}</button>
 			</form>
 			{{if .SearchError}}
-				<div class="ui negative message tw-mt-2">검색식이 올바르지 않습니다: {{.SearchError}}</div>
+				<div class="ui negative message tw-mt-2">{{ctx.Locale.Tr "company.logs.bad_regexp"}} {{.SearchError}}</div>
 			{{end}}
 			{{if .Truncated}}
-				<div class="ui warning message tw-mt-2">결과가 너무 많아 일부만 표시했습니다. 검색어를 좁혀 주세요.</div>
+				<div class="ui warning message tw-mt-2">{{ctx.Locale.Tr "company.logs.truncated"}}</div>
 			{{end}}
 		</div>
 
@@ -39,10 +39,9 @@
 			     shared clock, so they are shown as blocks rather than interleaved
 			     — which would imply an ordering that is not there. */}}
 			<pre class="company-log">{{range .Lines}}{{if .At}}<span class="company-log-time" title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.AbsoluteShort .At}}</span> {{end}}{{if .Build}}<span class="company-log-build">{{.Text}}</span>{{else}}{{.Text}}{{end}}
-{{else}}로그가 아직 없습니다.{{end}}</pre>
+{{else}}{{ctx.Locale.Tr "company.logs.empty_admin"}}{{end}}</pre>
 			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">
-				<span class="company-log-build">이 색</span> 은 배포(빌드) 출력이고, 나머지는 실행 중인 앱이 남긴 것입니다.
-				실패한 배포의 로그도 그대로 쌓입니다.
+				{{ctx.Locale.Tr "company.logs.legend" (HTMLFormat `<span class="%s">%s</span>` "company-log-build" (ctx.Locale.Tr "company.logs.legend_colour"))}}
 			</p>
 		</div>
 	</div>

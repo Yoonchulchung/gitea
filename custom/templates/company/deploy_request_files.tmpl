@@ -65,7 +65,7 @@
 		     rubber stamp. See company/permissions.go. */}}
 		{{with .PermissionRequests}}
 			<h4 class="ui top attached header company-perm-review-header">
-				{{svg "octicon-shield-lock" 16 "tw-mr-2"}}요청된 권한 ({{len .}})
+				{{svg "octicon-shield-lock" 16 "tw-mr-2"}}{{ctx.Locale.Tr "company.deploy.requested_perms" (len .)}}
 			</h4>
 			<div class="ui attached segment">
 				{{range .}}
@@ -73,7 +73,7 @@
 						<div>
 							<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{.Detail}}
 							{{if .Evidence}}<div class="text-grey tw-text-12">{{if ctx.Locale.HasKey .Evidence}}{{ctx.Locale.Tr .Evidence}}{{else}}{{.Evidence}}{{end}}</div>{{end}}
-							{{if .Reason}}<div class="tw-text-13 tw-mt-1">사유: {{.Reason}}</div>{{end}}
+							{{if .Reason}}<div class="tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.deploy.perm_reason" .Reason}}</div>{{end}}
 						</div>
 						{{/* Approval happens by merging the deploy request, which
 						     commits the change to apps.yml with the admin as author —
@@ -82,7 +82,7 @@
 				{{end}}
 				{{if $.CanApprovePermissions}}
 					<div class="text-grey tw-text-12 tw-mt-2">
-						이 배포 요청을 승인(merge)하면 위 권한이 함께 적용됩니다. 일부만 승인하려면 요청자에게 수정을 요청해 주세요.
+					{{ctx.Locale.Tr "company.deploy.perm_merge_note"}}
 					</div>
 				{{end}}
 			</div>

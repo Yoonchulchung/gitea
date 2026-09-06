@@ -7,7 +7,7 @@
 			     the file — but it has to be visible, or the page would show
 			     something other than what is in force. */}}
 			<div class="ui attached negative message">
-				<strong>apps.yml 을 읽지 못해 직전 정상 설정을 유지 중입니다.</strong> {{.ConfigError}}
+				<strong>{{ctx.Locale.Tr "company.admin.config_error"}}</strong> {{.ConfigError}}
 			</div>
 		{{end}}
 
@@ -41,52 +41,41 @@
 		</div>
 
 		<h4 class="ui top attached header">
-			기본 제공 패키지
+			{{ctx.Locale.Tr "company.pkg.base_header"}}
 			{{if .PolicyHistoryLink}}
 				<div class="ui right">
-					<a class="tw-text-13" href="{{.PolicyHistoryLink}}">변경 이력 →</a>
+					<a class="tw-text-13" href="{{.PolicyHistoryLink}}">{{ctx.Locale.Tr "company.pkg.history_link"}}</a>
 				</div>
 			{{end}}
 		</h4>
 		<div class="ui attached segment">
 			<p class="text-grey tw-text-13 tw-mt-0">
-				모든 앱에 자동으로 설치됩니다. 부서는 <code>requirements.txt</code> 에
-				<strong>추가로 필요한 것만</strong> 적으면 됩니다.
-				한 줄에 하나씩, <code>이름</code> 또는 <code>이름==버전</code>.
+				{{ctx.Locale.Tr "company.pkg.base_explain"}}
 			</p>
 			<form method="post" action="{{AppSubUrl}}/-/admin/company-packages/base" class="ui form">
 				{{.CsrfTokenHtml}}
 				<textarea name="packages" rows="6" class="tw-font-mono">{{.BasePackages}}</textarea>
 				<div class="tw-flex tw-items-center tw-gap-3 tw-mt-2">
-					<button class="ui primary button">저장</button>
+					<button class="ui primary button">{{ctx.Locale.Tr "save"}}</button>
 					<span class="text-grey tw-text-12">
-						<code>.company/apps.yml</code> 에 커밋되고, <strong>새로 배포되는 앱부터</strong> 적용됩니다.
-					</span>
-				</div>
-			</form>
-			<div class="ui warning message tw-mt-3 tw-text-13">
-				{{/* The failure this platform actually hit: a pinned version whose
-				     wheels predate the host's interpreter breaks every app at once,
-				     and the error names a transitive dependency nobody wrote down. */}}
-				<strong>버전은 고정하지 않는 편이 안전합니다.</strong>
-				고정한 버전의 휠이 이 서버의 파이썬보다 오래되면 <strong>모든 앱이 한꺼번에 빌드 실패</strong>합니다.
-				{{if .PythonOK}}<br>이 서버의 파이썬: <code>{{.PythonDetail}}</code>{{else}}<br><strong>파이썬을 사용할 수 없습니다 — 어떤 앱도 빌드되지 않습니다.</strong> {{.PythonDetail}}{{end}}
-				<br><span class="tw-text-12">이 값은 AI 어시스턴트에게도 그대로 전달되어, 이 서버에서 설치되지 않는 버전을 제안하지 않도록 합니다.</span>
+				{{ctx.Locale.Tr "company.pkg.base_note"}}
+				{{if .PythonOK}}<br>{{ctx.Locale.Tr "company.pkg.python_is"}} <code>{{.PythonDetail}}</code>{{else}}<br><strong>{{ctx.Locale.Tr "company.admin.no_python"}}</strong> {{.PythonDetail}}{{end}}
+				<br><span class="tw-text-12">{{ctx.Locale.Tr "company.pkg.ai_note"}}</span>
 			</div>
 		</div>
 
 		{{if .SharedAllow}}
-			<h4 class="ui top attached header">공용 허용 목록</h4>
+			<h4 class="ui top attached header">{{ctx.Locale.Tr "company.pkg.shared_header"}}</h4>
 			<div class="ui attached segment">
-				<p class="text-grey tw-text-13 tw-mt-0">모든 부서가 <code>requirements.txt</code> 에 적을 수 있는 패키지입니다.</p>
+				<p class="text-grey tw-text-13 tw-mt-0">{{ctx.Locale.Tr "company.pkg.shared_explain"}}</p>
 				<div>{{range .SharedAllow}}<span class="ui label tw-mr-1 tw-mb-1">{{.}}</span>{{end}}</div>
 			</div>
 		{{end}}
 
-		<h4 class="ui top attached header">부서별 승인 내역 ({{len .AppPackages}})</h4>
+		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.pkg.per_app_header" (len .AppPackages)}}</h4>
 		<div class="ui attached table segment">
 			<table class="ui very basic table">
-				<thead><tr><th class="tw-w-1/4">앱</th><th>승인된 패키지</th></tr></thead>
+				<thead><tr><th class="tw-w-1/4">{{ctx.Locale.Tr "company.pkg.col_app"}}</th><th>{{ctx.Locale.Tr "company.pkg.col_approved"}}</th></tr></thead>
 				<tbody>
 					{{range .AppPackages}}
 						<tr>
@@ -96,7 +85,7 @@
 					{{else}}
 						{{/* The normal state early on, and worth saying plainly: nothing
 						     is approved until a deploy request asks for it. */}}
-						<tr><td colspan="2" class="text-grey">아직 부서별로 승인된 패키지가 없습니다. 배포 요청을 승인하면 여기에 쌓입니다.</td></tr>
+						<tr><td colspan="2" class="text-grey">{{ctx.Locale.Tr "company.pkg.per_app_empty"}}</td></tr>
 					{{end}}
 				</tbody>
 			</table>
@@ -105,8 +94,7 @@
 		<p class="text-grey tw-text-12 tw-mt-3">
 			{{/* One source of truth, and the reason it is a file rather than a
 			     table: the commit is the audit record. */}}
-			승인은 배포 요청을 merge 할 때 <code>.company/apps.yml</code> 에 커밋되며,
-			그 커밋이 <strong>누가 언제 무엇을 승인했는지</strong>에 대한 기록입니다.
+			{{ctx.Locale.Tr "company.pkg.audit_note"}}
 		</p>
 	</div>
 {{template "admin/layout_footer" .}}

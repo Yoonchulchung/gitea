@@ -3,8 +3,8 @@
 	{{template "repo/header" .}}
 	<div class="ui container">
 		<h2 class="tw-flex tw-items-center tw-gap-3">
-			<a href="{{.AppLink}}">앱 관리</a>
-			<span class="text-grey">/</span> 로그
+			<a href="{{.AppLink}}">{{ctx.Locale.Tr "company.app.title"}}</a>
+			<span class="text-grey">/</span> {{ctx.Locale.Tr "company.logs.title"}}
 		</h2>
 
 		<div class="ui segment">
@@ -13,19 +13,19 @@
 			     height from the button beside it. Full-size button for the same
 			     reason: a small one does not line up with a standard field. */}}
 			<form method="get" class="ui form tw-flex tw-gap-2 tw-items-end">
-				<div class="field tw-flex-1 tw-mb-0"><input type="search" name="q" value="{{.Query}}" placeholder="검색어 (예: 패키지 이름, 오류 메시지)"></div>
+				<div class="field tw-flex-1 tw-mb-0"><input type="search" name="q" value="{{.Query}}" placeholder="{{ctx.Locale.Tr "company.logs.search_placeholder"}}"></div>
 				{{/* Regexp is opt-in: a pattern can backtrack catastrophically, and
 				     the search timeout bounds that but does not remove it. */}}
 				<label class="tw-flex tw-items-center tw-gap-1 tw-text-13 tw-pb-2">
-					<input type="checkbox" name="regexp" value="1" {{if .UseRegexp}}checked{{end}}> 정규식
+					<input type="checkbox" name="regexp" value="1" {{if .UseRegexp}}checked{{end}}> {{ctx.Locale.Tr "company.logs.regexp"}}
 				</label>
-				<button class="ui primary button">검색</button>
+				<button class="ui primary button">{{ctx.Locale.Tr "company.logs.search"}}</button>
 			</form>
 			{{if .SearchError}}
-				<div class="ui negative message tw-mt-2">검색식이 올바르지 않습니다: {{.SearchError}}</div>
+				<div class="ui negative message tw-mt-2">{{ctx.Locale.Tr "company.logs.bad_regexp"}} {{.SearchError}}</div>
 			{{end}}
 			{{if .Truncated}}
-				<div class="ui warning message tw-mt-2">결과가 너무 많아 일부만 표시했습니다. 검색어를 좁혀 주세요.</div>
+				<div class="ui warning message tw-mt-2">{{ctx.Locale.Tr "company.logs.truncated"}}</div>
 			{{end}}
 		</div>
 
@@ -34,10 +34,9 @@
 			     "<script>" in a log line must not run in the reader's session.
 			     Go templates escape this by default — do not add safeHTML. */}}
 			<pre class="company-log">{{range .Lines}}{{if .At}}<span class="company-log-time" title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.AbsoluteShort .At}}</span> {{end}}{{if .Build}}<span class="company-log-build">{{.Text}}</span>{{else}}{{.Text}}{{end}}
-{{else}}로그가 아직 없습니다. 앱이 한 번이라도 배포되면 여기에 쌓입니다.{{end}}</pre>
+{{else}}{{ctx.Locale.Tr "company.logs.empty"}}{{end}}</pre>
 			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">
-				<span class="company-log-build">이 색</span> 은 배포할 때 나온 것이고, 나머지는 실행 중인 앱이 남긴 것입니다.
-				실패한 배포의 기록도 그대로 남습니다.
+				{{ctx.Locale.Tr "company.logs.legend" (HTMLFormat `<span class="%s">%s</span>` "company-log-build" (ctx.Locale.Tr "company.logs.legend_colour"))}}
 			</p>
 		</div>
 	</div>

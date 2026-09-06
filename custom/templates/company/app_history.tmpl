@@ -4,25 +4,25 @@
 	<div class="ui container">
 
 		<h2 class="tw-flex tw-items-center tw-gap-3">
-			배포 이력
+			{{ctx.Locale.Tr "company.history.title"}}
 			<span class="company-app-state {{.App.Actual}}">{{ctx.Locale.Tr .StatusLabel}}</span>
-			<span class="text-grey tw-text-13">{{.TotalAttempts}}건</span>
+			<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.history.count" .TotalAttempts}}</span>
 			<div class="tw-flex-1"></div>
-			<a class="ui basic button" href="{{.AppLink}}">앱 관리로</a>
+			<a class="ui basic button" href="{{.AppLink}}">{{ctx.Locale.Tr "company.history.back_to_app"}}</a>
 		</h2>
 
 		<div class="ui segment">
 			<p class="text-grey tw-text-13 tw-mt-0">
-				배포를 시도할 때마다 남는 기록입니다.
-				{{if .Running.SHA}}지금 실행 중인 버전은 <span class="tw-font-mono">{{ShortSha .Running.SHA}}</span> 입니다.{{end}}
+				{{ctx.Locale.Tr "company.history.intro"}}
+				{{if .Running.SHA}}{{ctx.Locale.Tr "company.history.running_is" (ShortSha .Running.SHA)}}{{end}}
 			</p>
 			<table class="ui very basic table tw-text-13">
 				<thead>
 					<tr>
-						<th class="tw-w-1/6">언제</th>
-						<th class="tw-w-24">결과</th>
-						<th class="tw-w-1/6">버전</th>
-						<th>내용</th>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.history.col_when"}}</th>
+						<th class="tw-w-24">{{ctx.Locale.Tr "company.history.col_result"}}</th>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.history.col_version"}}</th>
+						<th>{{ctx.Locale.Tr "company.history.col_detail"}}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -35,9 +35,9 @@
 								{{if .InProgress}}
 									<span class="company-app-state building">{{.State}}</span>
 								{{else if .Failed}}
-									<span class="company-app-state failed">실패</span>
+									<span class="company-app-state failed">{{ctx.Locale.Tr "company.history.failed"}}</span>
 								{{else}}
-									<span class="company-app-state running">성공</span>
+									<span class="company-app-state running">{{ctx.Locale.Tr "company.history.succeeded"}}</span>
 								{{end}}
 							</td>
 							{{/* Which one is live is not "the newest": a failed deploy
@@ -48,15 +48,15 @@
 							     someone came here to find. */}}
 							<td class="tw-font-mono">
 								{{if .SHA}}{{ShortSha .SHA}}{{else}}<span class="text-grey">—</span>{{end}}
-								{{if .Current}}<span class="ui green mini label tw-ml-1">실행 중</span>{{end}}
-								{{if .Latest}}<span class="ui blue mini label tw-ml-1">최신</span>{{end}}
+								{{if .Current}}<span class="ui green mini label tw-ml-1">{{ctx.Locale.Tr "company.history.badge_running"}}</span>{{end}}
+								{{if .Latest}}<span class="ui blue mini label tw-ml-1">{{ctx.Locale.Tr "company.history.badge_latest"}}</span>{{end}}
 							</td>
 							{{/* Server paths are stripped for this audience — see
 							     company/app_page.go. Text nodes, never innerHTML. */}}
 							<td>{{if .Summary}}{{.Summary}}{{else}}<span class="text-grey">—</span>{{end}}</td>
 						</tr>
 					{{else}}
-						<tr><td colspan="4" class="text-grey">아직 배포한 적이 없습니다.</td></tr>
+						<tr><td colspan="4" class="text-grey">{{ctx.Locale.Tr "company.history.empty"}}</td></tr>
 					{{end}}
 				</tbody>
 			</table>
@@ -66,7 +66,7 @@
 		{{/* State changes rather than deploys: who stopped it, when it was rolled
 		     back. Capped at ten by the state file, so it is a panel and not a
 		     second paged table. */}}
-		<h3>최근 상태 변경</h3>
+		<h3>{{ctx.Locale.Tr "company.history.state_changes"}}</h3>
 		<div class="ui segment">
 			{{template "company/history_table" dict "Rows" .HistoryRows}}
 		</div>

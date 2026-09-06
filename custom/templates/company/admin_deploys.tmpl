@@ -6,9 +6,9 @@
 		     not learn that from a failed deploy. */}}
 		{{if or (not .PythonOK) (not .SandboxOK) .ConfigError}}
 			<div class="ui attached warning message">
-				{{if not .PythonOK}}<div><strong>파이썬을 사용할 수 없습니다 — 어떤 앱도 빌드되지 않습니다.</strong> {{.PythonDetail}}</div>{{end}}
-				{{if not .SandboxOK}}<div><strong>앱을 격리할 수 없습니다.</strong> {{.SandboxDetail}}</div>{{end}}
-				{{if .ConfigError}}<div><strong>apps.yml 을 읽지 못해 직전 정상 설정을 유지 중입니다.</strong> {{.ConfigError}}</div>{{end}}
+				{{if not .PythonOK}}<div><strong>{{ctx.Locale.Tr "company.admin.no_python"}}</strong> {{.PythonDetail}}</div>{{end}}
+				{{if not .SandboxOK}}<div><strong>{{ctx.Locale.Tr "company.admin.no_sandbox"}}</strong> {{.SandboxDetail}}</div>{{end}}
+				{{if .ConfigError}}<div><strong>{{ctx.Locale.Tr "company.admin.config_error"}}</strong> {{.ConfigError}}</div>{{end}}
 			</div>
 		{{end}}
 
@@ -26,7 +26,7 @@
 			     is always present stops being read — see docs/company/app-platform.md
 			     on the dashboard layout. */}}
 			<h4 class="ui top attached header company-deploys-attention-header">
-				{{svg "octicon-alert" 16 "tw-mr-2"}}조치 필요 ({{len .Attention}})
+				{{svg "octicon-alert" 16 "tw-mr-2"}}{{ctx.Locale.Tr "company.admin.attention" (len .Attention)}}
 			</h4>
 			<div class="ui attached table segment">
 				<table class="ui very basic table">
@@ -42,7 +42,7 @@
 								</td>
 								<td>
 									{{template "company/admin_deploys_status" .State}}
-									{{if not .Repo}}<span class="text-red tw-ml-2">저장소가 없습니다 — 이름이 바뀌었거나 삭제됨</span>{{end}}
+									{{if not .Repo}}<span class="text-red tw-ml-2">{{ctx.Locale.Tr "company.admin.repo_gone"}}</span>{{end}}
 									{{if and (eq .State.Actual "running") (not .State.Sandboxed)}}<span class="text-red tw-ml-2">{{ctx.Locale.Tr "company.admin.unsandboxed"}}</span>{{end}}
 									{{if .NetworkOpen}}<span class="text-red tw-ml-2">{{ctx.Locale.Tr "company.admin.network_open"}}</span>{{end}}
 									{{if .State.Reason}}<span class="text-grey tw-ml-2">{{.State.Reason}}</span>{{end}}
@@ -55,19 +55,19 @@
 		{{end}}
 
 		<h4 class="ui top attached header">
-			앱 배포 관리 ({{.CountTotal}})
+			{{ctx.Locale.Tr "company.admin.deploys_title" .CountTotal}}
 			<div class="ui right">
-				<span class="text-grey tw-text-13">실행중 {{.CountRunning}} · 중지 {{.CountStopped}} · 실패 {{.CountFailed}}</span>
+				<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.counts" .CountRunning .CountStopped .CountFailed}}</span>
 			</div>
 		</h4>
 		<div class="ui attached table segment">
 			<table class="ui very basic table">
 				<thead>
 					<tr>
-						<th class="tw-w-1/12">상태</th>
-						<th>앱</th>
-						<th class="tw-w-1/6">배포</th>
-						<th class="tw-w-1/6">헬스</th>
+						<th class="tw-w-1/12">{{ctx.Locale.Tr "company.admin.col_status"}}</th>
+						<th>{{ctx.Locale.Tr "company.admin.col_app"}}</th>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_deploy"}}</th>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_health"}}</th>
 						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_requests"}}</th>
 					</tr>
 				</thead>
@@ -87,14 +87,14 @@
 								{{if .State.UpdatedAt}}
 									{{DateUtils.TimeSince .State.UpdatedAt}}
 								{{else}}
-									<span class="text-grey">배포한 적 없음</span>
+									<span class="text-grey">{{ctx.Locale.Tr "company.admin.never_deployed"}}</span>
 								{{end}}
 							</td>
 							<td class="tw-text-13">
 								{{if eq .State.Health.State "up"}}
-									<span class="text-green">정상</span>
+									<span class="text-green">{{ctx.Locale.Tr "company.admin.health_up"}}</span>
 								{{else if eq .State.Health.State "down"}}
-									<span class="text-red">응답 없음</span>
+									<span class="text-red">{{ctx.Locale.Tr "company.admin.health_down"}}</span>
 								{{else}}
 									<span class="text-grey">—</span>
 								{{end}}
@@ -115,7 +115,7 @@
 							</td>
 						</tr>
 					{{else}}
-						<tr><td colspan="5" class="text-grey">아직 부서 저장소가 없습니다.</td></tr>
+						<tr><td colspan="5" class="text-grey">{{ctx.Locale.Tr "company.admin.no_repos"}}</td></tr>
 					{{end}}
 				</tbody>
 			</table>
