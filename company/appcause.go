@@ -3,6 +3,8 @@
 
 package company
 
+import "strings"
+
 // A department can start and stop its own app, so it has to be able to find
 // out why the app stopped — otherwise every failure becomes a question for
 // an administrator and the boundary this platform draws stops meaning
@@ -42,10 +44,14 @@ func DepartmentCause(st *AppState) *AppCause {
 	case ReasonInstallFailed:
 		return &AppCause{
 			Summary: "필요한 패키지를 설치하지 못했습니다",
-			Detail:  st.Message,
-			// No button: a typo in requirements.txt is fixed in the file, and
-			// offering an approval request here would send an admin a request
-			// for a package that does not exist.
+			// Never st.Message: that is the raw pip output, which runs to
+			// dozens of lines of download progress and is admin-only by
+			// design. What a department needs is the one line naming the
+			// package that could not be found.
+			Detail: summarizeInstallFailure(st.Message),
+			// No button: a version that does not exist is fixed in
+			// requirements.txt, and an approval request here would ask an
+			// admin to approve a package nobody can install.
 		}
 	case ReasonPackageDenied:
 		return &AppCause{
@@ -108,3 +114,37 @@ func DepartmentCause(st *AppState) *AppCause {
 		return &AppCause{Summary: "앱이 실행되고 있지 않습니다", Detail: st.Message}
 	}
 }
+
+// summarizeInstallFailure pulls the actionable lines out of pip's output.
+//
+// pip prints one "Collecting …" and "Downloading …" line per package before
+// it gets to the problem, so the raw text is mostly noise; the lines that
+// start with ERROR are the ones that say what to change. Bounded in both
+// count and length, because this is rendered in a sidebar panel and a
+// department that has to scroll through a build log has been handed the
+// admin's job.
+func summarizeInstallFailure(message string) string {
+	var errs []string
+	for line := range strings.SplitSeq(message, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "ERROR:") {
+			continue
+		}
+		// pip appends the full list of available versions, which can be
+		// hundreds of characters and helps nobody here.
+		if idx := strings.Index(line, " (from versions:"); idx > 0 {
+			line = line[:idx]
+		}
+		errs = append(errs, strings.TrimPrefix(line, "ERROR: "))
+		if len(errs) == installErrorLines {
+			break
+		}
+	}
+	if len(errs) == 0 {
+		return "requirements.txt 의 패키지 이름과 버전을 확인해 주세요. 자세한 내용은 관리자가 볼 수 있습니다."
+	}
+	return strings.Join(errs, "\n") + "\n\nrequirements.txt 를 고친 뒤 다시 배포해 주세요."
+}
+
+// installErrorLines caps how much of a failed build reaches the department.
+const installErrorLines = 3

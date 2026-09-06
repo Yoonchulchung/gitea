@@ -96,7 +96,21 @@
 	border-radius: 4px;
 	padding: 8px 10px;
 	font-size: .82rem;
+	/* A failure message is not under this panel's control — a package name or
+	   a pip error can be arbitrarily long and has no spaces to wrap at. Left
+	   alone it widens the sidebar column and pushes the page apart. */
+	min-width: 0;
+	max-height: 14em;
+	overflow-y: auto;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
 }
+/* Same reason, for the panel as a whole: a flex item defaults to min-width
+   auto, which refuses to shrink below its content. */
+.company-app-panel { min-width: 0; }
+.company-app-panel > * { min-width: 0; }
+.company-perm-value,
+.company-perm-reason { overflow-wrap: anywhere; }
 .company-perm-row { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: .82rem; align-items: baseline; }
 .company-perm-label { min-width: 5.5em; color: var(--color-text-light-2); }
 .company-perm-value { font-weight: 600; }
