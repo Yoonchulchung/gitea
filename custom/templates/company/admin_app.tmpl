@@ -25,6 +25,15 @@
 				{{else}}
 					<form method="post" action="{{.AdminAppLink}}/start">{{.CsrfTokenHtml}}<button class="ui tiny primary button">시작</button></form>
 				{{end}}
+				{{if .App.SHA}}
+					{{/* Retry the recorded commit. A build breaks for reasons that
+					     have nothing to do with the code — a full queue, PyPI
+					     unreachable — and without this the only way back was asking
+					     the department to submit the whole request again. */}}
+					<form method="post" action="{{.AdminAppLink}}/redeploy">
+						{{.CsrfTokenHtml}}<button class="ui tiny basic button">다시 배포</button>
+					</form>
+				{{end}}
 				{{if ne .App.Actual "suspended"}}
 					{{/* Suspend is the platform-protection verb: unlike a department's
 					     stop, the department cannot undo it. The reason is required

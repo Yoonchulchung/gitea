@@ -147,3 +147,39 @@ func RemoveApp(owner, repo, actor string) error {
 		return true
 	})
 }
+
+// RedeployApp builds and activates the recorded commit again.
+//
+// The gap this fills: an approved deploy that failed had no way back. A
+// build breaks for reasons that have nothing to do with the code — the queue
+// was full, PyPI was briefly unreachable, the host ran out of disk — and
+// without this the only route was to ask the department to submit the whole
+// request again, which re-runs an approval nobody's mind has changed about.
+//
+// Admin-only, and deliberately so. It re-runs the *same* commit, so it fixes
+// nothing that a code change would fix: a department whose requirements.txt
+// names a version that does not exist has to edit it and deploy again, and
+// offering them a retry button here would just invite them to press it until
+// they gave up and asked an administrator anyway.
+func RedeployApp(owner, repo, actor string) error {
+	st := LoadAppState(owner, repo)
+	if ok, why := st.CanTransition("redeploy", true); !ok {
+		return userErrorf("%s", why)
+	}
+	if st.SHA == "" {
+		return audienceError(
+			"아직 배포된 적이 없어 다시 배포할 것이 없습니다",
+			"기록된 커밋이 없습니다 — 이 앱은 배포 요청이 승인된 적이 없습니다")
+	}
+	if err := MutateAppState(owner, repo, func(s *AppState) bool {
+		s.Desired = AppStateRunning
+		s.Actual = AppStateQueued
+		s.Reason, s.Message, s.UserMessage = "", "", ""
+		s.AppendHistory(AppHistoryEntry{Status: AppStateQueued, SHA: st.SHA, Actor: actor, Reason: "redeploy"})
+		return true
+	}); err != nil {
+		return err
+	}
+	enqueueDeploy(owner, repo, st.SHA, st.PRID)
+	return nil
+}

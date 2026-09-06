@@ -46,8 +46,9 @@ func DepartmentCause(st *AppState) *AppCause {
 	switch st.Reason {
 	case ReasonInstallFailed:
 		return &AppCause{
-			Summary:   "필요한 패키지를 설치하지 못했습니다",
-			AdminHint: "부서가 requirements.txt 를 고쳐 다시 배포해야 합니다. 관리자가 할 일은 없습니다.",
+			Summary: "필요한 패키지를 설치하지 못했습니다",
+			AdminHint: "패키지 이름·버전 문제라면 부서가 requirements.txt 를 고쳐 다시 배포해야 합니다. " +
+				"PyPI 접속 실패처럼 코드와 무관한 원인이면 [다시 배포]로 같은 커밋을 재시도할 수 있습니다.",
 			// Never st.Message: that is the raw pip output, which runs to
 			// dozens of lines of download progress and is admin-only by
 			// design. What a department needs is the one line naming the
@@ -116,8 +117,9 @@ func DepartmentCause(st *AppState) *AppCause {
 		// failed one keeps its own reason (company/appproc.go), because that
 		// is the thing to fix and this sentence is not.
 		return &AppCause{
-			Summary:   "아직 배포되지 않았습니다",
-			AdminHint: "부서가 배포 요청을 올리면 승인 후 자동으로 빌드·기동됩니다. 관리자가 먼저 할 일은 없습니다.",
+			Summary: "아직 배포되지 않았습니다",
+			AdminHint: "부서가 배포 요청을 올리면 승인 후 자동으로 빌드·기동됩니다. 관리자가 먼저 할 일은 없습니다. " +
+				"이미 승인했는데 이 문구가 보인다면 아래 이력에서 직전 배포가 왜 실패했는지 확인해 주세요.",
 			Detail: "코드를 올린 뒤 [배포 요청]을 하면, 관리자 승인과 빌드가 끝나는 대로 " +
 				"앱이 자동으로 시작됩니다.",
 			Action: "deploy", ActionLabel: "배포 요청하기",

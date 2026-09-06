@@ -115,3 +115,39 @@ func TestNeverDeployedSaysWhatToDo(t *testing.T) {
 	assert.Contains(t, cause.Detail, "배포 요청")
 	assert.NotContains(t, cause.Summary, "성공적으로", "a bare statement of fact is not a next step")
 }
+
+// A build breaks for reasons unrelated to the code, and before this there
+// was no way back except asking the department to submit the whole request
+// again — re-running an approval nobody's mind had changed about.
+func TestRedeployRequeuesTheRecordedCommit(t *testing.T) {
+	withTempAppData(t)
+	require.NoError(t, MutateAppState("PO", "app", func(st *AppState) bool {
+		st.Actual = AppStateFailed
+		st.Reason = ReasonInstallFailed
+		st.SHA = "a92027a4479650425a3efa41d853c1cbed0fedb8"
+		return true
+	}))
+
+	saved := deployQueue
+	deployQueue = make(chan deployJob, 1)
+	t.Cleanup(func() { deployQueue = saved })
+
+	require.NoError(t, RedeployApp("PO", "app", "admin"))
+
+	job := <-deployQueue
+	assert.Equal(t, "a92027a4479650425a3efa41d853c1cbed0fedb8", job.SHA, "the same commit, not a new one")
+
+	st := LoadAppState("PO", "app")
+	assert.Equal(t, AppStateQueued, st.Actual)
+	assert.Empty(t, st.Reason, "the previous failure is cleared — this is a fresh attempt")
+}
+
+// Nothing to retry is not an error worth a stack trace, and the two
+// audiences need different words for it.
+func TestRedeployWithoutAnyDeploy(t *testing.T) {
+	withTempAppData(t)
+	err := RedeployApp("PO", "never", "admin")
+	require.Error(t, err)
+	assert.Contains(t, AdminError(err), "기록된 커밋")
+	assert.Contains(t, DepartmentSafeError("ctx", err), "배포된 적이 없")
+}
