@@ -260,3 +260,38 @@ func TestAllowedOutboundHostsReportsWhatIsInForce(t *testing.T) {
 		Mode: NetworkBroker, Allow: []AppNetworkRule{{Host: "erp.internal"}},
 	}}))
 }
+
+// The distinction that decides whether a submission is stopped: a version
+// conflict is the department's to fix, an unreachable index is the platform's.
+// Erring towards "unreachable" on anything ambiguous, because telling someone
+// their code is broken when the index was briefly down is worse than saying
+// nothing.
+func TestIndexUnreachableIsNotAVersionConflict(t *testing.T) {
+	conflicts := []string{
+		"ERROR: No matching distribution found for pydantic==2.5.0",
+		"ERROR: Could not find a version that satisfies the requirement foo",
+		"ResolutionImpossible: for help visit ...",
+		"The conflict is caused by: fastapi 0.141.1 depends on starlette<1.7.0",
+	}
+	for _, out := range conflicts {
+		assert.False(t, indexUnreachable(out), out)
+	}
+	outages := []string{
+		"WARNING: Retrying after connection broken by 'NewConnectionError'",
+		"ERROR: Could not install packages due to an OSError: [Errno 28] No space left",
+		"", // nothing to go on, so it must not read as the department's fault
+	}
+	for _, out := range outages {
+		assert.True(t, indexUnreachable(out), out)
+	}
+}
+
+// pip prints its whole search on failure and the sentence that matters is at
+// the end; the rest names the server's directories.
+func TestResolveFailureSummaryKeepsTheTail(t *testing.T) {
+	got := resolveFailureSummary("Collecting a\nCollecting b\n" +
+		"ERROR: Could not find a version that satisfies the requirement pydantic==2.5.0\n[notice] upgrade pip\n")
+	assert.Contains(t, got, "pydantic==2.5.0")
+	assert.NotContains(t, got, "[notice]")
+	assert.NotContains(t, got, "Collecting a", "only the tail is worth showing")
+}

@@ -196,6 +196,14 @@ func DeployForm(ctx *context.Context) {
 		ctx.NotFound(nil)
 		return
 	}
+	renderDeployForm(ctx)
+}
+
+// renderDeployForm populates and renders the form. Split out so a submission
+// that fails its checks can come back with the report attached and everything
+// the person typed still in the boxes — a redirect would throw that away, and
+// retyping a reason is how a real reason turns into "필요해서요".
+func renderDeployForm(ctx *context.Context) {
 	files, err := deployFilePreviews(ctx, ctx.Repo.Repository)
 	if err != nil {
 		ctx.ServerError("deployFilePreviews", err)
@@ -212,7 +220,6 @@ func DeployForm(ctx *context.Context) {
 	// or something unusable. They supply only the reason. See
 	// company/permissions.go.
 	deploySettings := SettingsFor(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name)
-	ctx.Data["PreflightLink"] = preflightLink(ctx.Repo.Repository)
 	// Shown so an unanswered request does not look like no request. Without it
 	// the only way to find out was to submit another, which supersedes the
 	// first and starts the wait again.
@@ -675,6 +682,23 @@ func DeployPost(ctx *context.Context) {
 		ctx.ServerError("snapshotFilesUnderPrefix", err)
 		return
 	}
+	// Checked before anything is written. The build performs these anyway; the
+	// only question was whether the department found out now or after an admin
+	// had already approved something that then did not work.
+	//
+	// Only a hard failure stops the request. A package awaiting approval is
+	// what the request is *for*, and an unreachable index is the platform's
+	// problem — refusing submissions over either would be refusing the thing
+	// that fixes them.
+	if report := runPreflight(ctx, deptRepo); !report.Deployable {
+		ctx.Data["Preflight"] = report
+		ctx.Data["SubmittedTitle"] = title
+		ctx.Data["SubmittedMessage"] = body
+		ctx.Data["SubmittedReason"] = ctx.FormString("perm_reason")
+		renderDeployForm(ctx)
+		return
+	}
+
 	// Collected before the commit, not after it: the items go into the request
 	// log that gives this PR its diff, and an admin has to be able to read
 	// what is being asked in the change they are reviewing.

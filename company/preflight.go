@@ -4,12 +4,9 @@
 package company
 
 import (
-	"net/http"
 	"strings"
 
 	repo_model "gitea.dev/models/repo"
-	"gitea.dev/models/unit"
-	"gitea.dev/modules/setting"
 	"gitea.dev/services/context"
 )
 
@@ -52,16 +49,6 @@ type PreflightResult struct {
 	// a failure — it is what the request is for — but someone should know
 	// before submitting that the answer depends on an admin.
 	NeedsApproval []string `json:"needsApproval"`
-}
-
-// DeployPreflight answers "would this deploy?" for the department's current
-// code, as JSON for the deploy form.
-func DeployPreflight(ctx *context.Context) {
-	if !ctx.Repo.Permission.CanRead(unit.TypeCode) {
-		ctx.NotFound(nil)
-		return
-	}
-	ctx.JSON(http.StatusOK, runPreflight(ctx, ctx.Repo.Repository))
 }
 
 func runPreflight(ctx *context.Context, repo *repo_model.Repository) PreflightResult {
@@ -161,9 +148,4 @@ func joinOrDash(items []string) string {
 		return "없음"
 	}
 	return strings.Join(items, ", ")
-}
-
-// preflightLink is where the form posts its check.
-func preflightLink(repo *repo_model.Repository) string {
-	return setting.AppSubURL + "/" + repo.OwnerName + "/" + repo.Name + "/deploy/check"
 }

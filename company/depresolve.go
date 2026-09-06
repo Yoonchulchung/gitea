@@ -267,10 +267,25 @@ func resolveFailureSummary(output string) string {
 	kept := make([]string, 0, 3)
 	for i := len(lines) - 1; i >= 0 && len(kept) < 3; i-- {
 		line := strings.TrimSpace(lines[i])
-		if line == "" || strings.HasPrefix(line, "[notice]") {
+		if line == "" || isPipProgress(line) {
 			continue
 		}
 		kept = append([]string{line}, kept...)
 	}
 	return RedactServerPaths(strings.Join(kept, "\n"))
+}
+
+// isPipProgress drops the lines pip prints while it works. They are most of
+// the output and none of the answer, and keeping them pushes the sentence
+// that explains the failure off the end of what is shown.
+func isPipProgress(line string) bool {
+	for _, prefix := range []string{
+		"Collecting ", "Downloading ", "Using cached ", "Requirement already satisfied",
+		"[notice]", "Obtaining ", "Installing ",
+	} {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
+	return false
 }
