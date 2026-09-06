@@ -40,7 +40,9 @@
 			<div class="company-deploy-section-lbl">{{ctx.Locale.Tr .DeployFormHeadingKey}}</div>
 			<div class="field">
 				<label>{{ctx.Locale.Tr "company.deploy.title_field_label"}}</label>
-				<input type="text" name="title" placeholder="{{ctx.Locale.Tr "company.deploy.title_field_placeholder"}}" required>
+				{{/* Same reason as perm_reason below: a title recalled from a previous
+				     request describes that one, not this one. */}}
+				<input type="text" name="title" placeholder="{{ctx.Locale.Tr "company.deploy.title_field_placeholder"}}" required autocomplete="off">
 			</div>
 			<div class="field">
 				<label>{{ctx.Locale.Tr "company.deploy.message_label"}}</label>
@@ -66,7 +68,11 @@
 					{{end}}
 					<div class="field tw-mt-2">
 						<label>사유 <span class="text-grey tw-text-12">(관리자가 판단할 수 있도록 왜 필요한지 적어 주세요)</span></label>
-						<input type="text" name="perm_reason" placeholder="예: 엑셀 보고서를 만들기 위해 openpyxl 이 필요합니다" required>
+						{{/* autocomplete off: the browser offers what was typed into this field on
+						     a previous request, and a reason carried over from a different
+						     approval is worse than no reason — the admin reads it as though it
+						     were written about this one. */}}
+						<input type="text" name="perm_reason" placeholder="예: 엑셀 보고서를 만들기 위해 openpyxl 이 필요합니다" required autocomplete="off">
 					</div>
 				</div>
 			{{end}}

@@ -107,8 +107,24 @@ func CurrentRelease(owner, repo string) ReleaseInfo {
 	return describeRelease(target)
 }
 
+// PreviousRelease is where "이전 버전으로" would take the app, and reports
+// nothing when there is nowhere to go.
+//
+// A `previous` pointing at the release already running counts as nowhere.
+// That state is reachable — an automatic rollback used to leave it behind,
+// and a deploy sets it to whatever was current a moment before — and offering
+// it produces a button that stops the app, starts the same version again, and
+// reports success while nothing has changed. Whoever pressed it is left
+// believing they went back a version.
 func PreviousRelease(owner, repo string) ReleaseInfo {
-	target, _ := os.Readlink(appPathsFor(owner, repo).previous)
+	p := appPathsFor(owner, repo)
+	target, err := os.Readlink(p.previous)
+	if err != nil {
+		return ReleaseInfo{}
+	}
+	if current, err := os.Readlink(p.current); err == nil && current == target {
+		return ReleaseInfo{}
+	}
 	return describeRelease(target)
 }
 

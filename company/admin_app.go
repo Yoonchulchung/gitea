@@ -5,6 +5,7 @@ package company
 
 import (
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -317,10 +318,20 @@ func AdminAppMetrics(ctx *context.Context) {
 func AdminApprovePackages(ctx *context.Context) {
 	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")
 
-	// FormStrings, not ctx.Req.Form: the request body is not parsed until
-	// something asks for a field, so reading the map directly returns nothing
-	// and the approval silently does nothing at all.
-	names := ctx.FormStrings("package")
+	// ParseForm, then read the map directly.
+	//
+	// Not ctx.FormStrings: it calls ParseMultipartForm, which parses the body
+	// correctly and *then* returns "Content-Type isn't multipart/form-data"
+	// for an ordinary form — and FormStrings discards the values it just
+	// parsed on that error. And not ctx.Req.Form on its own either, which is
+	// nil until something asks for a field. Either way the approval saw an
+	// empty selection and refused a request that had two packages ticked.
+	if err := ctx.Req.ParseForm(); err != nil {
+		ctx.Flash.Error("입력을 읽지 못했습니다. 다시 시도해 주세요.")
+		ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo)
+		return
+	}
+	names := slices.Clone(ctx.Req.Form["package"])
 	extra, problems := ParseBasePackages(ctx.FormString("extra"))
 	if len(problems) > 0 {
 		ctx.Flash.Error(strings.Join(problems, " / "))

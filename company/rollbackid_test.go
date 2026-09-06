@@ -1,0 +1,113 @@
+// Copyright 2026 The Gitea Authors. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+package company
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// After a rollback the version on screen has to be the version running, and
+// the two rollback paths move the symlinks differently: an automatic one
+// restores the release that was already there, a deliberate one swaps the two
+// so pressing it twice returns to where you started. Both are exercised
+// against the same reporting the screens use.
+func TestRollbackReportsTheVersionActuallyServing(t *testing.T) {
+	withTempAppData(t)
+	p := appPathsFor("PO", "app")
+	require.NoError(t, os.MkdirAll(p.releases, 0o700))
+
+	const (
+		shaOld = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		shaNew = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	)
+	mk := func(sha string) string {
+		dir := releaseDir(p, sha)
+		require.NoError(t, os.MkdirAll(dir, 0o700))
+		require.NoError(t, writeReleaseSHA(dir, sha))
+		return dir
+	}
+	oldDir, newDir := mk(shaOld), mk(shaNew)
+
+	// A deploy: the new release goes live, the old one becomes the target.
+	require.NoError(t, swapSymlink(p.current, newDir))
+	require.NoError(t, swapSymlink(p.previous, oldDir))
+	assert.Equal(t, shaNew, CurrentRelease("PO", "app").SHA)
+	assert.Equal(t, shaOld, PreviousRelease("PO", "app").SHA)
+
+	// The deliberate rollback (RollbackApp): current and previous trade
+	// places, so pressing it again comes back here rather than stranding the
+	// app on a version with nowhere to go.
+	require.NoError(t, swapSymlink(p.current, oldDir))
+	require.NoError(t, swapSymlink(p.previous, newDir))
+	assert.Equal(t, shaOld, CurrentRelease("PO", "app").SHA, "the screen must name what is serving")
+	assert.Equal(t, shaNew, PreviousRelease("PO", "app").SHA)
+
+	// The state follows the disk, not the deploy that was intended — this is
+	// what stops "다시 배포" rebuilding the version that just failed.
+	st := &AppState{SHA: shaNew}
+	adoptCurrentReleaseSHA(st, "PO", "app")
+	assert.Equal(t, shaOld, st.SHA)
+
+	// The automatic rollback (activateRelease's failure path): the new release
+	// never took, so the previous one is put back and the rollback target is
+	// cleared — leaving it would point at the release now running and make the
+	// next rollback restart the same version while appearing to do nothing.
+	require.NoError(t, swapSymlink(p.current, newDir))
+	require.NoError(t, swapSymlink(p.previous, oldDir))
+	require.NoError(t, swapSymlink(p.current, oldDir))
+	require.NoError(t, os.Remove(p.previous))
+	assert.Equal(t, shaOld, CurrentRelease("PO", "app").SHA)
+	assert.False(t, PreviousRelease("PO", "app").Exists, "no target, so no rollback button is offered")
+
+	// The history page marks the row that built what is running, which after
+	// a rollback is not the newest attempt.
+	attempts := []deployAttempt{{SHA: shaNew[:12], Failed: true}, {SHA: shaOld[:12]}}
+	markCurrent(attempts, CurrentRelease("PO", "app").SHA)
+	assert.False(t, attempts[0].Current)
+	assert.True(t, attempts[1].Current)
+}
+
+// A release that has been cleaned up must not be reported as serving: the
+// screens use Exists to decide whether to offer the rollback at all.
+func TestRollbackTargetGoneIsReportedAsMissing(t *testing.T) {
+	withTempAppData(t)
+	p := appPathsFor("PO", "app")
+	require.NoError(t, os.MkdirAll(p.releases, 0o700))
+	require.NoError(t, swapSymlink(p.previous, filepath.Join(p.releases, "deleted")))
+
+	assert.False(t, PreviousRelease("PO", "app").Exists)
+	assert.Empty(t, PreviousRelease("PO", "app").SHA)
+}
+
+// A `previous` that points at the release already running is nowhere to go.
+// The state is reachable — a deploy sets previous to whatever was current a
+// moment before — and offering it produces a button that stops the app,
+// starts the same version, and reports success. Whoever pressed it is left
+// believing they went back a version.
+func TestPreviousPointingAtCurrentIsNotARollbackTarget(t *testing.T) {
+	withTempAppData(t)
+	p := appPathsFor("PO", "app")
+	require.NoError(t, os.MkdirAll(p.releases, 0o700))
+
+	const sha = "cccccccccccccccccccccccccccccccccccccccc"
+	dir := releaseDir(p, sha)
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, writeReleaseSHA(dir, sha))
+	require.NoError(t, swapSymlink(p.current, dir))
+	require.NoError(t, swapSymlink(p.previous, dir))
+
+	assert.Equal(t, sha, CurrentRelease("PO", "app").SHA)
+	assert.False(t, PreviousRelease("PO", "app").Exists, "no button is offered")
+
+	// And the action itself refuses, because hiding a button does not stop a
+	// form from being submitted.
+	err := RollbackApp("PO", "app", "someone")
+	require.Error(t, err)
+	assert.Contains(t, DepartmentSafeError("rollback", err), "되돌아갈 이전 버전이 없습니다")
+}

@@ -50,6 +50,12 @@ func RollbackApp(owner, repo, actor string) error {
 	if err != nil {
 		return userErrorf("되돌아갈 이전 버전이 없습니다")
 	}
+	// The button is hidden in this case, but a form can still be submitted:
+	// restarting the running version and calling it a rollback would tell
+	// someone they went back when they did not.
+	if current, err := os.Readlink(p.current); err == nil && current == previous {
+		return userErrorf("되돌아갈 이전 버전이 없습니다")
+	}
 	if _, err := os.Stat(previous); err != nil {
 		// A release directory that has been cleaned up would otherwise fail
 		// after the app is already stopped, leaving it down.
