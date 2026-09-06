@@ -55,7 +55,13 @@
   - [x] Python 기동에 필요한 `/etc/passwd`·`group`·`nsswitch.conf`·`localtime` 읽기 허용 (`/etc/shadow`는 제외)
   - [x] 3단 선택 로직 — bubblewrap > Landlock > (옵트인 시) 무격리. bwrap이 더 강하므로 가능하면 그쪽
   - [x] 테스트: BPF 프로그램을 **커널과 같은 방식으로 해석해** 점프 오프셋 검증 (오프셋 하나 틀리면 조용히 허용된다), ABI 마스크 절삭
-    - [ ] ⚠ **미실행** — 리눅스 전용 빌드라 macOS에서 돌릴 수 없다. 타입체크·크로스컴파일만 확인됨
+    - [ ] ⚠ seccomp 단위 테스트 **미실행** — 리눅스 전용 빌드라 macOS에서 돌릴 수 없다
+  - [x] **실기에서 버그 1건 발견 (2026-09-06)**: `landlock_add_rule for /etc/resolv.conf:
+    invalid argument`. Landlock은 **디렉터리 전용 권한을 파일에 주면 `EINVAL`**을 낸다
+    (`READ_DIR`·`MAKE_*`·`REMOVE_*`·`REFER`). 허용 목록에 `/etc/resolv.conf`·`/dev/null`·
+    `/dev/urandom`이 있어 코너 케이스가 아니라 **항상 실패**했다. `fstat`으로 디렉터리
+    여부를 보고 파일이면 마스크를 줄이도록 수정. 리눅스에서 실제로 돌리지 않으면
+    나올 수 없는 종류의 버그다
   - [ ] 실기 검증 (아래 "샌드박스 실증" 항목 전체) — 리눅스 서버 필요
 
 - [x] 진단 (2026-09-06, 배포 서버에서 `preflight.sh`):

@@ -59,6 +59,17 @@ const landlockReadRights = unix.LANDLOCK_ACCESS_FS_EXECUTE |
 	unix.LANDLOCK_ACCESS_FS_READ_FILE |
 	unix.LANDLOCK_ACCESS_FS_READ_DIR
 
+// landlockFileRights are the only rights Landlock accepts on a path that is
+// not a directory. Handing a regular file a directory-only right — READ_DIR,
+// MAKE_REG, REMOVE_FILE and the rest — makes landlock_add_rule return EINVAL
+// and takes the whole sandbox down with it. /etc/resolv.conf and /dev/null
+// are both on the allow list, so this is not a corner case.
+const landlockFileRights = unix.LANDLOCK_ACCESS_FS_EXECUTE |
+	unix.LANDLOCK_ACCESS_FS_READ_FILE |
+	unix.LANDLOCK_ACCESS_FS_WRITE_FILE |
+	unix.LANDLOCK_ACCESS_FS_TRUNCATE |
+	unix.LANDLOCK_ACCESS_FS_IOCTL_DEV
+
 // landlockWriteRights is added for the one directory an app may write.
 const landlockWriteRights = unix.LANDLOCK_ACCESS_FS_WRITE_FILE |
 	unix.LANDLOCK_ACCESS_FS_TRUNCATE |
@@ -145,6 +156,16 @@ func applyLandlock(spec sandboxSpec) error {
 			return fmt.Errorf("opening %s for the sandbox: %w", path, err)
 		}
 		defer func() { _ = unix.Close(pathFD) }()
+
+		// Directory-only rights are rejected outright on a regular file, so
+		// they have to be dropped rather than merely unused.
+		var stat unix.Stat_t
+		if err := unix.Fstat(pathFD, &stat); err != nil {
+			return fmt.Errorf("inspecting %s for the sandbox: %w", path, err)
+		}
+		if stat.Mode&unix.S_IFMT != unix.S_IFDIR {
+			rights &= landlockFileRights
+		}
 
 		rule := unix.LandlockPathBeneathAttr{
 			Allowed_access: rights & fsRights, // never ask for a right the ruleset does not handle
