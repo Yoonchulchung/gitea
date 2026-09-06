@@ -197,6 +197,31 @@ seccomp는 **스칼라 인자만** 본다 — 포인터를 역참조하지 않�
 > 항상 먼저 발동해** 한도 안에 있는 앱을 죽이고 rlimit은 사실상 죽은 코드가 된다.
 > 그래서 watchdog은 한도의 1.5배에서 동작한다(`memoryWatchdogHeadroom`).
 
+## 송신 브로커 (2026-09-06 구현)
+
+앱은 네트워크가 없다. 외부 자료가 필요한 앱은 `network.mode: broker` 로 승인받고,
+플랫폼이 `run/broker.sock` 에 열어 주는 소켓을 통해서만 나간다. 부서 쪽 규약은 세 줄이다:
+
+```python
+import httpx, os
+web = httpx.Client(transport=httpx.HTTPTransport(uds=os.environ["BROKER_SOCKET"]))
+r = web.get("http://erp.internal.company.com/api/v1/employees")
+```
+
+URL 은 실제 호스트를 그대로 쓰되 `http://` 로 둔다 — 소켓 안에는 보호할 네트워크가
+없고, `https://` 로 쓰면 클라이언트가 브로커 자체에 TLS 를 시도해 실패한다. 브로커가
+Host 헤더를 읽어 허용 목록(호스트·메서드·경로)과 대조하고, **바깥으로는 항상 https** 로
+나간다.
+
+방화벽이 못 하는 것 두 가지가 이 구조의 값어치다: 메서드·경로 단위 정책("직원 목록
+읽기"와 "급여 엔드포인트에 POST"는 다른 승인이다), 그리고 전수 감사 로그 — 거부된
+시도까지 `logs/broker.log` 에 남는다. 유출 *시도* 자체가 이 로그가 존재하는 이유이기
+때문이다.
+
+정직하게, 아직 없는 것: 관리자 자격증명 주입. 앱이 자격증명을 아예 쥐지 않게 하는
+설계의 마지막 조각인데, 비밀을 git(apps.yml)에 둘 수는 없어 암호화 저장소와 관리 UI가
+필요하다. envstore 의 패턴을 재사용해 후속으로 붙인다.
+
 ## 착수 전 서버 확인 (필수)
 
 ```bash

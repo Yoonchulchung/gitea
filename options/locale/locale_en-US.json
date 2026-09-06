@@ -4169,5 +4169,11 @@
   "company.app.history.col_detail": "Detail",
   "company.app.history.col_who": "Who",
   "company.app.history.col_version": "Version",
-  "company.app.history.empty": "No history yet."
+  "company.app.history.empty": "No history yet.",
+  "company.policy.pending_header": "Waiting for approval",
+  "company.policy.pending_reason": "Reason",
+  "company.policy.pending_review": "Review",
+  "company.policy.pending_empty": "Nothing is waiting for approval.",
+  "company.admin.unsandboxed": "running without a sandbox",
+  "company.admin.network_open": "unrestricted outbound access"
 }

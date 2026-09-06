@@ -30,6 +30,12 @@ type adminDeployRow struct {
 	// than in the template so the definition of "needs attention" lives in
 	// one place as it grows (pending approvals, stuck queues, …).
 	NeedsAttention bool
+
+	// NetworkOpen flags the explicit exception: this app may connect
+	// anywhere, which resurrects the exfiltration path the sandbox closes.
+	// Flagged on the list because an exception nobody sees stops being an
+	// exception.
+	NetworkOpen bool
 }
 
 // AdminDeploys lists every department app and its current state.
@@ -64,7 +70,10 @@ func AdminDeploys(ctx *context.Context) {
 		if st == nil {
 			st = &AppState{Owner: repo.OwnerName, Repo: repo.Name, Desired: AppStateStopped, Actual: AppStateStopped}
 		}
-		rows = append(rows, &adminDeployRow{State: st, Repo: repo, NeedsAttention: needsAttention(st)})
+		rows = append(rows, &adminDeployRow{
+			State: st, Repo: repo, NeedsAttention: needsAttention(st),
+			NetworkOpen: SettingsFor(st.Owner, st.Repo).Network.Mode == NetworkOpen,
+		})
 	}
 	// State whose repo is gone (renamed or deleted). deployPathPrefix is
 	// name-based, so a rename orphans the old app and leaves it running

@@ -34,7 +34,8 @@
 								<td>
 									{{template "company/admin_deploys_status" .State}}
 									{{if not .Repo}}<span class="text-red tw-ml-2">저장소가 없습니다 — 이름이 바뀌었거나 삭제됨</span>{{end}}
-									{{if and (eq .State.Actual "running") (not .State.Sandboxed)}}<span class="text-red tw-ml-2">샌드박스 없이 실행 중</span>{{end}}
+									{{if and (eq .State.Actual "running") (not .State.Sandboxed)}}<span class="text-red tw-ml-2">{{ctx.Locale.Tr "company.admin.unsandboxed"}}</span>{{end}}
+									{{if .NetworkOpen}}<span class="text-red tw-ml-2">{{ctx.Locale.Tr "company.admin.network_open"}}</span>{{end}}
 									{{if .State.Reason}}<span class="text-grey tw-ml-2">{{.State.Reason}}</span>{{end}}
 								</td>
 							</tr>

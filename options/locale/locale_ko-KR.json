@@ -4121,5 +4121,11 @@
   "company.app.history.col_detail": "내용",
   "company.app.history.col_who": "누가",
   "company.app.history.col_version": "버전",
-  "company.app.history.empty": "아직 이력이 없습니다."
+  "company.app.history.empty": "아직 이력이 없습니다.",
+  "company.policy.pending_header": "승인 대기 중인 요청",
+  "company.policy.pending_reason": "사유",
+  "company.policy.pending_review": "검토하기",
+  "company.policy.pending_empty": "승인을 기다리는 요청이 없습니다.",
+  "company.admin.unsandboxed": "샌드박스 없이 실행 중",
+  "company.admin.network_open": "외부 통신 제한 없음"
 }

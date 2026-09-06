@@ -11,6 +11,35 @@
 			</div>
 		{{end}}
 
+		{{/* Oldest first, because it has waited longest. The policy page answers
+		     "what may apps install"; this answers the natural next question,
+		     "and what is waiting on me" — until now that lived only on each
+		     org's own dashboard, where a request could sit unnoticed. */}}
+		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.policy.pending_header"}}</h4>
+		<div class="ui attached segment">
+			{{if .PendingApprovals}}
+				<table class="ui very basic table tw-text-13">
+					<tbody>
+						{{range .PendingApprovals}}
+							<tr>
+								<td class="tw-w-1/6" title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
+								<td class="tw-w-1/5">{{.Owner}}/{{.Repo}}</td>
+								<td>
+									{{range $i, $r := .Requests}}{{if $i}}, {{end}}{{$r.Label}} ({{$r.Detail}}){{end}}
+									{{range .Requests}}{{if .Reason}}<span class="text-grey tw-text-12 tw-block">{{ctx.Locale.Tr "company.policy.pending_reason"}}: {{.Reason}}</span>{{break}}{{end}}{{end}}
+								</td>
+								<td class="tw-w-32">
+									<a class="ui tiny basic button" href="{{AppSubUrl}}/org/{{.Owner}}/dashboard/deploy-requests/{{.PRID}}">{{ctx.Locale.Tr "company.policy.pending_review"}}</a>
+								</td>
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			{{else}}
+				<span class="text-grey">{{ctx.Locale.Tr "company.policy.pending_empty"}}</span>
+			{{end}}
+		</div>
+
 		<h4 class="ui top attached header">
 			기본 제공 패키지
 			{{if .PolicyHistoryLink}}

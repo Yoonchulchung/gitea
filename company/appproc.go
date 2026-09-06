@@ -180,7 +180,7 @@ func AppSocketPath(owner, repo string) string { return appPathsFor(owner, repo).
 // Gitea started with database credentials or SECRET_KEY in its environment
 // would hand them to every department app. The sandbox blocks the files;
 // this blocks the other half. See docs/company/app-platform-impl.md §5.
-func buildEnv(p appPaths, rootPath string, appEnv map[string]string) []string {
+func buildEnv(p appPaths, rootPath string, appEnv map[string]string, brokerOn bool) []string {
 	home, tmp := appHomeAndTmp(p)
 	env := []string{
 		"PATH=/usr/local/bin:/usr/bin:/bin",
@@ -194,6 +194,12 @@ func buildEnv(p appPaths, rootPath string, appEnv map[string]string) []string {
 		"PYTHONUNBUFFERED=1",        // otherwise logs arrive in 4KB bursts, or not at all on a crash
 		"SOCKET=" + appSocketForProcess(p),
 		"ROOT_PATH=" + rootPath,
+	}
+	if brokerOn {
+		// Where the app reaches the outside world, when it may at all. Under
+		// the sandbox this is the corresponding path inside the mount; the
+		// run directory is the one thing bind-mounted read-write either way.
+		env = append(env, "BROKER_SOCKET="+filepath.Join(filepath.Dir(appSocketForProcess(p)), brokerSocketName))
 	}
 	for k, v := range appEnv {
 		// Names are validated on the way in (see envstore.go); this is a
@@ -283,7 +289,17 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 			"앱 실행 환경이 손상되었습니다. 다시 배포하면 복구됩니다.",
 			"실행 파일이 없습니다 ("+cmd.Path+") — venv 가 옮겨졌거나 지워졌습니다. [다시 배포]로 재생성하세요")
 	}
-	cmd.Env = buildEnv(s.paths, rootPath, appEnv)
+	brokerOn := settings.Network.Mode == NetworkBroker || settings.Network.Mode == NetworkOpen
+	if brokerOn {
+		// Before the app, so its first request cannot race the listener. A
+		// broker that failed to start fails the start: an app approved for
+		// outbound access whose calls all mysteriously refuse is worse than
+		// one that did not come up.
+		if err := startBroker(s.owner, s.repo, s.paths); err != nil {
+			return err
+		}
+	}
+	cmd.Env = buildEnv(s.paths, rootPath, appEnv, brokerOn)
 	cmd.Dir = filepath.Join(target, "app")
 	// Its own process group so a stop reaches everything the app spawned,
 	// not just the process we launched. (Inside a sandbox with a PID
@@ -378,6 +394,7 @@ func (s *appSupervisor) stopLocked() {
 		return
 	}
 	s.stopping = true
+	stopBroker(s.owner, s.repo) // its lifetime is the app's
 	pid := s.cmd.Process.Pid
 	// Negative pid = the whole process group.
 	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
