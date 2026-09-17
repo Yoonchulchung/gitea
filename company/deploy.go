@@ -761,6 +761,10 @@ func DeployPost(ctx *context.Context) {
 	// applyDeployLabels (company/labels.go).
 	applyDeployLabels(ctx, central, deptRepo, pullIssue, centralOwner)
 
+	// The dashboards already show the queue, but both need somebody to go and
+	// look. Mail is what reaches whoever is not looking.
+	NotifyDeployRequest(ctx, deptRepo, ctx.Doer.Name, pullIssue)
+
 	// Attach the permission items to this PR so the admin reviewing the code
 	// sees, on the same screen, what the app is asking to be allowed to do.
 	// Best-effort: the deploy request itself has already been created, and
