@@ -1,0 +1,16 @@
+{{/*
+	Gitea's own extension point, so nothing upstream is overridden here.
+
+	Both links answer the same question — "who do I ask?" — and the footer is
+	where they belong because it is the one place present on every page,
+	including the ones somebody reaches when they are stuck and cannot get
+	anywhere else. Both are set from /-/admin/company-settings, because the
+	person responsible changes and a link baked into a template does not.
+	See company/adminsettings.go.
+*/}}
+{{if .CompanyHelpURL}}
+	<a href="{{.CompanyHelpURL}}" target="_blank" rel="noopener noreferrer">{{ctx.Locale.Tr "help"}}</a>
+{{end}}
+{{if .CompanySupportEmail}}
+	<a href="mailto:{{.CompanySupportEmail}}">{{ctx.Locale.Tr "company.footer.contact"}}</a>
+{{end}}

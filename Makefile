@@ -131,7 +131,11 @@ GO_LICENSE_FILE := assets/go-licenses.json
 
 TAR_EXCLUDES := .git data indexers queues log node_modules $(EXECUTABLE) $(DIST) $(MAKE_EVIDENCE_DIR) $(AIR_TMP_DIR)
 
-GO_DIRS := build cmd modelmigration models modules routers services tests tools
+# `company` is this fork's own package and has to be here: without it
+# GO_SOURCES misses every file in it, so `make backend` sees no newer
+# prerequisite and silently rebuilds nothing after a change — leaving the
+# old binary running and the edit looking like it did not take.
+GO_DIRS := build cmd company modelmigration models modules routers services tests tools
 WEB_DIRS := web_src/js web_src/css
 
 ESLINT_FILES := web_src/js tools *.ts tests/e2e

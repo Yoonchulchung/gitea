@@ -91,12 +91,20 @@ var staticAssetPrefixes = []string{
 // "your one department" would misrepresent their role — even if, like any
 // other user, they also happen to hold real membership in one org.
 func GateNonAdminUI(ctx *context.Context) {
+	path := ctx.Req.URL.Path
+	renders := !hasAnyPrefix(path, staticAssetPrefixes) && !isProtocolExempt(path)
+	if renders {
+		// The footer is rendered by a template with no handler of its own, so
+		// there is no per-page place to put its links. This middleware is on
+		// every request that renders anything, including the login page —
+		// where someone who cannot get in is exactly who needs the address.
+		SetPlatformFooterData(ctx)
+	}
+
 	if ctx.Doer == nil {
 		return // anonymous: REQUIRE_SIGNIN_VIEW + LANDING_PAGE already force them to /user/login, no /company hop needed
 	}
-
-	path := ctx.Req.URL.Path
-	if hasAnyPrefix(path, staticAssetPrefixes) || isProtocolExempt(path) {
+	if !renders {
 		return // cheap checks first — never worth a DB round trip
 	}
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -31,6 +32,7 @@ const tplAdminSettings templates.TplName = "company/admin_settings"
 const (
 	settingKeyAnthropicVisible = "company.ai.anthropic_visible"
 	settingKeySupportEmail     = "company.support_email"
+	settingKeyHelpURL          = "company.help_url"
 )
 
 // platformSettings is read on pages people load constantly — the settings
@@ -41,6 +43,7 @@ var (
 	platformSettingsLoaded bool
 	anthropicVisible       bool
 	supportEmail           string
+	helpURL                string
 )
 
 func loadPlatformSettings(ctx context.Context) {
@@ -67,6 +70,7 @@ func loadPlatformSettings(ctx context.Context) {
 	defer platformSettingsMu.Unlock()
 	anthropicVisible = all[settingKeyAnthropicVisible] == "true"
 	supportEmail = all[settingKeySupportEmail]
+	helpURL = all[settingKeyHelpURL]
 	platformSettingsLoaded = true
 }
 
@@ -93,6 +97,52 @@ func SupportEmail(ctx context.Context) string {
 	return supportEmail
 }
 
+// HelpURL is where "Help" should point, or "" when nobody has said.
+//
+// Gitea's own help link goes to its documentation, which is the right answer
+// for a Gitea instance and the wrong one for a department: the people using
+// this platform have never heard of Gitea and their question is about a
+// deploy request, not about git.
+func HelpURL(ctx context.Context) string {
+	loadPlatformSettings(ctx)
+	platformSettingsMu.RLock()
+	defer platformSettingsMu.RUnlock()
+	return helpURL
+}
+
+// safeLinkURL accepts only what is safe to put in an href.
+//
+// The value is admin-typed and rendered as a link on every page, so the
+// scheme is checked rather than the string pattern: `javascript:` and `data:`
+// are valid URLs and would be script execution for every person who clicked
+// Help. An administrator is trusted with the instance, not with a mistake
+// that becomes everyone's.
+func safeLinkURL(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", true
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return "", false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+		return parsed.String(), true
+	}
+	return "", false
+}
+
+// SetPlatformFooterData puts the links the page frame needs into ctx.Data.
+//
+// Called from the gate, which every rendered request already passes through,
+// because the footer is rendered by a template with no handler of its own —
+// there is no per-page place to put this that would cover every page.
+func SetPlatformFooterData(ctx *gitea_context.Context) {
+	ctx.Data["CompanySupportEmail"] = SupportEmail(ctx)
+	ctx.Data["CompanyHelpURL"] = HelpURL(ctx)
+}
+
 // anthropicAllowedFor is the check every AI path goes through.
 //
 // Administrators keep the provider whatever the setting says: the toggle is
@@ -113,6 +163,7 @@ func AdminSettings(ctx *gitea_context.Context) {
 	ctx.Data["Title"] = ctx.Locale.TrString("company.adminsettings.title")
 	ctx.Data["AnthropicVisible"] = AnthropicVisibleToUsers(ctx)
 	ctx.Data["SupportEmail"] = SupportEmail(ctx)
+	ctx.Data["HelpURL"] = HelpURL(ctx)
 	ctx.HTML(http.StatusOK, tplAdminSettings)
 }
 
@@ -129,6 +180,12 @@ func AdminSettingsPost(ctx *gitea_context.Context) {
 			return
 		}
 	}
+	help, ok := safeLinkURL(ctx.FormString("help_url"))
+	if !ok {
+		ctx.Flash.Error(ctx.Locale.TrString("company.adminsettings.help_url_invalid"))
+		ctx.Redirect(setting.AppSubURL + "/-/admin/company-settings")
+		return
+	}
 	visible := "false"
 	if ctx.FormBool("anthropic_visible") {
 		visible = "true"
@@ -137,6 +194,7 @@ func AdminSettingsPost(ctx *gitea_context.Context) {
 	if err := system_model.SetSettings(ctx, map[string]string{
 		settingKeyAnthropicVisible: visible,
 		settingKeySupportEmail:     email,
+		settingKeyHelpURL:          help,
 	}); err != nil {
 		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 	} else {

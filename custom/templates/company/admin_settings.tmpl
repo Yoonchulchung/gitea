@@ -13,6 +13,13 @@
 					       placeholder="it-help@example.com">
 				</div>
 
+				<div class="field">
+					<label for="help_url">{{ctx.Locale.Tr "company.adminsettings.help_label"}}</label>
+					<input id="help_url" type="url" name="help_url" value="{{.HelpURL}}"
+					       placeholder="https://wiki.example.com/deploy-guide">
+					<p class="help">{{ctx.Locale.Tr "company.adminsettings.help_explain"}}</p>
+				</div>
+
 				<div class="ui divider"></div>
 
 				<h5>{{ctx.Locale.Tr "company.adminsettings.ai_header"}}</h5>
