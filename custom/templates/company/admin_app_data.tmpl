@@ -24,7 +24,7 @@
 				{{if not .DataAvailable}}<div class="ui warning message tw-mb-3">{{.DataDetail}}</div>{{end}}
 				<div class="company-kpis">
 					{{if .DataUsage}}
-						<div class="company-kpi{{if .DataUsage.Full}} bad{{end}}">
+						<div class="company-kpi{{if .DataUsage.Full}} full{{else if .DataUsage.Warning}} warn{{end}}">
 							<b>{{FormatByteSize .DataUsage.Bytes}}<small>/{{FormatByteSize .DataUsage.QuotaBytes}}</small></b>
 							<span>{{ctx.Locale.Tr "company.adminapp.kpi_data"}}</span>
 						</div>

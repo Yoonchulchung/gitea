@@ -97,6 +97,8 @@ func RegisterAdminRoutes(m *web.Router) {
 		m.Post("/approve-packages", AdminApprovePackages)
 		m.Post("/deploy-version", AdminDeployVersion)
 		m.Post("/network", AdminSetNetwork)
+		// Before the {verb} catch-all, which would otherwise swallow it.
+		m.Post("/limits", AdminSetLimits)
 		m.Get("/metrics", AdminAppMetrics)
 		// The manual data console. Before the {verb} catch-all, and its own
 		// group so the actions that touch data are never reachable through

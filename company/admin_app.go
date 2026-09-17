@@ -218,6 +218,10 @@ func AdminApp(ctx *context.Context) {
 	ctx.Data["EnvRestartRequired"] = st.Actual == AppStateRunning && envVersion != st.EnvVersionRunning
 	ctx.Data["AppURL"] = setting.AppSubURL + appProxyPrefix + "/" + st.Owner + "/" + st.Repo
 	ctx.Data["AdminAppLink"] = setting.AppSubURL + "/-/admin/company-deploys/" + st.Owner + "/" + st.Repo
+	// What the field falls back to when it is left empty, shown as its
+	// placeholder so the instance default is visible without being typed.
+	ctx.Data["DefaultDataQuotaMB"] = companySettingPositiveInt("APP_DATA_QUOTA_MB", appDataQuotaMBDefault)
+	ctx.Data["MaxDataQuotaMB"] = maxDataQuotaMB
 	ctx.HTML(http.StatusOK, tplAdminApp)
 }
 

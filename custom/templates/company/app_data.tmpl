@@ -22,7 +22,7 @@
 				     is theirs to see and not only the administrator's. */}}
 				{{if .DataUsage}}
 					<div class="company-kpis">
-						<div class="company-kpi{{if .DataUsage.Full}} bad{{end}}">
+						<div class="company-kpi{{if .DataUsage.Full}} full{{else if .DataUsage.Warning}} warn{{end}}">
 							<b>{{FormatByteSize .DataUsage.Bytes}}<small>/{{FormatByteSize .DataUsage.QuotaBytes}}</small></b>
 							<span>{{ctx.Locale.Tr "company.adminapp.kpi_data"}}</span>
 						</div>

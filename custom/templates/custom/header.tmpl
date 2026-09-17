@@ -456,4 +456,23 @@
 	font-size: 12px;
 	margin: 8px 0;
 }
+
+/* A filling quota, coloured before it is a problem rather than after.
+   Vermilion rather than a pure red: this is a number to notice on the way
+   past, and an alarm colour for a disk that is 80% full trains people to
+   ignore the colour. */
+.company-kpi.warn {
+	background: rgba(226, 88, 60, 0.10);
+	border-color: rgba(226, 88, 60, 0.40);
+}
+.company-kpi.warn b { color: #c1462c; }
+.company-kpi.full {
+	background: rgba(226, 88, 60, 0.20);
+	border-color: rgba(226, 88, 60, 0.65);
+}
+.company-kpi.full b { color: #a93a22; }
+@media (prefers-color-scheme: dark) {
+	.company-kpi.warn b { color: #f08063; }
+	.company-kpi.full b { color: #f4907a; }
+}
 </style>

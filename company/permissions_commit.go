@@ -354,6 +354,21 @@ func clearMissingPackages(owner, repo string, approved []string) {
 // than addition: an approval flow that can only ever add is a ratchet, and
 // "we approved that by mistake" has to have an answer.
 func SetAppNetworkPolicy(ctx context.Context, doer *user_model.User, owner, repo, subject string, mutate func(*AppSettings)) error {
+	return setAppPolicy(ctx, doer, owner, repo, subject, mutate)
+}
+
+// SetAppLimits applies an admin's change to what one app may consume.
+//
+// Same machinery and the same audit trail as a network change — it lands as a
+// commit on the app's own settings, so "who raised this and when" is answered
+// by the history rather than by remembering.
+func SetAppLimits(ctx context.Context, doer *user_model.User, owner, repo, subject string, mutate func(*AppSettings)) error {
+	return setAppPolicy(ctx, doer, owner, repo, subject, mutate)
+}
+
+// setAppPolicy retries because the commit races anyone else writing the same
+// file, and losing a policy change to a race is worse than doing it twice.
+func setAppPolicy(ctx context.Context, doer *user_model.User, owner, repo, subject string, mutate func(*AppSettings)) error {
 	var lastErr error
 	for attempt := range commitRetries {
 		if lastErr = commitAppPolicy(ctx, doer, owner, repo, nil, mutate, subject, attempt); lastErr == nil {

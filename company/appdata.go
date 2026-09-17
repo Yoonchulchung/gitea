@@ -630,6 +630,20 @@ func appDataQuotaBytes(settings AppSettings) int64 {
 	return int64(mb) << 20
 }
 
+// withCurrentQuota re-reads the limit over a cached measurement.
+//
+// Walking the directory is what the cache is for; the quota is one settings
+// read. Without this, an admin who raises a limit watches the old number sit
+// there for up to a minute and reasonably concludes the change did not take.
+func withCurrentQuota(owner, repo string, usage AppDataUsage) AppDataUsage {
+	usage.QuotaBytes = appDataQuotaBytes(SettingsFor(owner, repo))
+	usage.Percent = 0
+	if usage.QuotaBytes > 0 {
+		usage.Percent = int(usage.Bytes * 100 / usage.QuotaBytes)
+	}
+	return usage
+}
+
 func measureAppDataUsage(dir string, settings AppSettings) AppDataUsage {
 	usage := AppDataUsage{
 		Bytes:      appDataBytes(dir),
@@ -659,7 +673,7 @@ func AppDataUsageFor(ctx context.Context, owner, repo string) (AppDataUsage, boo
 	usage, ok := dataUsageCache[key]
 	dataUsageMu.Unlock()
 	if ok && time.Since(usage.MeasuredAt) < dataSampleInterval {
-		return usage, true
+		return withCurrentQuota(owner, repo, usage), true
 	}
 
 	id, err := resolveAppDataRepoID(ctx, owner, repo)
@@ -681,7 +695,7 @@ func AppDataUsageForRepoID(owner, repo string, repoID int64) (AppDataUsage, bool
 	usage, ok := dataUsageCache[key]
 	dataUsageMu.Unlock()
 	if ok && time.Since(usage.MeasuredAt) < dataSampleInterval {
-		return usage, true
+		return withCurrentQuota(owner, repo, usage), true
 	}
 
 	settings := SettingsFor(owner, repo)

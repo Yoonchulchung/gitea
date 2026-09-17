@@ -231,6 +231,33 @@ func TestAppDataQuotaPerApp(t *testing.T) {
 
 	assert.Equal(t, int64(256)<<20, appDataQuotaBytes(AppSettings{}))
 	assert.Equal(t, int64(2048)<<20, appDataQuotaBytes(AppSettings{Limits: AppLimits{DataMB: 2048}}))
+
+	// Clamped, not shifted into a negative quota — Full() and Warning() both
+	// read a negative quota as "no limit", so the checks would disappear
+	// rather than complain. The admin form bounds this too; this is the half
+	// that holds for a value already in a settings file.
+	assert.Equal(t, int64(maxDataQuotaMB)<<20,
+		appDataQuotaBytes(AppSettings{Limits: AppLimits{DataMB: maxDataQuotaMB * 8}}))
+}
+
+// A raised limit has to show at once. Walking the directory is what the usage
+// cache is for; the quota is one settings read, and leaving it cached meant an
+// admin watched the old number for up to a minute and concluded nothing took.
+func TestWithCurrentQuotaRereadsTheLimit(t *testing.T) {
+	cfg, err := setting.NewConfigProviderFromData("[company]\nAPP_DATA_QUOTA_MB = 128")
+	require.NoError(t, err)
+	prev := setting.CfgProvider
+	setting.CfgProvider = cfg
+	defer func() { setting.CfgProvider = prev }()
+
+	// Stale sample: measured against a quota that has since changed.
+	stale := AppDataUsage{Bytes: 64 << 20, QuotaBytes: 32 << 20, Percent: 200}
+	fresh := withCurrentQuota("po", "nosuchapp", stale)
+
+	assert.Equal(t, int64(64)<<20, fresh.Bytes, "the measurement is not re-taken")
+	assert.Equal(t, int64(128)<<20, fresh.QuotaBytes)
+	assert.Equal(t, 50, fresh.Percent)
+	assert.False(t, fresh.Full())
 }
 
 // Full stops deploys but not the app: a database at its limit still answers

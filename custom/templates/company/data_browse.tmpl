@@ -2,12 +2,20 @@
      connection behind it is opened read-only (company/appdatatool.go), which
      is why it is offered while the app is still serving requests and the SQL
      console is not — and why the same markup is safe for both audiences. */}}
-{{if .Browse}}
+{{if or .Browse .BrowseError}}
 	<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.browse_header"}}</h4>
 	<div class="ui attached segment">
 		<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.data.browse_explain"}}</p>
 
-		{{if .Browse.Tables}}
+		{{/* Outside the block below as well as inside it: the helper can fail
+		     before it has anything to show — no release to run it with, a
+		     sandbox that refused, a query that ran past the timeout — and the
+		     message has to survive that, or the page is simply blank. */}}
+		{{if and .BrowseError (not .Browse)}}
+			<div class="ui negative message">{{.BrowseError}}</div>
+		{{end}}
+
+		{{if and .Browse .Browse.Tables}}
 			<div class="company-db">
 				{{/* The table list stays on screen while a table is open: which
 				     tables exist is the context for reading any one of them, and
@@ -68,7 +76,7 @@
 						</details>
 					{{end}}
 
-					{{if .Browse.Columns}}
+					{{if and .Browse.Columns .Browse.Rows}}
 						{{/* Values are whatever the app stored, so they are printed as
 						     text and nothing here is marked safe. */}}
 						<div class="company-db-rows">
@@ -79,21 +87,33 @@
 								</tbody>
 							</table>
 						</div>
+						{{/* Paging is for a table read, where the offset is part of the
+						     query. A typed query runs as written, so a "next" link would
+						     re-run it and show the same rows again; it is capped instead,
+						     and the cap is stated. */}}
 						<div class="tw-flex tw-gap-2 tw-items-center tw-mt-2">
-							{{if .Browse.Offset}}
-								<a class="ui tiny basic button" href="{{.DataLink}}?table={{.BrowseTable}}&sql={{.BrowseSQL}}&offset={{Eval .Browse.Offset "-" .BrowsePageSize}}">{{ctx.Locale.Tr "company.data.browse_prev"}}</a>
+							{{if .BrowseSQL}}
+								<span class="text-grey tw-text-12">
+									{{if .Browse.More}}{{ctx.Locale.Tr "company.data.browse_capped" .BrowsePageSize}}{{else}}{{ctx.Locale.Tr "company.data.browse_count" (len .Browse.Rows)}}{{end}}
+								</span>
+							{{else}}
+								{{if .Browse.Offset}}
+									<a class="ui tiny basic button" href="{{.DataLink}}?table={{.BrowseTable}}&offset={{Eval .Browse.Offset "-" .BrowsePageSize}}">{{ctx.Locale.Tr "company.data.browse_prev"}}</a>
+								{{end}}
+								{{if .Browse.More}}
+									<a class="ui tiny basic button" href="{{.DataLink}}?table={{.BrowseTable}}&offset={{Eval .Browse.Offset "+" .BrowsePageSize}}">{{ctx.Locale.Tr "company.data.browse_next"}}</a>
+								{{end}}
+								<span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.data.browse_range" (Eval .Browse.Offset "+" 1) (Eval .Browse.Offset "+" (len .Browse.Rows))}}</span>
 							{{end}}
-							{{if .Browse.More}}
-								<a class="ui tiny basic button" href="{{.DataLink}}?table={{.BrowseTable}}&sql={{.BrowseSQL}}&offset={{Eval .Browse.Offset "+" .BrowsePageSize}}">{{ctx.Locale.Tr "company.data.browse_next"}}</a>
-							{{end}}
-							<span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.data.browse_range" (Eval .Browse.Offset "+" 1) (Eval .Browse.Offset "+" (len .Browse.Rows))}}</span>
 						</div>
+					{{else if .Browse.Columns}}
+						<p class="text-grey">{{ctx.Locale.Tr "company.data.browse_empty"}}</p>
 					{{else if not .BrowseError}}
 						<p class="text-grey">{{ctx.Locale.Tr "company.data.browse_pick"}}</p>
 					{{end}}
 				</div>
 			</div>
-		{{else}}
+		{{else if .Browse}}
 			<p class="text-grey">{{ctx.Locale.Tr "company.data.browse_no_tables"}}</p>
 		{{end}}
 	</div>
