@@ -339,9 +339,23 @@
 /* Two columns on a wide screen, one on a narrow one. minmax(0,1fr) rather
    than 1fr: a grid track defaults to min-content, so one long unbroken string
    in a field would widen its column and squeeze the other to nothing. */
-.company-deploy-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
-.company-deploy-col { min-width: 0; }
-@media (max-width: 900px) { .company-deploy-cols { grid-template-columns: minmax(0, 1fr); gap: 0; } }
+.company-deploy-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+/* A box each, so the two questions read as two things. Same border and radius
+   as the segments elsewhere on these screens rather than a new treatment —
+   and it is what replaces the warning colour the request card used to carry,
+   which at column size read as an alarm about the form rather than a heading
+   over it. */
+.company-deploy-col {
+	min-width: 0;
+	border: 1px solid var(--color-secondary);
+	border-radius: 6px;
+	padding: 16px;
+}
+/* Stacked on a narrow screen: still boxed, but the second needs the gap the
+   grid stops providing once there is only one column. */
+@media (max-width: 900px) {
+	.company-deploy-cols { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+}
 .company-deploy-title { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
 .company-deploy-title h1 { margin: 0; font-size: 22px; display: flex; align-items: center; }
 .company-deploy-subline { display: flex; align-items: center; gap: 6px; color: var(--color-text-light-2); font-size: 13px; margin-top: 8px; }

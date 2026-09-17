@@ -285,13 +285,12 @@
 
 <style>
 /* Permission request block on the Deploy Request form. */
-.company-perm-request {
-	border: 1px solid var(--color-warning-border);
-	background: var(--color-warning-bg);
-	border-radius: 6px;
-	padding: 12px 14px;
-	margin-bottom: 12px;
-}
+/* Was a warning-coloured card, which earned its colour while it sat inline in
+   one long form and had to be noticed. It is a whole column now, and a
+   column-sized block of yellow reads as an alarm about the form rather than a
+   heading over it — the column's own border does the separating
+   (.company-deploy-col in company/deploy.tmpl). */
+.company-perm-request { margin-bottom: 12px; }
 .company-perm-request-item { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; }
 </style>
 

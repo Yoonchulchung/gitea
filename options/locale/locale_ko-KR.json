@@ -4718,5 +4718,10 @@
   "company.adminuser.source_header": "이 계정의 출처",
   "company.adminuser.source_local": "로컬",
   "company.adminuser.source_external_note": "이 계정은 디렉터리가 소유합니다. 비밀번호와 계정의 존재 자체가 거기서 관리되며 여기서가 아닙니다 — 위의 \"활성\"을 끄면 상위 기록을 건드리지 않고 이 플랫폼 접근만 끝납니다.",
-  "company.adminuser.source_local_note": "이 계정은 이 플랫폼이 소유합니다. 디렉터리에서 온 것이 아니라 여기서 만들어졌습니다. 디렉터리를 붙인 인스턴스에서는 한 번 살펴볼 만합니다 — 보통 서비스 계정이거나, 디렉터리 연결 전에 만든 계정입니다."
+  "company.adminuser.source_local_note": "이 계정은 이 플랫폼이 소유합니다. 디렉터리에서 온 것이 아니라 여기서 만들어졌습니다. 디렉터리를 붙인 인스턴스에서는 한 번 살펴볼 만합니다 — 보통 서비스 계정이거나, 디렉터리 연결 전에 만든 계정입니다.",
+  "company.logs.errors_only": "에러만",
+  "company.logs.diagnose": "에러 설명 듣기",
+  "company.logs.diagnose_note": "위 에러 줄을 본인 AI 계정으로 보내 쉬운 말로 설명합니다.",
+  "company.logs.diagnose_off": "AI 가 켜져 있고 본인 API 키를 입력한 뒤에 쓸 수 있습니다.",
+  "company.logs.diagnose_nothing": "이 로그에는 에러로 보이는 내용이 없습니다."
 }

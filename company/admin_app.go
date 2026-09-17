@@ -239,6 +239,22 @@ func AdminAppLogs(ctx *context.Context) {
 	}
 	lines, truncated, err := ReadAppLogs(st.Owner, st.Repo, query)
 
+	// "Errors only" is a filter over what was read, not another search: the
+	// patterns are the platform's (company/logdiagnose.go), so a department
+	// does not have to know what a traceback looks like to find one.
+	errorsOnly := ctx.FormBool("errors")
+	// Counted before the filter, not after: the number on the toggle says how
+	// many failures are in the log, and computing it from the already-filtered
+	// list would make it say "how many of the lines I am showing are errors",
+	// which is always all of them.
+	errorCount := len(ErrorLines(lines))
+	if errorsOnly {
+		lines = ErrorLines(lines)
+	}
+	ctx.Data["ErrorsOnly"] = errorsOnly
+	ctx.Data["ErrorCount"] = errorCount
+	ctx.Data["AIEnabled"] = AIEnabled() && AIConfiguredFor(ctx, ctx.Doer.ID)
+
 	ctx.Data["Title"] = st.Owner + "/" + st.Repo + " logs"
 	ctx.Data["App"] = st
 	ctx.Data["AppRepo"] = repo

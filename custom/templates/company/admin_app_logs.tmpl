@@ -20,8 +20,29 @@
 				<label class="tw-flex tw-items-center tw-gap-1 tw-text-13 tw-pb-2">
 					<input type="checkbox" name="regexp" value="1" {{if .UseRegexp}}checked{{end}}> {{ctx.Locale.Tr "company.logs.regexp"}}
 				</label>
+				{{/* A filter over what was read, not another search: the patterns
+				     are the platform's, so nobody has to know what a traceback
+				     looks like to find one (company/logdiagnose.go). */}}
+				<label class="tw-flex tw-items-center tw-gap-1 tw-text-13 tw-pb-2">
+					<input type="checkbox" name="errors" value="1" {{if .ErrorsOnly}}checked{{end}}> {{ctx.Locale.Tr "company.logs.errors_only"}}
+					{{if .ErrorCount}}<span class="company-data-full">({{.ErrorCount}})</span>{{end}}
+				</label>
 				<button class="ui primary button">{{ctx.Locale.Tr "company.logs.search"}}</button>
 			</form>
+			{{/* Its own form: the search above is a GET that must stay
+			     bookmarkable, and asking a model to read the log is a POST that
+			     costs something and should not fire on a page reload. */}}
+			{{if .ErrorCount}}
+				<form method="post" action="{{.AdminAppLink}}/logs/diagnose" class="tw-mt-2">
+					{{.CsrfTokenHtml}}
+					<button class="ui basic button" {{if not .AIEnabled}}disabled{{end}}>
+						{{svg "octicon-sparkle-fill" 14}} {{ctx.Locale.Tr "company.logs.diagnose"}}
+					</button>
+					<span class="text-grey tw-text-12 tw-ml-2">
+						{{if .AIEnabled}}{{ctx.Locale.Tr "company.logs.diagnose_note"}}{{else}}{{ctx.Locale.Tr "company.logs.diagnose_off"}}{{end}}
+					</span>
+				</form>
+			{{end}}
 			{{if .SearchError}}
 				<div class="ui negative message tw-mt-2">{{ctx.Locale.Tr "company.logs.bad_regexp"}} {{.SearchError}}</div>
 			{{end}}

@@ -4748,5 +4748,10 @@
   "company.adminuser.source_header": "Where this account comes from",
   "company.adminuser.source_local": "local",
   "company.adminuser.source_external_note": "The directory owns this account. Its password and its existence are managed there, not here — deactivating it above ends its access to this platform without touching the record upstream.",
-  "company.adminuser.source_local_note": "This platform owns this account: it was created here rather than provisioned from the directory. On a directory-backed instance that is worth a second look — it is usually a service account, or one made before the directory was connected."
+  "company.adminuser.source_local_note": "This platform owns this account: it was created here rather than provisioned from the directory. On a directory-backed instance that is worth a second look — it is usually a service account, or one made before the directory was connected.",
+  "company.logs.errors_only": "Errors only",
+  "company.logs.diagnose": "Explain the error",
+  "company.logs.diagnose_note": "Sends the error lines above to your own AI account and answers in plain language.",
+  "company.logs.diagnose_off": "Available once AI is switched on and you have entered your API key.",
+  "company.logs.diagnose_nothing": "There is nothing that looks like an error in this log."
 }

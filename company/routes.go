@@ -88,6 +88,7 @@ func RegisterAdminRoutes(m *web.Router) {
 	m.Group("/company-deploys/{owner}/{repo}", func() {
 		m.Get("", AdminApp)
 		m.Get("/logs", AdminAppLogs)
+		m.Post("/logs/diagnose", AdminAppLogDiagnose)
 		m.Get("/history", AdminAppHistory)
 		// Before the {verb} catch-all below, which would otherwise swallow it.
 		m.Post("/approve-packages", AdminApprovePackages)
