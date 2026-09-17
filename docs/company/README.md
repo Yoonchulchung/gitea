@@ -38,6 +38,8 @@ upstream rebase). Only `custom/conf` (local secrets/paths) stays
 - [app-platform-impl.md](app-platform-impl.md) — implementation contract for
   the platform: concurrency, hot-path performance, fail-open/closed rules,
   security rules, test requirements — read before writing code
+- [app-data.md](app-data.md) — app data: SQLite persistence, rename-proof
+  data location, quotas and retention, migrations and rollback limits
 - [app-platform-tasks.md](app-platform-tasks.md) — phased `[ ]` checklist
   tracking implementation progress
 
