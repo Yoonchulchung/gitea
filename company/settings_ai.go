@@ -30,6 +30,13 @@ const tplSettingsAI templates.TplName = "company/settings_ai"
 // EnableXXX ctx.Data every settings template, including our own navbar
 // override, already depends on) for free.
 func AISettings(ctx *gitea_context.Context) {
+	// The tab is hidden in this state, so reaching the page means a typed or
+	// bookmarked URL. Not found rather than an explanation: the explanation is
+	// the thing that should not reach a department.
+	if !AIOfferedTo(ctx) {
+		ctx.NotFound(nil)
+		return
+	}
 	provider, err := user_model.GetUserSetting(ctx, ctx.Doer.ID, userSettingAIProvider, aiProviderOpenAI)
 	if err != nil {
 		ctx.ServerError("GetUserSetting", err)

@@ -320,4 +320,17 @@
    kinds of answer, and a reader scanning for one should not have to parse
    the other. */
 .company-log-build { color: var(--color-text-light-2); }
+.company-log-level {
+	display: inline-block;
+	min-width: 42px;
+	text-transform: uppercase;
+	font-size: 10px;
+	user-select: none;
+}
+.company-log-trace,
+.company-log-debug { color: var(--color-text-light-3); }
+.company-log-info { color: var(--color-text-light-2); }
+.company-log-warn { color: var(--color-orange); }
+.company-log-error,
+.company-log-fatal { color: var(--color-red); }
 </style>

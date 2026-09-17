@@ -27,13 +27,6 @@
 						{{ctx.Locale.Tr "company.settings_ai.gateway_not_configured"}}
 					</div>
 				{{end}}
-			{{else if or .AIDisabled (not .GatewayConfigured)}}
-				{{/* Silence would leave them filling in a form that does
-				     nothing. One sentence, no internals, and who to ask. */}}
-				<div class="ui warning message">
-					{{ctx.Locale.Tr "company.settings_ai.unavailable"}}
-					{{if .CompanySupportEmail}}<a href="mailto:{{.CompanySupportEmail}}">{{.CompanySupportEmail}}</a>{{end}}
-				</div>
 			{{end}}
 			<p class="text-grey">{{ctx.Locale.Tr "company.settings_ai.description"}}</p>
 			<form class="ui form" action="{{AppSubUrl}}/user/settings/ai" method="post" data-models-url="{{AppSubUrl}}/user/settings/ai/models" data-global-init="initCompanySettingsAI">

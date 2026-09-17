@@ -84,6 +84,9 @@ func RegisterAdminRoutes(m *web.Router) {
 	m.Post("/company-network/unban", AdminNetworkUnban)
 	m.Get("/company-network/{owner}/{repo}", AdminNetworkApp)
 	m.Get("/company-packages", AdminPackages)
+	// The instance's own log. Read-only: retention belongs to the server, and
+	// a screen able to clear the log would defeat why it is written to a file.
+	m.Get("/company-logs", AdminServerLogs)
 	m.Post("/company-packages/base", AdminSetBasePackages)
 	m.Group("/company-deploys/{owner}/{repo}", func() {
 		m.Get("", AdminApp)

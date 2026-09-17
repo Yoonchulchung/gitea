@@ -386,8 +386,14 @@ func AppLogs(ctx *context.Context) {
 		lines[i].Text = RedactServerPaths(lines[i].Text)
 	}
 
+	view := logView(ctx)
+	errorCount := len(ErrorLines(lines))
+	lines = FilterLines(lines, view)
+
 	ctx.Data["Title"] = ctx.Locale.TrString("company.title.app_logs")
 	ctx.Data["App"] = LoadAppState(owner, name)
+	ctx.Data["LogView"] = view
+	ctx.Data["ErrorCount"] = errorCount
 	ctx.Data["Lines"] = lines
 	ctx.Data["Truncated"] = truncated
 	ctx.Data["Query"] = query.Text

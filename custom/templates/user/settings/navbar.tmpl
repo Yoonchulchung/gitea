@@ -27,10 +27,15 @@
 		<a class="{{if .PageIsSettingsAppearance}}active {{end}}item" href="{{AppSubUrl}}/user/settings/appearance">
 			{{ctx.Locale.Tr "settings.appearance"}}
 		</a>
-		{{/* everyone's own AI key/model — see company/settings_ai.go */}}
+		{{/* everyone's own AI key/model — see company/settings_ai.go. Absent
+		     entirely when the instance has AI switched off: there is nothing to
+		     configure, and a tab explaining that is still a tab about a feature
+		     departments do not have. */}}
+		{{if .CompanyAIOffered}}
 		<a class="{{if .PageIsSettingsAI}}active {{end}}item" href="{{AppSubUrl}}/user/settings/ai">
 			{{ctx.Locale.Tr "company.settings_ai.nav_title"}}
 		</a>
+		{{end}}
 		{{if $.IsAdmin}}
 		{{if not ($.UserDisabledFeatures.Contains "manage_mfa" "manage_credentials")}}
 		<a class="{{if .PageIsSettingsSecurity}}active {{end}}item" href="{{AppSubUrl}}/user/settings/security">

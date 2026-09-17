@@ -38,5 +38,27 @@
 				<button class="ui primary button tw-mt-3">{{ctx.Locale.Tr "company.adminsettings.save"}}</button>
 			</form>
 		</div>
+
+		{{/* Read-only: these live in app.ini and take a restart, so a form here
+		     would appear to do nothing. They are shown because a switch that is
+		     off and invisible looks exactly like a feature that is broken. */}}
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminsettings.switches_header"}}</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.switches_explain"}}</p>
+			<table class="ui very basic compact table tw-mb-0">
+				<tbody>
+					{{range .Switches}}
+						<tr>
+							<td class="tw-w-1/3"><code>{{.Key}}</code></td>
+							<td class="tw-w-1/6">
+								{{if .On}}<span class="text-green">{{ctx.Locale.Tr "company.adminsettings.switch_on"}}</span>
+								{{else}}<span class="text-red">{{ctx.Locale.Tr "company.adminsettings.switch_off"}}</span>{{end}}
+							</td>
+							<td class="text-grey tw-text-12">{{.Detail}}</td>
+						</tr>
+					{{end}}
+				</tbody>
+			</table>
+		</div>
 	</div>
 {{template "admin/layout_footer" .}}

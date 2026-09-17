@@ -91,6 +91,11 @@
 			</div>
 			<div class="company-workspace-panes"></div>
 		</div>
+		{{/* Not rendered at all when the instance has AI switched off: the
+		     "set up your key" state below is for someone who can set one up,
+		     and offering it here would advertise a feature this instance does
+		     not have. See company.AIOfferedTo. */}}
+		{{if .CompanyAIOffered}}
 		<div class="company-workspace-ai-chat" data-ai-ready="{{.AIEnabled}}"
 			data-ai-empty-state="{{ctx.Locale.Tr "company.workspace.ai_empty_state"}}"
 			data-ai-not-configured="{{ctx.Locale.Tr "company.workspace.ai_not_configured"}}"
@@ -130,6 +135,7 @@
 				</div>
 			</div>
 		</div>
+		{{end}}
 	</div>
 </div>
 

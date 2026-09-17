@@ -1,0 +1,54 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-server-logs")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.serverlogs.title"}}</h4>
+
+		<div class="ui attached segment">
+			<form method="get" class="ui form tw-flex tw-gap-2 tw-items-end tw-flex-wrap">
+				<div class="field tw-flex-1 tw-mb-0"><input type="search" name="q" value="{{.Query}}" placeholder="{{ctx.Locale.Tr "company.serverlogs.search_placeholder"}}"></div>
+				{{/* The level comes from Gitea's own stamp on the line, so this is
+				     an exact filter rather than a guess at what an error looks
+				     like — unlike an app's log, which the app writes however it
+				     likes (company/logdiagnose.go). */}}
+				<div class="field tw-mb-0">
+					<select name="level" class="ui selection dropdown">
+						<option value="">{{ctx.Locale.Tr "company.serverlogs.level_all"}}</option>
+						{{range .Levels}}<option value="{{.}}" {{if eq $.Level .}}selected{{end}}>{{ctx.Locale.Tr (printf "company.serverlogs.level_%s" .)}}</option>{{end}}
+					</select>
+				</div>
+				<div class="field tw-mb-0">
+					<select name="file" class="ui selection dropdown">
+						<option value="">{{ctx.Locale.Tr "company.serverlogs.file_all"}}</option>
+						{{range .Files}}<option value="{{.}}" {{if eq $.File .}}selected{{end}}>{{.}}</option>{{end}}
+					</select>
+				</div>
+				<label class="tw-flex tw-items-center tw-gap-1 tw-text-13 tw-pb-2">
+					<input type="checkbox" name="regexp" value="1" {{if .UseRegexp}}checked{{end}}> {{ctx.Locale.Tr "company.logs.regexp"}}
+				</label>
+				<button class="ui primary button">{{ctx.Locale.Tr "company.logs.search"}}</button>
+			</form>
+			{{if .SearchError}}
+				<div class="ui negative message tw-mt-2">{{ctx.Locale.Tr "company.logs.bad_regexp"}} {{.SearchError}}</div>
+			{{end}}
+			{{if .Truncated}}
+				<div class="ui warning message tw-mt-2">{{ctx.Locale.Tr "company.logs.truncated"}}</div>
+			{{end}}
+			{{/* Without this an instance logging to the console shows a blank
+			     page, which reads as "nothing happened" rather than "the logs
+			     are going somewhere this screen cannot follow". */}}
+			{{if ne .LogMode "file"}}
+				<div class="ui warning message tw-mt-2">{{ctx.Locale.Tr "company.serverlogs.not_file" .LogMode}}</div>
+			{{end}}
+		</div>
+
+		<div class="ui attached segment">
+			{{/* Text nodes, never innerHTML: a log line contains whatever was
+			     logged, including a request path somebody chose. Go templates
+			     escape this by default — do not add a `safeHTML` here. */}}
+			<pre class="company-log">{{range .Lines}}{{if .At}}<span class="company-log-time">{{DateUtils.AbsoluteShort .At}}</span> {{end}}{{if .Level}}<span class="company-log-level company-log-{{.Level}}">{{.Level}}</span> {{end}}{{.Text}}
+{{else}}{{ctx.Locale.Tr "company.serverlogs.empty"}}{{end}}</pre>
+			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">
+				{{ctx.Locale.Tr "company.serverlogs.source" .LogMode .LogLevel .LogRootPath}}
+			</p>
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}

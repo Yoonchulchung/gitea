@@ -141,6 +141,29 @@ func safeLinkURL(raw string) (string, bool) {
 func SetPlatformFooterData(ctx *gitea_context.Context) {
 	ctx.Data["CompanySupportEmail"] = SupportEmail(ctx)
 	ctx.Data["CompanyHelpURL"] = HelpURL(ctx)
+	ctx.Data["CompanyAIOffered"] = AIOfferedTo(ctx)
+}
+
+// AIOfferedTo reports whether this viewer is offered AI at all.
+//
+// With AI switched off on the instance there is nothing for a department to
+// configure, and a settings tab that explains why is still a tab about a
+// feature they have been told they do not have. Administrators keep it: the
+// page is where they see what is missing, and they are the ones who can act
+// on it.
+//
+// A gateway is not the only way to reach a provider — Anthropic is called
+// directly (company/ai.go) — so a department with Anthropic offered to them
+// has something to configure even with AI_API_URL unset. The settings this
+// reads are already loaded for the footer on the same request.
+func AIOfferedTo(ctx *gitea_context.Context) bool {
+	if ctx.Doer == nil {
+		return false
+	}
+	if ctx.Doer.IsAdmin {
+		return true
+	}
+	return AIEnabled() && (aiGatewayURL() != "" || AnthropicVisibleToUsers(ctx))
 }
 
 // anthropicAllowedFor is the check every AI path goes through.
@@ -158,12 +181,57 @@ func anthropicAllowedFor(ctx context.Context, userID int64) bool {
 	return err == nil && u.IsAdmin
 }
 
+// PlatformSwitch is one instance-level switch, as the settings page shows it.
+type PlatformSwitch struct {
+	Key string
+	// On is the state, Detail the one thing worth saying about it — a host, a
+	// mode, never a value that could carry a credential.
+	On     bool
+	Detail string
+}
+
+// PlatformSwitches is the state of everything that lives in app.ini rather
+// than in this page's form.
+//
+// They are read-only here on purpose: changing them means a restart, and a
+// form that silently did nothing until one happened would be worse than no
+// form. Showing them is the point — an administrator turned Claude on, saved
+// an API key, and nothing worked, because [company] AI_ENABLED was false and
+// no screen said so.
+func PlatformSwitches(ctx context.Context) []PlatformSwitch {
+	sandboxed, sandboxDetail := SandboxStatus()
+	return []PlatformSwitch{
+		{Key: "AI_ENABLED", On: AIEnabled()},
+		{Key: "AI_API_URL", On: aiGatewayURL() != "", Detail: hostOnly(aiGatewayURL())},
+		{Key: "APP_DATA_ENABLED", On: AppDataEnabled()},
+		// The URL can carry credentials for an internal mirror, so only ever
+		// its host reaches the page.
+		{Key: "PIP_INDEX_URL", On: pipIndexURL() != "", Detail: hostOnly(pipIndexURL())},
+		{Key: "PIP_ALLOW_PUBLIC_INDEX", On: pipPublicIndexAllowed()},
+		{Key: "SANDBOX", On: sandboxed, Detail: sandboxDetail},
+	}
+}
+
+// hostOnly reduces a URL to its host, so a page can show that a setting is
+// pointed somewhere without showing what is embedded in it.
+func hostOnly(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return u.Host
+}
+
 // AdminSettings renders the platform settings an administrator can change.
 func AdminSettings(ctx *gitea_context.Context) {
 	ctx.Data["Title"] = ctx.Locale.TrString("company.adminsettings.title")
 	ctx.Data["AnthropicVisible"] = AnthropicVisibleToUsers(ctx)
 	ctx.Data["SupportEmail"] = SupportEmail(ctx)
 	ctx.Data["HelpURL"] = HelpURL(ctx)
+	ctx.Data["Switches"] = PlatformSwitches(ctx)
 	ctx.HTML(http.StatusOK, tplAdminSettings)
 }
 
