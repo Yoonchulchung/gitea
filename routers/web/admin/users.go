@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gitea.dev/company"
 	"gitea.dev/models/auth"
 	"gitea.dev/models/db"
 	org_model "gitea.dev/models/organization"
@@ -320,6 +321,7 @@ func EditUser(ctx *context.Context) {
 	if ctx.Written() {
 		return
 	}
+	company.AdminUserPanel(ctx) // docs/company/patches.md
 
 	ctx.HTML(http.StatusOK, tplUserEdit)
 }

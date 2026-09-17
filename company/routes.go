@@ -65,6 +65,9 @@ func RegisterAdminRoutes(m *web.Router) {
 	// to contact, which AI provider departments are offered.
 	m.Get("/company-settings", AdminSettings)
 	m.Post("/company-settings", AdminSettingsPost)
+	// Department membership from the user page, where an administrator who
+	// has just seen that somebody belongs to none already is.
+	m.Post("/company-user-department", AdminAssignDepartment)
 	// App deployment management — see docs/company/app-platform.md. Kept
 	// under "/-/admin" rather than a repo-scoped path on purpose: these
 	// pages carry logs and failure detail, and isRepoScopedAllow
@@ -74,6 +77,10 @@ func RegisterAdminRoutes(m *web.Router) {
 	m.Get("/company-deploys", AdminDeploys)
 	// Package policy is its own page: the dashboard is about what is
 	// happening now, this is about what every app may install.
+	// Outbound access across every app at once. Per-app it was already
+	// visible; the question is which apps have an exception, and that one
+	// cannot be answered a page at a time.
+	m.Get("/company-network", AdminNetwork)
 	m.Get("/company-packages", AdminPackages)
 	m.Post("/company-packages/base", AdminSetBasePackages)
 	m.Group("/company-deploys/{owner}/{repo}", func() {

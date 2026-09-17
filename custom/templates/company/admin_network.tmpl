@@ -1,0 +1,67 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-network")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">
+			<a href="{{AppSubUrl}}/-/admin/company-deploys">{{ctx.Locale.Tr "company.admin.deploys_nav"}}</a>
+			<span class="text-grey tw-mx-2">/</span>{{ctx.Locale.Tr "company.adminnetwork.title"}}
+		</h4>
+		<div class="ui attached segment">
+			{{/* Policy and enforcement are different facts. On a host without a
+			     sandbox the rules below are still the rules and nothing is
+			     applying them, and a review page that hid that would be worse
+			     than no page. */}}
+			{{if not .Enforced}}
+				<div class="ui warning message">{{ctx.Locale.Tr "company.adminnetwork.not_enforced" .EnforcedDetail}}</div>
+			{{end}}
+			<div class="company-kpis">
+				<div class="company-kpi"><b>{{.Total}}</b><span>{{ctx.Locale.Tr "company.adminnetwork.kpi_apps"}}</span></div>
+				<div class="company-kpi{{if .Exceptions}} bad{{end}}">
+					<b>{{.Exceptions}}</b><span>{{ctx.Locale.Tr "company.adminnetwork.kpi_exceptions"}}</span>
+				</div>
+			</div>
+			<p class="text-grey tw-text-13 tw-mt-2">{{ctx.Locale.Tr "company.adminnetwork.explain"}}</p>
+		</div>
+
+		<div class="ui attached segment">
+			{{if .Rows}}
+				<table class="ui very basic table tw-text-13">
+					<thead>
+						<tr>
+							<th>{{ctx.Locale.Tr "company.admin.col_app"}}</th>
+							<th class="tw-w-1/6">{{ctx.Locale.Tr "company.adminnetwork.col_mode"}}</th>
+							<th>{{ctx.Locale.Tr "company.adminnetwork.col_allow"}}</th>
+						</tr>
+					</thead>
+					<tbody>
+						{{range .Rows}}
+							<tr>
+								<td><a href="{{$.AppLinkPrefix}}{{.Owner}}/{{.Repo}}">{{.Owner}}/{{.Repo}}</a></td>
+								<td>
+									{{if eq .Mode "open"}}
+										<span class="company-data-full">{{ctx.Locale.Tr "company.adminnetwork.mode_open"}}</span>
+									{{else if eq .Mode "broker"}}
+										<span class="company-data-warn">{{ctx.Locale.Tr "company.adminnetwork.mode_broker"}}</span>
+									{{else}}
+										<span class="text-grey">{{ctx.Locale.Tr "company.adminnetwork.mode_none"}}</span>
+									{{end}}
+								</td>
+								<td>
+									{{if .Allow}}
+										{{range .Allow}}
+											<div class="tw-font-mono">{{.Host}}{{if .Methods}} <span class="text-grey">({{StringUtils.Join .Methods ", "}})</span>{{end}}</div>
+										{{end}}
+									{{else if eq .Mode "open"}}
+										<span class="text-grey">{{ctx.Locale.Tr "company.adminnetwork.allow_anything"}}</span>
+									{{else}}
+										<span class="text-grey">—</span>
+									{{end}}
+								</td>
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			{{else}}
+				<p class="text-grey">{{ctx.Locale.Tr "company.adminnetwork.no_apps"}}</p>
+			{{end}}
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}
