@@ -11,6 +11,13 @@
 			<div class="ui attached segment">
 				<p>{{ctx.Locale.Tr "company.data.disabled"}}</p>
 			</div>
+		{{else if not .HasData}}
+			{{/* Reachable from the app page whether or not the app ever stored
+			     anything, so this is a state the page has to have rather than
+			     one it can assume away. */}}
+			<div class="ui attached segment">
+				<p>{{ctx.Locale.Tr "company.data.none_yet"}}</p>
+			</div>
 		{{else}}
 			<div class="ui attached segment">
 				{{if .DataError}}<div class="ui negative message tw-mb-3">{{.DataError}}</div>{{end}}
@@ -91,31 +98,32 @@
 				</div>
 			{{end}}
 
+		{{end}}
+
 			{{if .Archives}}
-				<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.archives_header"}}</h4>
-				<div class="ui attached segment">
-					<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.data.archives_explain"}}</p>
-					<table class="ui very basic table tw-text-13">
-						<tbody>
-							{{range .Archives}}
-								<tr>
-									<td>{{.Owner}}/{{.Repo}}</td>
-									<td>{{FormatByteSize .Bytes}}</td>
-									<td title="{{DateUtils.AbsoluteShort .Until}}">{{ctx.Locale.Tr "company.data.archive_until" (DateUtils.TimeSince .Until)}}</td>
-									<td class="tw-text-right">
-										<form method="post" action="{{$.DataLink}}/purge" class="tw-inline"
-										      onsubmit="return confirm('{{ctx.Locale.Tr "company.data.purge_confirm"}}')">
-											{{$.CsrfTokenHtml}}
-											<input type="hidden" name="repoID" value="{{.RepoID}}">
-											<button class="ui tiny red button">{{ctx.Locale.Tr "company.data.purge"}}</button>
-										</form>
-									</td>
-								</tr>
-							{{end}}
-						</tbody>
-					</table>
-				</div>
-			{{end}}
+			<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.archives_header"}}</h4>
+			<div class="ui attached segment">
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.data.archives_explain"}}</p>
+				<table class="ui very basic table tw-text-13">
+					<tbody>
+						{{range .Archives}}
+							<tr>
+								<td>{{.Owner}}/{{.Repo}}</td>
+								<td>{{FormatByteSize .Bytes}}</td>
+								<td title="{{DateUtils.AbsoluteShort .Until}}">{{ctx.Locale.Tr "company.data.archive_until" (DateUtils.TimeSince .Until)}}</td>
+								<td class="tw-text-right">
+									<form method="post" action="{{$.DataLink}}/purge" class="tw-inline"
+									      onsubmit="return confirm('{{ctx.Locale.Tr "company.data.purge_confirm"}}')">
+										{{$.CsrfTokenHtml}}
+										<input type="hidden" name="repoID" value="{{.RepoID}}">
+										<button class="ui tiny red button">{{ctx.Locale.Tr "company.data.purge"}}</button>
+									</form>
+								</td>
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			</div>
 		{{end}}
 	</div>
 {{template "admin/layout_footer" .}}

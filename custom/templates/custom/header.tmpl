@@ -412,4 +412,48 @@
 	padding: 0 4px;
 	margin-right: 4px;
 }
+
+/* 500 page. Centred and quiet: the reader has just been stopped mid-task,
+   and the page's job is to say what to do next, not to look alarming. */
+.company-error-page {
+	max-width: 520px;
+	margin: 64px auto;
+	text-align: center;
+}
+.company-error-icon { color: var(--color-orange); }
+.company-error-title {
+	margin: 12px 0 8px;
+	font-size: 20px;
+}
+.company-error-lead {
+	color: var(--color-text-light-1);
+	line-height: 1.6;
+}
+.company-error-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: center;
+	margin: 20px 0 12px;
+	flex-wrap: wrap;
+}
+.company-error-contact {
+	color: var(--color-text-light-2);
+	font-size: 13px;
+}
+.company-error-detail {
+	margin-top: 24px;
+	text-align: left;
+}
+.company-error-detail > summary {
+	cursor: pointer;
+	font-size: 13px;
+	color: var(--color-text-light-2);
+}
+.company-error-detail pre {
+	background: var(--color-code-bg);
+	border-radius: 4px;
+	padding: 10px;
+	font-size: 12px;
+	margin: 8px 0;
+}
 </style>

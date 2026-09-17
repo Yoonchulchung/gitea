@@ -52,9 +52,15 @@ func AdminAppData(ctx *context.Context) {
 	available, detail := DataStatus()
 	ctx.Data["DataAvailable"] = available
 	ctx.Data["DataDetail"] = detail
+	ctx.Data["HasData"] = hasData
+	// Always set, even as an empty list: this page is reachable from the app
+	// page whether or not the app has ever stored anything, and a template
+	// counting a value that was never put there is a 500.
+	var snapshots []Snapshot
 	if hasData {
-		ctx.Data["Snapshots"] = ListSnapshots(dataDir)
+		snapshots = ListSnapshots(dataDir)
 	}
+	ctx.Data["Snapshots"] = snapshots
 	if usage, ok := AppDataUsageFor(ctx, st.Owner, st.Repo); ok {
 		ctx.Data["DataUsage"] = usage
 	}

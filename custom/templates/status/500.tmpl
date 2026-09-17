@@ -1,0 +1,96 @@
+{{/* Fork override of templates/status/500.tmpl — see docs/company/patches.md.
+
+     Upstream shows the raw error, the version and a link to file a bug on
+     github.com to whoever hit it. On this instance the person who hits a 500
+     is usually a department member who uploaded a spreadsheet: a Go template
+     error tells them nothing they can act on, the version number is noise,
+     and the GitHub link points at software they do not run and at a site the
+     company does not allow. What they need is whether to retry and who to
+     tell. Administrators still get the error text, because they are the ones
+     who can do something with it — the same split as company/usererror.go.
+
+     Keep this page's dependencies minimal, as upstream does: it renders after
+     something already failed, so anything clever here fails twice.
+     Available: AppName, AssetUrlPrefix, AssetURI, AppSubUrl, ctx.Locale,
+     .Flash, .ErrorMsg, .SignedUser, and .CompanySupportEmail/.CompanyHelpURL
+     from the gate (company/adminsettings.go), guarded in case the request
+     failed before it ran. */}}
+<!DOCTYPE html>
+<html lang="{{ctx.Locale.Lang}}" data-theme="{{ctx.CurrentWebTheme.InternalName}}">
+<head>
+	{{ctx.HeadMetaContentSecurityPolicy}}
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{{ctx.Locale.Tr "company.error500.title"}} - {{AppName}}</title>
+	<link rel="icon" href="{{AssetUrlPrefix}}/img/favicon.svg" type="image/svg+xml">
+	<link rel="alternate icon" href="{{AssetUrlPrefix}}/img/favicon.png" type="image/png">
+	{{template "base/head_style" .}}
+</head>
+<body>
+	<div class="full height">
+		<nav class="ui secondary menu">
+			<div class="ui container tw-flex">
+				<div class="item tw-flex-1">
+					<a href="{{AppSubUrl}}/" aria-label="{{ctx.Locale.Tr "home_title"}}">
+						<img width="30" height="30" src="{{AssetUrlPrefix}}/img/logo.svg" alt="{{ctx.Locale.Tr "logo"}}" aria-hidden="true">
+					</a>
+				</div>
+			</div>
+		</nav>
+		<div class="divider tw-my-0"></div>
+		<div role="main" class="page-content status-page-500">
+			<div class="ui container">
+				{{template "base/alert" .}}
+				<div class="company-error-page">
+					<div class="company-error-icon">{{svg "octicon-alert" 40}}</div>
+					<h2 class="company-error-title">{{ctx.Locale.Tr "company.error500.title"}}</h2>
+					<p class="company-error-lead">{{ctx.Locale.Tr "company.error500.lead"}}</p>
+
+					<div class="company-error-actions">
+						{{/* Back, not reload: a reload repeats whatever failed, and on a
+						     form submission it repeats the submission too. */}}
+						<a class="ui primary button" href="{{AppSubUrl}}/">{{ctx.Locale.Tr "company.error500.home"}}</a>
+						{{if .CompanyHelpURL}}<a class="ui basic button" href="{{.CompanyHelpURL}}">{{ctx.Locale.Tr "company.error500.help"}}</a>{{end}}
+					</div>
+
+					{{if .CompanySupportEmail}}
+						<p class="company-error-contact">
+							{{ctx.Locale.Tr "company.error500.contact"}}
+							<a href="mailto:{{.CompanySupportEmail}}">{{.CompanySupportEmail}}</a>
+						</p>
+					{{end}}
+
+					{{/* Admins only, and folded away: this is the useful half for the
+					     person who can fix it, and it is still not the first thing
+					     anyone should read. */}}
+					{{if and .SignedUser .SignedUser.IsAdmin}}
+						{{if .ErrorMsg}}
+							<details class="company-error-detail">
+								<summary>{{ctx.Locale.Tr "company.error500.detail"}}</summary>
+								<pre class="tw-whitespace-pre-wrap tw-wrap-anywhere">{{.ErrorMsg}}</pre>
+								<p class="text-grey tw-text-12">{{ctx.Locale.Tr "company.error500.detail_log"}} <code>{{AppSubUrl}}/-/admin/company-logs</code></p>
+							</details>
+						{{end}}
+						<p class="text-grey tw-text-12">{{ctx.Locale.Tr "admin.config.app_ver"}}: {{AppVer}}</p>
+					{{end}}
+				</div>
+			</div>
+		</div>
+	</div>
+
+	{{/* Kept from upstream: when a sub-template triggers the 500, its parent has
+		been partially rendered and this page lands inside the broken one. This
+		moves it into the main viewport. No other JS on this page — the partial
+		render would run it twice. */}}
+	<script nonce="{{ctx.CspScriptNonce}}" type="module">
+		const embedded = document.querySelector('.page-content .page-content.status-page-500');
+		if (embedded) {
+			const embeddedParent = embedded.parentNode;
+			let main = document.querySelector('.page-content');
+			main = main ?? document.querySelector('body');
+			main.prepend(document.createElement('hr'));
+			main.prepend(embedded);
+			embeddedParent.remove();
+		}
+	</script>
+</body>
+</html>
