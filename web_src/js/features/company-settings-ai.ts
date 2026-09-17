@@ -15,7 +15,7 @@ import {fomanticQuery} from '../modules/fomantic/base.ts';
 // unauthenticated "list models" endpoint. This list will drift as new
 // models ship; the field stays free text either way, so an outdated
 // suggestion never blocks entering a newer ID by hand.
-const ANTHROPIC_MODEL_SUGGESTIONS = [
+export const ANTHROPIC_MODEL_SUGGESTIONS = [
   'claude-opus-5',
   'claude-sonnet-5',
   'claude-fable-5',

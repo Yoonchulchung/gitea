@@ -54,11 +54,15 @@
 /* Deploy Request status badge — custom/templates/repo/view_content.tmpl,
    web_src/js/features/company-deploy-status.ts. Shown for everyone, not
    just non-admins, so this block is unconditional (no admin-only guard). */
+/* Squared off rather than a capsule. 1rem on a badge this wide rounds the
+   ends into a lozenge, which reads as decoration; the same 4px the panels,
+   buttons and inputs around it use reads as a label attached to the thing it
+   describes. Same radius on .company-app-state below, for the same reason. */
 .company-deploy-status-badge {
 	display: inline-flex;
 	align-items: center;
 	padding: .2rem .6rem;
-	border-radius: 1rem;
+	border-radius: 4px;
 	font-size: .8rem;
 	font-weight: 600;
 	white-space: nowrap;
@@ -82,7 +86,7 @@
 	display: inline-flex;
 	align-items: center;
 	padding: .15rem .5rem;
-	border-radius: 1rem;
+	border-radius: 4px;
 	font-size: .82rem;
 	font-weight: 600;
 	white-space: nowrap;

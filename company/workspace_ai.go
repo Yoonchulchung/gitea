@@ -82,6 +82,11 @@ type workspaceAIRequest struct {
 	History     []workspaceAIHistoryTurn `json:"history"`
 	ActivePath  string                   `json:"activePath"`
 	OpenFiles   []workspaceAIOpenFile    `json:"openFiles"`
+	// Model overrides the one saved in settings, for this request only.
+	// Which model suits a job changes with the job — a rename across four
+	// files and a rewrite of an algorithm are not the same ask — and making
+	// someone leave the editor to change it meant nobody did.
+	Model string `json:"model"`
 }
 
 type workspaceAIEdit struct {
@@ -197,7 +202,7 @@ func WorkspaceAI(ctx *context.Context) {
 	tools := mcpToolsToAI(toolsResult.Tools)
 
 	for turn := 0; turn < workspaceAIMaxTurns; turn++ {
-		resp, err := aiChatTurnStream(ctx, ctx.Doer.ID, messages, tools, func(delta string) {
+		resp, err := aiChatTurnStream(ctx, ctx.Doer.ID, req.Model, messages, tools, func(delta string) {
 			writeStreamEvent(ctx.Resp, map[string]any{"type": "text", "delta": delta})
 		})
 		if err != nil {

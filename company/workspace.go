@@ -95,6 +95,10 @@ func Workspace(ctx *context.Context) {
 	// only renders once this person has their own AI key saved
 	// (/user/settings/ai) — see docs/company/ai-agent.md.
 	ctx.Data["AIEnabled"] = AIConfiguredFor(ctx, ctx.Doer.ID)
+	if cfg, err := loadAIUserConfig(ctx, ctx.Doer.ID); err == nil {
+		ctx.Data["AIModel"] = cfg.modelID
+		ctx.Data["AIProvider"] = cfg.provider
+	}
 	ctx.HTML(http.StatusOK, tplWorkspace)
 }
 

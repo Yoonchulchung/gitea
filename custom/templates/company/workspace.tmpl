@@ -73,6 +73,19 @@
 				<div class="company-workspace-tabs"></div>
 				<div class="company-workspace-actions">
 					<span class="company-workspace-status tw-text-text-light"></span>
+					{{/* A plain link on purpose: the delegated click handler in
+					     company-workspace.ts already confirms before leaving with
+					     unsaved work, so this inherits that instead of needing a
+					     guard of its own — which matters here more than anywhere,
+					     because a deploy request ships what was committed and
+					     unsaved edits would silently not be in it.
+
+					     Hidden while the repo has no commits: there is nothing to
+					     request a deploy of yet, and a button that can only fail
+					     is worse than no button. */}}
+					{{if not .Repo.IsEmpty}}
+						<a class="ui basic tiny button" href="{{.Repo.Link}}/deploy">{{ctx.Locale.Tr "company.app.request_deploy"}}</a>
+					{{end}}
 					<button type="button" class="ui primary tiny button company-workspace-save">{{ctx.Locale.Tr "save"}}</button>
 				</div>
 			</div>
@@ -102,6 +115,16 @@
 					<textarea class="company-ai-chat-input" rows="1" placeholder="{{ctx.Locale.Tr "company.workspace.ai_placeholder"}}"></textarea>
 					<div class="company-ai-chat-inputtoolbar">
 						<span class="company-ai-chat-context tw-hidden" data-tooltip-content="{{ctx.Locale.Tr "company.workspace.ai_context_tooltip"}}"></span>
+						{{/* Which model suits the question changes with the question, and
+						     sending someone to their settings page to change it meant
+						     nobody changed it. The pick applies to this request only —
+						     it is never written back, so choosing something expensive
+						     for one hard question does not become the standing cost. */}}
+						<select class="company-ai-chat-model" aria-label="{{ctx.Locale.Tr "company.workspace.ai_model"}}"
+						        data-models-url="{{printf "%s/user/settings/ai/models" AppSubUrl}}"
+						        data-provider="{{.AIProvider}}">
+							{{if .AIModel}}<option value="{{.AIModel}}" selected>{{.AIModel}}</option>{{end}}
+						</select>
 						<button type="button" class="company-ai-chat-send" aria-label="{{ctx.Locale.Tr "company.workspace.ai_send"}}"></button>
 					</div>
 				</div>

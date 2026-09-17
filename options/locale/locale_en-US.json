@@ -4110,6 +4110,7 @@
   "company.adminnetwork.allow_anything": "anything it asks for",
   "company.adminnetwork.no_apps": "No apps are deployed yet.",
   "company.activity.op.unknown": "Did something the platform has no name for",
+  "company.workspace.ai_model": "Model",
   "company.activity.title": "Who did what, across every department",
   "company.activity.col_when": "When",
   "company.activity.col_who": "Who",

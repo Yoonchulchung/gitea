@@ -150,7 +150,7 @@ type aiTool struct {
 // this diff" request. The workspace editor's "Ask AI" needs tool use and
 // live output, so it calls aiChatTurnStream directly instead.
 func aiChat(ctx context.Context, userID int64, systemPrompt, userPrompt string) (string, error) {
-	resp, err := aiChatTurnStream(ctx, userID, []aiChatMessage{
+	resp, err := aiChatTurnStream(ctx, userID, "", []aiChatMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userPrompt},
 	}, nil, nil)
@@ -166,7 +166,7 @@ func aiChat(ctx context.Context, userID int64, systemPrompt, userPrompt string) 
 // message. Kept as a thin, clearly-named wrapper since most callers (the
 // non-streaming ones) don't want to think about streaming at all.
 func aiChatTurn(ctx context.Context, userID int64, messages []aiChatMessage, tools []aiTool) (*aiChatMessage, error) {
-	return aiChatTurnStream(ctx, userID, messages, tools, nil)
+	return aiChatTurnStream(ctx, userID, "", messages, tools, nil)
 }
 
 // aiChatTurnStream is one request/response round-trip against userID's own
@@ -180,10 +180,16 @@ func aiChatTurn(ctx context.Context, userID int64, messages []aiChatMessage, too
 // is in use. Callers that pass tools need to check the returned message's
 // ToolCalls themselves, since a tool-capable model may return either a
 // final text answer or a list of calls to execute and feed back.
-func aiChatTurnStream(ctx context.Context, userID int64, messages []aiChatMessage, tools []aiTool, onDelta func(string)) (*aiChatMessage, error) {
+func aiChatTurnStream(ctx context.Context, userID int64, model string, messages []aiChatMessage, tools []aiTool, onDelta func(string)) (*aiChatMessage, error) {
 	uc, err := loadAIUserConfig(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+	// The caller's pick wins for this request without being written back:
+	// choosing a bigger model for one hard question should not quietly
+	// become what every later question costs.
+	if model = strings.TrimSpace(model); model != "" && validModelID(model) {
+		uc.modelID = model
 	}
 	if uc.apiKey == "" {
 		return nil, fmt.Errorf("AI not set up yet — add your API key at /user/settings/ai")
@@ -626,3 +632,27 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "…"
 }
+
+// validModelID bounds what a request may name as its model.
+//
+// The value ends up in a JSON body sent to this person's own gateway with
+// their own key, so the exposure is theirs — but it is still a string from a
+// browser going into a request the server makes, and "it is only their own
+// account" is the reasoning that ends in a header injection. Model ids are a
+// narrow shape and this keeps them that way.
+func validModelID(id string) bool {
+	if len(id) > maxModelIDLength {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.' || r == '-' || r == '_' || r == ':' || r == '/':
+		default:
+			return false
+		}
+	}
+	return id != ""
+}
+
+const maxModelIDLength = 100
