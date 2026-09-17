@@ -18,7 +18,7 @@
 | 패키지 설치 (배포마다) | `company/deployworker.go`, `depresolve.go` | `PIP_INDEX_URL` 또는 pypi.org | `PIP_INDEX_URL` 설정, `PIP_ALLOW_PUBLIC_INDEX` | **인덱스 없으면 배포 거부** |
 | 앱의 아웃바운드 (브로커) | `company/broker.go` | apps.yml 허용목록 | `network.mode` (`none`/`broker`/`open`) | `none` |
 | 아바타 | Gitea | gravatar.com | 관리자 패널 → Configuration (`system_setting`의 `picture.disable_gravatar`) — **app.ini 키는 이 버전에서 무시됨**(deprecation 오류) | 내장 기본 꺼짐; DB에 정책으로 명시함 |
-| 웹훅 | Gitea | 사용자가 입력한 URL | `[webhook] ALLOWED_HOST_LIST` | 빈 목록 (설정함) |
+| 웹훅 | Gitea | 사용자가 입력한 URL | `[security] ALLOWED_HOST_LIST` | 빈 목록 (설정함) |
 | 미러 | Gitea | 외부 git 서버 | `[mirror] DISABLE_NEW_PULL/PUSH` | 꺼짐 (설정함) |
 | 리포 마이그레이션 | Gitea | 외부 git 서버 | `[repository] DISABLE_MIGRATIONS` | 꺼짐 |
 | 메일 | Gitea | SMTP | `[mailer] ENABLED` | 꺼짐 |
