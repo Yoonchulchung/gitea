@@ -213,6 +213,21 @@ func WorkspaceSave(ctx *context.Context) {
 			ctx.JSON(http.StatusConflict, map[string]any{"conflict": conflict})
 			return
 		}
+		// A rejected path — "../escape", ".git/config", an empty name — is the
+		// caller sending something invalid, not the server breaking. Left to
+		// ServerError it becomes a 500 and an HTML error page in a JSON
+		// client; it is a 400 with the reason instead.
+		//
+		// errors.As, not the IsErr* helpers: those do a bare type assertion,
+		// and git rejects "../foo" deep enough that the error comes back
+		// wrapped — the assertion misses it and the 400 silently became a 500.
+		// The message is safe to echo: it names the path the caller just sent.
+		var pathErr files_service.ErrFilePathInvalid
+		var nameErr files_service.ErrFilenameInvalid
+		if errors.As(err, &pathErr) || errors.As(err, &nameErr) {
+			ctx.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
 		ctx.ServerError("ChangeRepoFiles", err)
 		return
 	}
