@@ -62,6 +62,10 @@ type AppLimits struct {
 	Processes int `yaml:"processes"`
 	OpenFiles int `yaml:"openFiles"`
 	TmpMB     int `yaml:"tmpMB"` // tmpfs size; unbounded /tmp would eat RAM
+	// DataMB overrides the instance-wide app data quota for this app. Zero
+	// means "whatever [company] APP_DATA_QUOTA_MB says", so raising one
+	// department's limit does not pin every other app to today's default.
+	DataMB int `yaml:"dataMB"`
 }
 
 // AppNetwork is the egress policy. AllowHosts only applies to broker mode.
@@ -197,6 +201,9 @@ func (c *AppsConfig) EffectiveSettings(owner, repo string) AppSettings {
 		}
 		if s.Limits.OpenFiles > 0 {
 			out.Limits.OpenFiles = s.Limits.OpenFiles
+		}
+		if s.Limits.DataMB > 0 {
+			out.Limits.DataMB = s.Limits.DataMB
 		}
 		if s.Limits.TmpMB > 0 {
 			out.Limits.TmpMB = s.Limits.TmpMB

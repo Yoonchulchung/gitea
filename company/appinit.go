@@ -35,6 +35,16 @@ func InitAppPlatform(ctx context.Context) {
 		// not from a deploy that mysteriously refuses to run.
 		log.Warn("company: app sandboxing is unavailable: %s", detail)
 	}
+	if AppDataEnabled() {
+		// Measured at boot so an operator learns it here rather than from an
+		// app whose writes mysteriously behave differently than on their
+		// laptop (company/appdata.go).
+		if ok, detail := DataStatus(); ok {
+			log.Info("company: app data: %s", detail)
+		} else {
+			log.Error("company: app data is switched on but unusable: %s", detail)
+		}
+	}
 	// Before anything reads state or files: shortening appKey renamed every
 	// directory the platform owns, and an instance that starts without this
 	// finds its apps with no releases and no secrets (company/appkeymigrate.go).
@@ -51,6 +61,7 @@ func InitAppPlatform(ctx context.Context) {
 
 	StartDeployWorkers()
 	StartMetricsFlusher()
+	StartAppDataGC()
 
 	// Bring back what was running before this restart. Runs in the
 	// background: reconciliation starts app processes and health-checks them,

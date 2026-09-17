@@ -44,6 +44,12 @@ type PlatformEnvironment struct {
 	// above. Policy and outcome differ on a host with no sandbox.
 	NetworkEnforced bool
 	SandboxMode     string
+	// What the app's own database will run on. Measured, not assumed — the
+	// filesystem under AppDataPath decides whether WAL is available at all
+	// (company/appdata.go).
+	DataEnabled     bool
+	DataDetail      string
+	DataJournalMode string
 }
 
 // DescribePlatformEnvironment collects what an app in this repository will
@@ -66,6 +72,10 @@ func DescribePlatformEnvironment(owner, repo string) PlatformEnvironment {
 	}
 	mode, _ := sandboxMode()
 	env.SandboxMode = string(mode)
+	env.DataEnabled, env.DataDetail = DataStatus()
+	if env.DataEnabled {
+		env.DataJournalMode = DataJournalMode()
+	}
 	env.NetworkEnforced, _ = NetworkEnforced()
 	return env
 }
@@ -112,6 +122,28 @@ func (e PlatformEnvironment) AIContext() string {
 		fmt.Fprintf(&b, "- Memory limit: %s MB. Reading a large file entirely into memory will be "+
 			"stopped by the platform.\n", strconv.Itoa(e.MemoryLimitMB))
 	}
+	if e.DataEnabled {
+		// The single highest-leverage paragraph here. Department app code is
+		// written by this assistant, so a model that does not know the
+		// contract reproduces the original bug — a relative sqlite3 path
+		// against a read-only release tree — in every app it generates.
+		fmt.Fprintf(&b, "- The app has persistent storage: **one SQLite database**, opened at the path in "+
+			"the DB_PATH environment variable. Always `sqlite3.connect(os.environ[\"DB_PATH\"], timeout=10)`; "+
+			"never a relative path or a literal, because the release directory is read-only and a relative "+
+			"path fails with \"unable to open database file\". Journal mode on this host is %s and the "+
+			"platform sets it — do not set PRAGMA journal_mode yourself.\n", e.DataJournalMode)
+		b.WriteString("- Do NOT create or alter tables from app code — no CREATE TABLE at import time, no " +
+			"init_db(). Schema lives in numbered files the platform applies before the app starts: " +
+			"`migrations/001_create_records.sql`, `migrations/002_add_note.sql`, and so on, next to main.py.\n")
+		b.WriteString("- Migrations are **additive only**: add tables, add nullable columns, add columns with " +
+			"a DEFAULT. Never DROP, never RENAME, never a NOT NULL column without a DEFAULT — the platform " +
+			"refuses those, because any past version of the app can be redeployed and must still work. " +
+			"Never edit a migration that has already shipped; add the next number instead.\n")
+		b.WriteString("- Open a connection per request and close it, rather than sharing one: the synchronous " +
+			"endpoints FastAPI runs in a threadpool cannot share a sqlite3 connection. Store uploaded files " +
+			"as BLOBs in the database — there is no other writable directory that survives a deploy.\n")
+	}
+
 	switch {
 	case e.NetworkMode == NetworkNone && e.NetworkEnforced:
 		b.WriteString("- The app has NO network access: outbound HTTP calls, DNS and sockets all fail. " +

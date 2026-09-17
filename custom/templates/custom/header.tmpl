@@ -238,6 +238,14 @@
 .company-kpi span { font-size: .75rem; color: var(--color-text-light-2); }
 .company-kpi.bad b { color: var(--color-error-text); }
 
+/* A bar rather than a number alone: "412 MB of 512 MB" needs arithmetic to
+   read as "nearly full", and the people this page is for should not have to
+   do it. */
+.company-app-data-bar { height: 6px; border-radius: 3px; background: var(--color-secondary); overflow: hidden; }
+.company-app-data-bar-fill { height: 100%; background: var(--color-primary); }
+.company-app-data-bar-fill.is-warning { background: var(--color-warning-border); }
+.company-app-data-bar-fill.is-full { background: var(--color-error-text); }
+
 .company-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 .company-chart h5 { margin: 0 0 6px; font-size: .82rem; color: var(--color-text-light-2); }
 /* The chart needs a height that does not come from the chart.

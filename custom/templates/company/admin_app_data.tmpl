@@ -1,0 +1,119 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-app-data")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">
+			<a href="{{AppSubUrl}}/-/admin/company-deploys">{{ctx.Locale.Tr "company.admin.deploys_nav"}}</a>
+			<span class="text-grey tw-mx-2">/</span>
+			<a href="{{.AppLink}}">{{.App.Owner}}/{{.App.Repo}}</a>
+			<span class="text-grey tw-mx-2">/</span>{{ctx.Locale.Tr "company.data.title"}}
+		</h4>
+
+		{{if not .DataEnabled}}
+			<div class="ui attached segment">
+				<p>{{ctx.Locale.Tr "company.data.disabled"}}</p>
+			</div>
+		{{else}}
+			<div class="ui attached segment">
+				{{if .DataError}}<div class="ui negative message tw-mb-3">{{.DataError}}</div>{{end}}
+				{{if not .DataAvailable}}<div class="ui warning message tw-mb-3">{{.DataDetail}}</div>{{end}}
+				<div class="company-kpis">
+					{{if .DataUsage}}
+						<div class="company-kpi{{if .DataUsage.Full}} bad{{end}}">
+							<b>{{FormatByteSize .DataUsage.Bytes}}<small>/{{FormatByteSize .DataUsage.QuotaBytes}}</small></b>
+							<span>{{ctx.Locale.Tr "company.adminapp.kpi_data"}}</span>
+						</div>
+					{{end}}
+					<div class="company-kpi">
+						<b>{{len .Snapshots}}</b><span>{{ctx.Locale.Tr "company.data.kpi_snapshots"}}</span>
+					</div>
+					<div class="company-kpi">
+						<b>{{if .Running}}{{ctx.Locale.Tr "company.data.state_running"}}{{else}}{{ctx.Locale.Tr "company.data.state_stopped"}}{{end}}</b>
+						<span>{{ctx.Locale.Tr "company.data.kpi_state"}}</span>
+					</div>
+				</div>
+				<div class="tw-mt-3 tw-flex tw-gap-2 tw-flex-wrap">
+					<form method="post" action="{{.DataLink}}/snapshot">{{.CsrfTokenHtml}}
+						<button class="ui small primary button">{{ctx.Locale.Tr "company.data.take_snapshot"}}</button>
+					</form>
+					<a class="ui small button" href="{{.DataLink}}/export">{{ctx.Locale.Tr "company.data.export"}}</a>
+				</div>
+				<p class="text-grey tw-text-13 tw-mt-2">{{ctx.Locale.Tr "company.data.export_explain"}}</p>
+			</div>
+
+			<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.snapshots_header"}}</h4>
+			<div class="ui attached segment">
+				{{/* Restoring replaces everything written since the snapshot, so
+				     the button is only offered while the app is stopped — a swap
+				     under a live writer is corruption, not a restore. */}}
+				{{if .Running}}<div class="ui warning message tw-mb-3">{{ctx.Locale.Tr "company.data.restore_needs_stop"}}</div>{{end}}
+				{{if .Snapshots}}
+					<table class="ui very basic table tw-text-13">
+						<tbody>
+							{{range .Snapshots}}
+								<tr>
+									<td class="tw-font-mono">{{.Name}}</td>
+									<td>{{FormatByteSize .Bytes}}</td>
+									<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
+									<td class="tw-text-right">
+										{{if not $.Running}}
+											<form method="post" action="{{$.DataLink}}/restore" class="tw-inline"
+											      onsubmit="return confirm('{{ctx.Locale.Tr "company.data.restore_confirm"}}')">
+												{{$.CsrfTokenHtml}}
+												<input type="hidden" name="name" value="{{.Name}}">
+												<button class="ui tiny button">{{ctx.Locale.Tr "company.data.restore"}}</button>
+											</form>
+										{{end}}
+									</td>
+								</tr>
+							{{end}}
+						</tbody>
+					</table>
+				{{else}}
+					<p class="text-grey">{{ctx.Locale.Tr "company.data.no_snapshots"}}</p>
+				{{end}}
+			</div>
+
+			{{if .SQLConsole}}
+				<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.sql_header"}}</h4>
+				<div class="ui attached segment">
+					<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.data.sql_explain"}}</p>
+					{{if .Running}}
+						<div class="ui warning message">{{ctx.Locale.Tr "company.data.sql_needs_stop"}}</div>
+					{{else}}
+						<form method="post" action="{{.DataLink}}/sql" class="ui form"
+						      onsubmit="return confirm('{{ctx.Locale.Tr "company.data.sql_confirm"}}')">
+							{{.CsrfTokenHtml}}
+							<div class="field"><textarea name="sql" rows="4" placeholder="UPDATE records SET ..."></textarea></div>
+							<button class="ui small red button">{{ctx.Locale.Tr "company.data.sql_run"}}</button>
+						</form>
+					{{end}}
+				</div>
+			{{end}}
+
+			{{if .Archives}}
+				<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.archives_header"}}</h4>
+				<div class="ui attached segment">
+					<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.data.archives_explain"}}</p>
+					<table class="ui very basic table tw-text-13">
+						<tbody>
+							{{range .Archives}}
+								<tr>
+									<td>{{.Owner}}/{{.Repo}}</td>
+									<td>{{FormatByteSize .Bytes}}</td>
+									<td title="{{DateUtils.AbsoluteShort .Until}}">{{ctx.Locale.Tr "company.data.archive_until" (DateUtils.TimeSince .Until)}}</td>
+									<td class="tw-text-right">
+										<form method="post" action="{{$.DataLink}}/purge" class="tw-inline"
+										      onsubmit="return confirm('{{ctx.Locale.Tr "company.data.purge_confirm"}}')">
+											{{$.CsrfTokenHtml}}
+											<input type="hidden" name="repoID" value="{{.RepoID}}">
+											<button class="ui tiny red button">{{ctx.Locale.Tr "company.data.purge"}}</button>
+										</form>
+									</td>
+								</tr>
+							{{end}}
+						</tbody>
+					</table>
+				</div>
+			{{end}}
+		{{end}}
+	</div>
+{{template "admin/layout_footer" .}}

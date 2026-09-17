@@ -32,7 +32,7 @@ func TestSocketPathsAgree(t *testing.T) {
 	withTempAppData(t)
 	p := appPathsFor("PO", "app")
 
-	env := buildEnv(p, "/apps/PO/app", nil, false)
+	env := buildEnv(p, "/apps/PO/app", "", nil, false)
 	assert.Contains(t, env, "SOCKET="+appSocketForProcess(p))
 
 	if available, _ := SandboxStatus(); available {
@@ -49,7 +49,7 @@ func TestBuildEnvDoesNotInheritParent(t *testing.T) {
 	withTempAppData(t)
 	t.Setenv("GITEA__DATABASE__PASSWD", "super-secret")
 
-	env := buildEnv(appPathsFor("PO", "app"), "/apps/PO/app", map[string]string{
+	env := buildEnv(appPathsFor("PO", "app"), "/apps/PO/app", "", map[string]string{
 		"API_KEY":    "sk-abc",
 		"LD_PRELOAD": "/tmp/evil.so", // second guard behind envstore validation
 	}, false)

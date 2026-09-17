@@ -281,26 +281,37 @@ var sandboxReadOnlyBinds = []string{
 // deliberately NOT via bwrap's --setenv, which would put secrets into argv
 // where `ps` shows them to anyone on the host. bwrap passes its own
 // environment through to the child.
-func buildAppCommand(release string, p appPaths, settings AppSettings, rootPath string) (*exec.Cmd, error) {
-	mode, detail := sandboxMode()
-	if mode == SandboxNone && !allowUnsandboxed() {
-		// Surfaces to the admin as-is; the department sees the
-		// "sandbox_unavailable" code translated into plain language.
-		return nil, errors.New("this app cannot be isolated on this host, so it was not started — " + detail)
-	}
-
+func buildAppCommand(release string, p appPaths, settings AppSettings, rootPath, dataDir string) (*exec.Cmd, error) {
 	args := buildStartArgs(settings.Start, appSocketForProcess(p), rootPath)
 	if len(args) == 0 {
 		return nil, errors.New("the start command in apps.yml is empty")
+	}
+	return buildSandboxCommand(release, p, settings, dataDir, args)
+}
+
+// buildSandboxCommand is buildAppCommand once the argv is known.
+//
+// Split out so the migration runner gets the *same* isolation as the app it
+// is migrating — same binds, same limits, same network policy. A second,
+// looser way to run code against an app's data would be the one hole worth
+// attacking (company/appmigrate.go).
+func buildSandboxCommand(release string, p appPaths, settings AppSettings, dataDir string, args []string) (*exec.Cmd, error) {
+	mode, detail := sandboxMode()
+	if mode == SandboxNone && !allowUnsandboxed() {
+		// Checked here rather than in each caller, so the migration runner
+		// cannot become a way to run code against an app's data on a host
+		// where the app itself is refused. Surfaces to the admin as-is; the
+		// department sees "sandbox_unavailable" in plain language.
+		return nil, errors.New("this app cannot be isolated on this host, so it was not started — " + detail)
 	}
 	interpreter := filepath.Join(release, ".venv", "bin", args[0])
 
 	switch mode {
 	case SandboxBubblewrap:
 		bwrapPath, _ := sandboxProbe()
-		return bwrapCommand(bwrapPath, release, p, settings, args), nil
+		return bwrapCommand(bwrapPath, release, p, settings, args, dataDir), nil
 	case SandboxLandlock:
-		return landlockCommand(release, p, settings, interpreter, args)
+		return landlockCommand(release, p, settings, interpreter, args, dataDir)
 	default:
 		log.Warn("company: starting an app WITHOUT a sandbox: %s", detail)
 		return exec.Command(interpreter, args[1:]...), nil //nolint:gosec // args come from admin-owned apps.yml
@@ -308,7 +319,7 @@ func buildAppCommand(release string, p appPaths, settings AppSettings, rootPath 
 }
 
 // bwrapCommand builds the bubblewrap invocation.
-func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, args []string) *exec.Cmd {
+func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, args []string, dataDir string) *exec.Cmd {
 	bwrapArgs := []string{
 		// A fresh namespace of every kind. --unshare-all includes the
 		// network, which is what makes "requests.get() reaches nothing"
@@ -328,12 +339,18 @@ func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, a
 			bwrapArgs = append(bwrapArgs, "--ro-bind", dir, dir)
 		}
 	}
+	if dataDir != "" {
+		// Bound separately from /run, and that separation is the point: /run
+		// is scratch this platform may throw away, and this is the one
+		// directory it must never lose.
+		bwrapArgs = append(bwrapArgs, "--bind", dataDir, sandboxDataPath)
+	}
 	bwrapArgs = append(bwrapArgs,
 		// The code and its dependencies are read-only: an app that cannot
 		// rewrite its own release cannot persist a backdoor into it.
 		"--ro-bind", filepath.Join(release, "app"), "/app",
 		"--ro-bind", filepath.Join(release, ".venv"), "/venv",
-		"--bind", p.run, "/run", // the socket, and the only writable path
+		"--bind", p.run, "/run", // the socket, and scratch
 		"--chdir", "/app",
 		"--",
 		filepath.Join("/venv", "bin", args[0]),
@@ -358,7 +375,7 @@ func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, a
 // Denying /tmp matters because, with no mount namespace, /tmp is shared with
 // every other app on the host; each app gets a private directory under its
 // own run directory instead, pointed at by HOME and TMPDIR.
-func landlockCommand(release string, p appPaths, settings AppSettings, interpreter string, args []string) (*exec.Cmd, error) {
+func landlockCommand(release string, p appPaths, settings AppSettings, interpreter string, args []string, dataDir string) (*exec.Cmd, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("locating the Gitea binary for the sandbox helper: %w", err)
@@ -386,6 +403,9 @@ func landlockCommand(release string, p appPaths, settings AppSettings, interpret
 		"--processes", strconv.Itoa(settings.Limits.Processes),
 		"--open-files", strconv.Itoa(settings.Limits.OpenFiles),
 	)
+	if dataDir != "" {
+		argv = append(argv, "--rw", dataDir)
+	}
 	if settings.Network.Mode != NetworkNone {
 		argv = append(argv, "--allow-network")
 	}

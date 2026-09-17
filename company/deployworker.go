@@ -213,6 +213,14 @@ func runDeploy(ctx context.Context, job deployJob) {
 	s.deployMu.Lock()
 	defer s.deployMu.Unlock()
 
+	// Before the build, not after: a deploy migrates the database and takes a
+	// copy of it first, so no room now means failing deep inside the runner
+	// later, with the previous release already stopped.
+	if err := RefuseDeployIfDataFull(ctx, owner, repo); err != nil {
+		failBuild(owner, repo, ReasonDataFull, AdminError(err), priorActual, DepartmentSafeError("deploy", err))
+		return
+	}
+
 	_ = MutateAppState(owner, repo, func(st *AppState) bool {
 		st.Actual = AppStateBuilding
 		return true
@@ -241,6 +249,16 @@ func runDeploy(ctx context.Context, job deployJob) {
 		return
 	}
 	appendBuildLog(p, job.SHA, "OK", "build succeeded")
+
+	// Between the build and the swap, and that position is the whole design:
+	// the new venv exists (the runner needs it), the old release is still
+	// serving, and the changes are additive so it cannot see them. A failure
+	// here costs a deploy, never an outage.
+	if err := migrateForDeploy(ctx, owner, repo, p, release, job.SHA, settings); err != nil {
+		appendBuildLog(p, job.SHA, "FAILED", AdminError(err))
+		failBuild(owner, repo, ReasonMigrationFailed, AdminError(err), priorActual, DepartmentSafeError("migrate", err))
+		return
+	}
 
 	if err := activateRelease(owner, repo, p, release, job.SHA, settings); err != nil {
 		log.Error("company: %s/%s: activation failed: %v", owner, repo, err)

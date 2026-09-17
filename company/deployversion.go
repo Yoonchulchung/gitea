@@ -5,6 +5,7 @@ package company
 
 import (
 	"context"
+	"time"
 
 	repo_model "gitea.dev/models/repo"
 	"gitea.dev/modules/git"
@@ -35,8 +36,11 @@ func DeployVersion(ctx context.Context, owner, repo, sha, actor string, isAdmin 
 		return userKeyError(why)
 	}
 
-	full, err := resolveDeployCommit(ctx, sha)
+	full, committedAt, err := resolveDeployCommitAt(ctx, sha)
 	if err != nil {
+		return err
+	}
+	if err := refuseDistantRollback(ctx, owner, repo, committedAt, isAdmin); err != nil {
 		return err
 	}
 	if full == CurrentReleaseSHA(owner, repo) && st.Actual == AppStateRunning {
@@ -73,24 +77,53 @@ func DeployVersion(ctx context.Context, owner, repo, sha, actor string, isAdmin 
 // leaves its entry in the build log behind — so "deploy this one" has to be
 // able to say "that version is no longer in the repository" rather than fail
 // later, inside a build, with a message about git.
-func resolveDeployCommit(ctx context.Context, sha string) (string, error) {
+// resolveDeployCommitAt also returns when the commit was authored, which is
+// what the rollback distance limit is measured against.
+func resolveDeployCommitAt(ctx context.Context, sha string) (string, time.Time, error) {
 	centralOwner, centralName, err := centralDeployOwnerName()
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	central, err := repo_model.GetRepositoryByOwnerAndName(ctx, centralOwner, centralName)
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	gitRepo, err := git.OpenRepository(ctx, central)
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	defer gitRepo.Close()
 
 	commit, err := gitRepo.GetCommit(ctx, sha)
 	if err != nil {
-		return "", audienceKeyError("company.err.version_gone", "company.err.version_gone.admin", sha)
+		return "", time.Time{}, audienceKeyError("company.err.version_gone", "company.err.version_gone.admin", sha)
 	}
-	return commit.ID.String(), nil
+	return commit.ID.String(), commit.Committer.When, nil
+}
+
+// rollbackWindow is how far back a department may go on its own once the app
+// has data.
+//
+// Without data, deploying a year-old commit costs a build. With it, that
+// commit meets today's database, and the further back it reaches the less
+// anybody can say what it will do with the rows in there. So the department's
+// own reach is bounded and an administrator's is not — going further is a
+// decision someone should be making deliberately, in front of the snapshots.
+func rollbackWindow() time.Duration {
+	return time.Duration(companySettingPositiveInt("APP_DATA_ROLLBACK_MAX_DAYS", appDataRollbackDaysDefault)) * 24 * time.Hour
+}
+
+func refuseDistantRollback(ctx context.Context, owner, repo string, committedAt time.Time, isAdmin bool) error {
+	if isAdmin || !AppDataEnabled() || committedAt.IsZero() {
+		return nil
+	}
+	age := time.Since(committedAt)
+	if age <= rollbackWindow() {
+		return nil
+	}
+	if usage, ok := AppDataUsageFor(ctx, owner, repo); !ok || usage.Bytes == 0 {
+		return nil // nothing stored yet, so nothing for an old release to meet
+	}
+	return audienceKeyError("company.err.rollback_too_old", "company.err.rollback_too_old.admin",
+		int(age.Hours()/24), int(rollbackWindow().Hours()/24))
 }

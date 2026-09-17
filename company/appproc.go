@@ -177,7 +177,7 @@ func AppSocketPath(owner, repo string) string { return appPathsFor(owner, repo).
 // Gitea started with database credentials or SECRET_KEY in its environment
 // would hand them to every department app. The sandbox blocks the files;
 // this blocks the other half. See docs/company/app-platform-impl.md §5.
-func buildEnv(p appPaths, rootPath string, appEnv map[string]string, brokerOn bool) []string {
+func buildEnv(p appPaths, rootPath, dataDir string, appEnv map[string]string, brokerOn bool) []string {
 	home, tmp := appHomeAndTmp(p)
 	env := []string{
 		"PATH=/usr/local/bin:/usr/bin:/bin",
@@ -191,6 +191,14 @@ func buildEnv(p appPaths, rootPath string, appEnv map[string]string, brokerOn bo
 		"PYTHONUNBUFFERED=1",        // otherwise logs arrive in 4KB bursts, or not at all on a crash
 		"SOCKET=" + appSocketForProcess(p),
 		"ROOT_PATH=" + rootPath,
+	}
+	if inSandbox := appDataDirForProcess(dataDir); inSandbox != "" {
+		// The app never writes a path of its own: DB_PATH is the contract, so
+		// the same code works under bubblewrap, under Landlock and on a
+		// developer's machine, where this directory has three different names.
+		env = append(env,
+			"DATA_DIR="+inSandbox,
+			"DB_PATH="+filepath.Join(inSandbox, appDataDBName))
 	}
 	if brokerOn {
 		// Where the app reaches the outside world, when it may at all. Under
@@ -211,7 +219,7 @@ func buildEnv(p appPaths, rootPath string, appEnv map[string]string, brokerOn bo
 }
 
 // startLocked launches the app. Caller holds s.mu.
-func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]string, envVer int64) error {
+func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]string, envVer int64, dataDir string) error {
 	if s.cmd != nil && s.cmd.Process != nil {
 		return nil // already running
 	}
@@ -269,7 +277,7 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	}
 
 	rootPath := "/apps/" + s.owner + "/" + s.repo
-	cmd, err := buildAppCommand(target, s.paths, settings, rootPath)
+	cmd, err := buildAppCommand(target, s.paths, settings, rootPath, dataDir)
 	if err != nil {
 		return err
 	}
@@ -290,7 +298,7 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 			return err
 		}
 	}
-	cmd.Env = buildEnv(s.paths, rootPath, appEnv, brokerOn)
+	cmd.Env = buildEnv(s.paths, rootPath, dataDir, appEnv, brokerOn)
 	cmd.Dir = filepath.Join(target, "app")
 	// Its own process group so a stop reaches everything the app spawned,
 	// not just the process we launched. (Inside a sandbox with a PID
@@ -477,11 +485,18 @@ func (s *appSupervisor) startProcess(freshAttempt bool) (int, error) {
 		return 0, err
 	}
 
+	// Resolved before the lock: it is a database query, and s.mu is held
+	// across whole lifecycle transitions that everything else waits on.
+	dataDir, err := appDataForStart(s.owner, s.repo)
+	if err != nil {
+		return 0, err
+	}
+
 	s.mu.Lock()
 	if freshAttempt {
 		s.crashes = 0
 	}
-	startErr := s.startLocked(settings, appEnv, envVer)
+	startErr := s.startLocked(settings, appEnv, envVer, dataDir)
 	pid := 0
 	if s.cmd != nil && s.cmd.Process != nil {
 		pid = s.cmd.Process.Pid
@@ -679,7 +694,7 @@ func isReservedEnvName(name string) bool {
 		return true
 	}
 	switch upper {
-	case "PATH", "HOME", "LANG", "SOCKET", "ROOT_PATH", "IFS", "SHELL", "TMPDIR":
+	case "PATH", "HOME", "LANG", "SOCKET", "ROOT_PATH", "IFS", "SHELL", "TMPDIR", "DATA_DIR", "DB_PATH":
 		return true
 	}
 	return false

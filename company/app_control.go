@@ -4,6 +4,7 @@
 package company
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -108,14 +109,15 @@ func RestartAppAs(owner, repo, actor string, isAdmin bool) error {
 	})
 }
 
-// RemoveApp takes an app off the platform entirely: process stopped, routes
-// withdrawn, files and secrets deleted.
+// RemoveApp takes an app off the platform: process stopped, routes
+// withdrawn, releases and secrets deleted.
 //
-// Admin-only, and irreversible by design — this is the answer to a renamed
-// department repo leaving an app running forever at a URL nobody maintains.
-// The code itself is untouched: it still lives in the central deploy repo's
-// git history, so "remove" costs the department nothing they cannot redeploy.
-func RemoveApp(owner, repo, actor string) error {
+// This is a soft delete. Everything it removes is rebuildable from git, so
+// "remove" costs the department nothing they cannot redeploy — but that
+// argument has never applied to their data, which is kept and put on a
+// retention clock instead. Redeploying inside that window brings it back
+// untouched (company/appdata.go, docs/company/app-data.md).
+func RemoveApp(ctx context.Context, owner, repo, actor string) error {
 	s := supervisorFor(owner, repo)
 	s.deployMu.Lock()
 	defer s.deployMu.Unlock()
@@ -132,6 +134,10 @@ func RemoveApp(owner, repo, actor string) error {
 	if err := DeleteAppEnv(owner, repo); err != nil {
 		log.Error("company: removing env for %s/%s: %v", owner, repo, err)
 	}
+	// Before the files: this needs the repository to still resolve by name,
+	// and nothing here guarantees it will a moment later.
+	MarkAppDataRemoved(ctx, owner, repo)
+
 	p := appPathsFor(owner, repo)
 	if err := os.RemoveAll(p.home); err != nil {
 		return fmt.Errorf("the app's files could not be removed: %w", err)

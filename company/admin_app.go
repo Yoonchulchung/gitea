@@ -174,6 +174,9 @@ func AdminApp(ctx *context.Context) {
 	ctx.Data["ChartPoints"] = points
 	ctx.Data["ChartAnnotations"] = annotations
 	ctx.Data["MemoryLimitMB"] = settings.Limits.MemoryMB
+	if usage, ok := AppDataUsageFor(ctx, st.Owner, st.Repo); ok {
+		ctx.Data["DataUsage"] = usage
+	}
 	ctx.Data["Sandboxed"] = sandboxed
 	ctx.Data["SandboxDetail"] = sandboxDetail
 	ctx.Data["LimitsEnforced"] = limitsOK
@@ -280,7 +283,7 @@ func AdminAppControl(ctx *context.Context) {
 	case "redeploy":
 		err = RedeployApp(owner, name, actor, true)
 	case "remove":
-		err = RemoveApp(owner, name, actor)
+		err = RemoveApp(ctx, owner, name, actor)
 	default:
 		ctx.HTTPError(http.StatusBadRequest, "unknown action")
 		return

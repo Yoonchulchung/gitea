@@ -81,6 +81,12 @@ func RegisterAdminRoutes(m *web.Router) {
 		m.Post("/deploy-version", AdminDeployVersion)
 		m.Post("/network", AdminSetNetwork)
 		m.Get("/metrics", AdminAppMetrics)
+		// The manual data console. Before the {verb} catch-all, and its own
+		// group so the actions that touch data are never reachable through
+		// the same handler as start/stop.
+		m.Get("/data", AdminAppData)
+		m.Get("/data/export", AdminAppDataExport)
+		m.Post("/data/{verb}", AdminAppDataAction)
 		m.Post("/{verb}", AdminAppControl)
 	})
 }

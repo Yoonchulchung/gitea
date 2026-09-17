@@ -17,6 +17,7 @@
 				<a class="ui tiny basic button" href="{{.AdminAppLink}}/logs">{{svg "octicon-log" 14}} {{ctx.Locale.Tr "company.logs.title"}}</a>
 				{{if .AppRepo}}<a class="ui tiny basic button" href="{{.AppRepo.Link}}">{{svg "octicon-repo" 14}} {{ctx.Locale.Tr "company.adminapp.repo"}}</a>{{end}}
 				<a class="ui tiny basic button" href="{{.AdminAppLink}}/history">{{svg "octicon-history" 14}} {{ctx.Locale.Tr "company.history.title"}}</a>
+				{{if .DataUsage}}<a class="ui tiny basic button" href="{{.AdminAppLink}}/data">{{svg "octicon-database" 14}} {{ctx.Locale.Tr "company.data.title"}}</a>{{end}}
 				<div class="tw-flex-1"></div>
 				{{if eq .App.Actual "running"}}
 					<form method="post" action="{{.AdminAppLink}}/restart">{{.CsrfTokenHtml}}<button class="ui tiny button">{{ctx.Locale.Tr "company.app.restart"}}</button></form>
@@ -120,6 +121,12 @@
 					{{end}}
 					<span>{{ctx.Locale.Tr "company.adminapp.kpi_memory"}}</span>
 				</div>
+				{{if .DataUsage}}
+					<div class="company-kpi{{if .DataUsage.Full}} bad{{end}}">
+						<b>{{FormatByteSize .DataUsage.Bytes}}<small>/{{FormatByteSize .DataUsage.QuotaBytes}}</small></b>
+						<span>{{ctx.Locale.Tr "company.adminapp.kpi_data"}}</span>
+					</div>
+				{{end}}
 				{{if .Summary.Blocked}}<div class="company-kpi bad"><b>{{.Summary.Blocked}}</b><span>{{ctx.Locale.Tr "company.adminapp.kpi_blocked"}}</span></div>{{end}}
 			</div>
 			<div class="tw-mt-2">

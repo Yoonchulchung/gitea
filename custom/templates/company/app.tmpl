@@ -101,6 +101,24 @@
 					{{end}}
 				</div>
 			{{end}}
+			{{if .DataUsage}}
+				<div class="tw-mt-3 tw-pt-3 tw-border-t tw-text-13">
+					<div class="tw-flex tw-items-center tw-gap-3">
+						<span class="text-grey">{{ctx.Locale.Tr "company.app.data_usage"}}</span>
+						<span>{{ctx.Locale.Tr "company.app.data_of" (FormatByteSize .DataUsage.Bytes) (FormatByteSize .DataUsage.QuotaBytes)}}</span>
+						<div class="company-app-data-bar tw-flex-1">
+							<div class="company-app-data-bar-fill{{if .DataUsage.Full}} is-full{{else if .DataUsage.Warning}} is-warning{{end}}"
+							     style="width: {{if gt .DataUsage.Percent 100}}100{{else}}{{.DataUsage.Percent}}{{end}}%"></div>
+						</div>
+						<span class="text-grey">{{.DataUsage.Percent}}%</span>
+					</div>
+					{{if .DataUsage.Full}}
+						<div class="tw-mt-2 company-app-cause-line">{{ctx.Locale.Tr "company.app.data_full_hint"}}</div>
+					{{else if .DataUsage.Warning}}
+						<div class="tw-mt-2 company-app-cause-line">{{ctx.Locale.Tr "company.app.data_warn_hint"}}</div>
+					{{end}}
+				</div>
+			{{end}}
 		</div>
 
 		<h3>{{ctx.Locale.Tr "company.app.env_header"}}</h3>
