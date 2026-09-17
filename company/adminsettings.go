@@ -50,18 +50,21 @@ func loadPlatformSettings(ctx context.Context) {
 	if loaded {
 		return
 	}
-	platformSettingsMu.Lock()
-	defer platformSettingsMu.Unlock()
-	if platformSettingsLoaded {
-		return
-	}
-	// The whole table, because there is no single-key read in the model and
-	// this happens once per change rather than once per request.
+	// Read before the lock is taken, not under it. These are read on pages
+	// people load constantly, so holding the write lock across a database
+	// round-trip would serialise every one of them behind a slow query. A
+	// duplicated read during a cold-start race costs nothing.
+	//
+	// The whole table, because the model has no single-key read and this runs
+	// once per change rather than once per request.
 	_, all, err := system_model.GetAllSettings(ctx)
 	if err != nil {
 		log.Error("company: reading platform settings: %v", err)
 		return // stay unloaded, so the next caller tries again
 	}
+
+	platformSettingsMu.Lock()
+	defer platformSettingsMu.Unlock()
 	anthropicVisible = all[settingKeyAnthropicVisible] == "true"
 	supportEmail = all[settingKeySupportEmail]
 	platformSettingsLoaded = true

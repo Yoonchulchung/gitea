@@ -37,7 +37,7 @@ type Snapshot struct {
 
 // ListSnapshots is newest first, which is the order someone restoring wants.
 func ListSnapshots(dataDir string) []Snapshot {
-	entries, err := os.ReadDir(filepath.Join(dataDir, appDataSnapshotDir))
+	entries, err := os.ReadDir(appSnapshotDirForApp(dataDir))
 	if err != nil {
 		return nil
 	}
@@ -68,7 +68,7 @@ func resolveSnapshot(dataDir, name string) (string, error) {
 	if name == "" || name != filepath.Base(name) || !strings.HasSuffix(name, ".db") {
 		return "", userKeyError("company.err.snapshot_unknown", name)
 	}
-	path := filepath.Join(dataDir, appDataSnapshotDir, name)
+	path := filepath.Join(appSnapshotDirForApp(dataDir), name)
 	info, err := os.Lstat(path) // Lstat: a symlink here would point out of the directory
 	if err != nil || !info.Mode().IsRegular() {
 		return "", userKeyError("company.err.snapshot_unknown", name)
@@ -86,6 +86,9 @@ type dataToolResult struct {
 	Changed   int              `json:"changed"`
 	Applied   []map[string]any `json:"applied"`
 	Objects   []string         `json:"objects"`
+	// Files maps a table name to the CSV holding it. The two differ whenever
+	// a table name cannot be a filename, which an app can arrange.
+	Files map[string]string `json:"files"`
 }
 
 // runDataTool executes one helper mode inside the app's sandbox.
@@ -109,8 +112,10 @@ func runDataTool(ctx context.Context, owner, repo string, payload map[string]any
 	}
 
 	inSandbox := appDataDirForProcess(dataDir)
-	payload["db"] = filepath.Join(inSandbox, appDataDBName)
-	payload["snapshotDir"] = filepath.Join(inSandbox, appDataSnapshotDir)
+	if payload["db"] == nil {
+		payload["db"] = filepath.Join(inSandbox, appDataDBName)
+	}
+	payload["snapshotDir"] = sandboxSnapshotPath
 
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -126,7 +131,11 @@ func runDataTool(ctx context.Context, owner, repo string, payload map[string]any
 	defer cancel()
 
 	settings := SettingsFor(owner, repo)
-	cmd, err := buildSandboxCommand(release, p, settings, dataDir,
+	snapshotDir := appSnapshotDirForApp(dataDir)
+	if err := os.MkdirAll(snapshotDir, 0o700); err != nil {
+		return nil, err
+	}
+	cmd, err := buildSandboxCommand(release, p, settings, dataDir, snapshotDir,
 		[]string{"python3", "-", filepath.Join(appRunForProcess(p), "datatool.json")})
 	if err != nil {
 		return nil, err
@@ -134,13 +143,13 @@ func runDataTool(ctx context.Context, owner, repo string, payload map[string]any
 	cmd.Stdin = strings.NewReader(dataToolScript)
 	cmd.Env = buildEnv(p, "/apps/"+owner+"/"+repo, dataDir, nil, false)
 
-	out, runErr := runWithContext(runCtx, cmd)
+	out, stderr, runErr := runWithContext(runCtx, cmd)
 	var result dataToolResult
 	if err := json.Unmarshal(out, &result); err != nil {
 		if runErr != nil {
-			return nil, fmt.Errorf("the data helper could not be run: %w", runErr)
+			return nil, fmt.Errorf("the data helper could not be run: %w: %s", runErr, stderr)
 		}
-		return nil, fmt.Errorf("unreadable answer from the data helper: %w", err)
+		return nil, fmt.Errorf("unreadable answer from the data helper: %w: %s", err, stderr)
 	}
 	if !result.OK {
 		return &result, fmt.Errorf("%s", result.Error)
@@ -159,8 +168,9 @@ func CreateSnapshot(ctx context.Context, owner, repo, label string) (string, err
 	if err != nil {
 		return "", err
 	}
-	dataDir, _ := appDataForStart(owner, repo)
-	pruneSnapshots(dataDir)
+	if dataDir, err := appDataForStart(owner, repo); err == nil {
+		pruneSnapshots(dataDir)
+	}
 	return filepath.Base(result.Snapshot), nil
 }
 
@@ -183,25 +193,37 @@ func RestoreSnapshot(ctx context.Context, owner, repo, name, actor string) error
 	if err != nil {
 		return err
 	}
+	db := filepath.Join(dataDir, appDataDBName)
+	tmp := db + ".restoring"
+	// The copy comes first, before anything else touches the directory. Taking
+	// the before-restore snapshot first would run pruneSnapshots, and if the
+	// admin picked the oldest snapshot — which is exactly why ten are kept —
+	// pruning deletes the very file about to be read.
+	if err := copyFile(source, tmp); err != nil {
+		return err
+	}
 	// Restoring is itself destructive, so the thing being replaced is saved
-	// first. Without this, "I restored the wrong one" has no way back.
+	// before it is replaced. Without this, "I restored the wrong one" has no
+	// way back.
 	if _, err := CreateSnapshot(ctx, owner, repo, "before-restore"); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("could not save the current data before restoring: %w", err)
 	}
 
-	db := filepath.Join(dataDir, appDataDBName)
-	tmp := db + ".restoring"
-	if err := copyFile(source, tmp); err != nil {
-		return err
+	// Sidecars before the swap, not after. A WAL belonging to the database
+	// being replaced would be replayed onto the one replacing it, and doing
+	// this after the rename leaves exactly that state behind whenever the
+	// removal fails or the process dies in between. Everything committed in
+	// it is already inside the snapshot just taken.
+	for _, sidecar := range []string{db + "-wal", db + "-shm"} {
+		if err := os.Remove(sidecar); err != nil && !os.IsNotExist(err) {
+			_ = os.Remove(tmp)
+			return fmt.Errorf("the write-ahead log could not be cleared before restoring: %w", err)
+		}
 	}
 	if err := os.Rename(tmp, db); err != nil {
 		_ = os.Remove(tmp)
 		return err
-	}
-	for _, sidecar := range []string{db + "-wal", db + "-shm"} {
-		if err := os.Remove(sidecar); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("the replaced write-ahead log could not be removed: %w", err)
-		}
 	}
 	log.Info("company: %s/%s: data restored from %s by %s", owner, repo, name, actor)
 	return MutateAppState(owner, repo, func(st *AppState) bool {
@@ -221,6 +243,13 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	// Flushed before the rename that follows: without it a host crash can
+	// leave the database path pointing at content that was never written,
+	// with the original already gone.
+	if err := out.Sync(); err != nil {
 		_ = out.Close()
 		return err
 	}
@@ -294,9 +323,14 @@ func WriteExportBundle(ctx context.Context, owner, repo string, w io.Writer) err
 	}
 	defer func() { _ = os.RemoveAll(outDir) }()
 
+	// Read from the snapshot, not the live database. Otherwise the row
+	// counts, the CSVs and the integrity check describe the app as it is
+	// now while the app.db in the same zip is the copy taken a moment
+	// earlier — a bundle that contradicts its own manifest.
 	result, err := runDataTool(ctx, owner, repo, map[string]any{
 		"mode": "export",
 		"out":  filepath.Join(appRunForProcess(p), "export"),
+		"db":   sandboxSnapshotPath + "/" + snapshot,
 	})
 	if err != nil {
 		return err
@@ -345,6 +379,7 @@ func WriteExportBundle(ctx context.Context, owner, repo string, w io.Writer) err
 		"exportedAt": time.Now().UTC().Format(time.RFC3339),
 		"integrity":  result.Integrity,
 		"rows":       result.Rows,
+		"files":      result.Files,
 		"objects":    result.Objects,
 		"migrations": result.Applied,
 	}, "", "  ")
@@ -380,7 +415,19 @@ func addBytesToZip(zw *zip.Writer, name string, body []byte) error {
 // The helper. Runs in the app's sandbox with the app's interpreter, because
 // what it parses was written by the app.
 const dataToolScript = `
-import csv, json, os, sqlite3, sys
+import csv, json, os, re, sqlite3, sys
+
+def csv_name(name, used):
+    # The table name comes from sqlite_master, so it comes from whatever the
+    # app created at runtime, and SQLite quoted identifiers accept anything.
+    # "../escape" or "/absolute" would steer a platform-owned write out of the
+    # export directory, and a legitimate "a/b" would crash the whole export.
+    base = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip(".") or "table"
+    candidate, n = base, 1
+    while candidate in used:
+        candidate, n = "%s_%d" % (base, n), n + 1
+    used.add(candidate)
+    return candidate
 
 def objects(conn):
     return ["%s %s" % (t, n) for t, n in conn.execute(
@@ -402,14 +449,18 @@ def run(out):
     if mode == "snapshot":
         os.makedirs(payload["snapshotDir"], exist_ok=True)
         path = os.path.join(payload["snapshotDir"], payload["name"])
-        dst = sqlite3.connect(path)
+        # Moved into place only once it has passed, so a backup that died
+        # partway never appears in the list as something restorable.
+        tmp = path + ".partial"
+        dst = sqlite3.connect(tmp)
         conn.backup(dst)                      # pages=-1: one shot, never restarts
         verdict = dst.execute("PRAGMA integrity_check").fetchone()[0]
         dst.close()
         if verdict != "ok":
-            os.remove(path)
+            os.remove(tmp)
             out["error"] = "the snapshot failed its integrity check: %s" % verdict
             return
+        os.replace(tmp, path)
         out["snapshot"], out["integrity"] = path, verdict
         out["ok"] = True
         return
@@ -433,17 +484,20 @@ def run(out):
         with open(os.path.join(outDir, "dump.sql"), "w", encoding="utf-8") as fh:
             for line in conn.iterdump():
                 fh.write(line + "\n")
-        counts = {}
+        counts, files, used = {}, {}, set()
         for name in tables(conn):
             rows = conn.execute('SELECT * FROM "%s"' % name.replace('"', '""'))
             counts[name] = 0
-            with open(os.path.join(outDir, "tables", name + ".csv"), "w", encoding="utf-8", newline="") as fh:
+            leaf = csv_name(name, used) + ".csv"
+            files[name] = "tables/" + leaf
+            with open(os.path.join(outDir, "tables", leaf), "w", encoding="utf-8", newline="") as fh:
                 writer = csv.writer(fh)
                 writer.writerow([d[0] for d in rows.description])
                 for row in rows:
                     writer.writerow(row)
                     counts[name] += 1
         out["rows"] = counts
+        out["files"] = files
         out["objects"] = objects(conn)
         out["integrity"] = conn.execute("PRAGMA integrity_check").fetchone()[0]
         try:
@@ -459,7 +513,7 @@ def run(out):
     out["error"] = "unknown mode %s" % mode
 
 out = {"ok": False, "error": "", "snapshot": "", "integrity": "", "rows": {},
-       "changed": 0, "applied": [], "objects": []}
+       "changed": 0, "applied": [], "objects": [], "files": {}}
 try:
     run(out)
 except Exception as e:

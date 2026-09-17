@@ -286,7 +286,7 @@ func buildAppCommand(release string, p appPaths, settings AppSettings, rootPath,
 	if len(args) == 0 {
 		return nil, errors.New("the start command in apps.yml is empty")
 	}
-	return buildSandboxCommand(release, p, settings, dataDir, args)
+	return buildSandboxCommand(release, p, settings, dataDir, "", args)
 }
 
 // buildSandboxCommand is buildAppCommand once the argv is known.
@@ -295,7 +295,11 @@ func buildAppCommand(release string, p appPaths, settings AppSettings, rootPath,
 // is migrating — same binds, same limits, same network policy. A second,
 // looser way to run code against an app's data would be the one hole worth
 // attacking (company/appmigrate.go).
-func buildSandboxCommand(release string, p appPaths, settings AppSettings, dataDir string, args []string) (*exec.Cmd, error) {
+// snapshotDir is bound only for the platform's own runners. The app never
+// gets it: snapshots are what a department is restored from after their code
+// deletes something, and a recovery point the failing process can reach is
+// not one.
+func buildSandboxCommand(release string, p appPaths, settings AppSettings, dataDir, snapshotDir string, args []string) (*exec.Cmd, error) {
 	mode, detail := sandboxMode()
 	if mode == SandboxNone && !allowUnsandboxed() {
 		// Checked here rather than in each caller, so the migration runner
@@ -309,9 +313,9 @@ func buildSandboxCommand(release string, p appPaths, settings AppSettings, dataD
 	switch mode {
 	case SandboxBubblewrap:
 		bwrapPath, _ := sandboxProbe()
-		return bwrapCommand(bwrapPath, release, p, settings, args, dataDir), nil
+		return bwrapCommand(bwrapPath, release, p, settings, args, dataDir, snapshotDir), nil
 	case SandboxLandlock:
-		return landlockCommand(release, p, settings, interpreter, args, dataDir)
+		return landlockCommand(release, p, settings, interpreter, args, dataDir, snapshotDir)
 	default:
 		log.Warn("company: starting an app WITHOUT a sandbox: %s", detail)
 		return exec.Command(interpreter, args[1:]...), nil //nolint:gosec // args come from admin-owned apps.yml
@@ -319,7 +323,7 @@ func buildSandboxCommand(release string, p appPaths, settings AppSettings, dataD
 }
 
 // bwrapCommand builds the bubblewrap invocation.
-func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, args []string, dataDir string) *exec.Cmd {
+func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, args []string, dataDir, snapshotDir string) *exec.Cmd {
 	bwrapArgs := []string{
 		// A fresh namespace of every kind. --unshare-all includes the
 		// network, which is what makes "requests.get() reaches nothing"
@@ -344,6 +348,9 @@ func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, a
 		// is scratch this platform may throw away, and this is the one
 		// directory it must never lose.
 		bwrapArgs = append(bwrapArgs, "--bind", dataDir, sandboxDataPath)
+	}
+	if snapshotDir != "" {
+		bwrapArgs = append(bwrapArgs, "--bind", snapshotDir, sandboxSnapshotPath)
 	}
 	bwrapArgs = append(bwrapArgs,
 		// The code and its dependencies are read-only: an app that cannot
@@ -375,7 +382,7 @@ func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, a
 // Denying /tmp matters because, with no mount namespace, /tmp is shared with
 // every other app on the host; each app gets a private directory under its
 // own run directory instead, pointed at by HOME and TMPDIR.
-func landlockCommand(release string, p appPaths, settings AppSettings, interpreter string, args []string, dataDir string) (*exec.Cmd, error) {
+func landlockCommand(release string, p appPaths, settings AppSettings, interpreter string, args []string, dataDir, snapshotDir string) (*exec.Cmd, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("locating the Gitea binary for the sandbox helper: %w", err)
@@ -405,6 +412,9 @@ func landlockCommand(release string, p appPaths, settings AppSettings, interpret
 	)
 	if dataDir != "" {
 		argv = append(argv, "--rw", dataDir)
+	}
+	if snapshotDir != "" {
+		argv = append(argv, "--rw", snapshotDir)
 	}
 	if settings.Network.Mode != NetworkNone {
 		argv = append(argv, "--allow-network")

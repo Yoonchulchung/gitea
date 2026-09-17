@@ -94,7 +94,7 @@ func runScript(t *testing.T, dir string, files []migrationFile, sha string) migr
 	}
 	payload, err := json.Marshal(map[string]any{
 		"db":          filepath.Join(dir, appDataDBName),
-		"snapshotDir": filepath.Join(dir, appDataSnapshotDir),
+		"snapshotDir": filepath.Join(dir, "snapshots"),
 		"journalMode": "wal",
 		"migrations":  files,
 		"sha":         sha,
@@ -192,4 +192,36 @@ func TestMigrationRunner(t *testing.T) {
 		require.True(t, after.OK, after.Error)
 		assert.Empty(t, after.Missing, "the half-run migration recorded nothing")
 	})
+}
+
+// The guard reads SQL with regular expressions on comment-stripped text, so a
+// "--" inside a string literal must not be mistaken for the start of a
+// comment. Cutting there would hide everything after it — and since the file
+// would then be recorded as non-destructive, the rollback floor would wave an
+// older release straight past a table that no longer exists.
+func TestGuardIsNotFooledByQuotedCommentMarkers(t *testing.T) {
+	for name, sql := range map[string]string{
+		"001_quoted_dash.sql":   "INSERT INTO settings(k,v) VALUES('sep','--'); DROP TABLE records;",
+		"002_quoted_block.sql":  "INSERT INTO settings(k,v) VALUES('sep','/*'); DROP TABLE records;",
+		"003_double_quoted.sql": `INSERT INTO settings(k,v) VALUES('sep',"--"); ALTER TABLE records RENAME TO gone;`,
+	} {
+		_, err := loadMigrations(writeMigrations(t, map[string]string{name: sql}))
+		assert.Error(t, err, "%s hides a destructive statement behind a quoted marker", name)
+	}
+}
+
+// And the escape hatch must not be reachable from inside a literal either,
+// or one SELECT switches the guard off for the whole file.
+func TestDestructiveMarkerMustBeItsOwnComment(t *testing.T) {
+	_, err := loadMigrations(writeMigrations(t, map[string]string{
+		"001_sneaky.sql": "SELECT '" + destructiveMarker + "';\nDROP TABLE records;",
+	}))
+	assert.Error(t, err, "a marker inside a string literal must not count as a declaration")
+
+	files, err := loadMigrations(writeMigrations(t, map[string]string{
+		"001_declared.sql": "  " + destructiveMarker + " approved in PR 42\nDROP TABLE records;",
+	}))
+	require.NoError(t, err, "a real comment line still declares it")
+	require.Len(t, files, 1)
+	assert.True(t, files[0].Destructive)
 }

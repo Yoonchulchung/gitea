@@ -36,7 +36,10 @@ func AdminAppData(ctx *context.Context) {
 	if !ok {
 		return
 	}
-	dataDir, dirErr := appDataForStart(st.Owner, st.Repo)
+	// Deliberately the read-only resolver: AppDataDir treats being asked as
+	// the app being live again and clears a pending removal, so rendering this
+	// page would take a soft-deleted app off its 90-day clock.
+	dataDir, hasData := AppDataDirIfPresent(ctx, st.Owner, st.Repo)
 
 	ctx.Data["Title"] = st.Owner + "/" + st.Repo
 	ctx.Data["App"] = st
@@ -49,9 +52,7 @@ func AdminAppData(ctx *context.Context) {
 	available, detail := DataStatus()
 	ctx.Data["DataAvailable"] = available
 	ctx.Data["DataDetail"] = detail
-	if dirErr != nil {
-		ctx.Data["DataError"] = AdminErrorL(ctx.Locale, dirErr)
-	} else if dataDir != "" {
+	if hasData {
 		ctx.Data["Snapshots"] = ListSnapshots(dataDir)
 	}
 	if usage, ok := AppDataUsageFor(ctx, st.Owner, st.Repo); ok {
@@ -114,6 +115,18 @@ func adminPurgeArchive(ctx *context.Context) error {
 	if err != nil || meta.RepoID != repoID || meta.RemovedAt == 0 {
 		return userKeyError("company.err.archive_unknown")
 	}
+	// The same guard the scheduled sweep applies, and for the same reason: a
+	// repository can be deleted while its app process is still running, and
+	// deleting the database underneath a live writer turns a cleanup into a
+	// corruption report.
+	if IsAppRunning(meta.Owner, meta.Repo) {
+		return userKeyError("company.err.purge_running")
+	}
+	// Logged before the deletion, not after: this is irreversible and the
+	// sweep already logs every automatic one. "Where did that data go?"
+	// should have an answer.
+	log.Info("company: %s permanently deleted the data of %s/%s (repo %d)",
+		ctx.Doer.Name, meta.Owner, meta.Repo, repoID)
 	return PurgeAppData(repoID)
 }
 

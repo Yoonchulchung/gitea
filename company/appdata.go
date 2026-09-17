@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"gitea.dev/modules/graceful"
 	"gitea.dev/modules/json"
 	"gitea.dev/modules/log"
+	"gitea.dev/modules/process"
 	"gitea.dev/modules/setting"
 )
 
@@ -42,6 +42,8 @@ const (
 	// boot leaves nobody able to read the log and intervene, and against a
 	// 90-day clock the delay costs nothing.
 	appDataGCInitialDelay = time.Hour
+	// Long enough for a cold interpreter, far short of a deploy timeout.
+	dataProbeTimeout = 15 * time.Second
 )
 
 func appDataRoot() string { return filepath.Join(setting.AppDataPath, appDataDirName) }
@@ -131,7 +133,12 @@ func ensureAppDataDir(id int64, owner, repo string) (string, error) {
 
 	meta, err := loadAppDataMeta(dir)
 	if err != nil {
-		return "", err
+		// The names in here are a label for a human, nothing resolves by
+		// them, and the data beside them is intact. Refusing to start the app
+		// because its label file will not parse would be an outage we caused
+		// ourselves. The sweep stays strict — that one deletes.
+		log.Warn("company: %s/%s: unreadable data metadata, rewriting it: %v", owner, repo, err)
+		meta = appDataMeta{}
 	}
 	was := meta
 	if meta.CreatedAt == 0 {
@@ -147,6 +154,29 @@ func ensureAppDataDir(id int64, owner, repo string) (string, error) {
 		}
 	}
 	return dir, nil
+}
+
+// AppDataDirIfPresent resolves the directory without creating it and without
+// clearing a pending removal.
+//
+// Separate from AppDataDir because that one treats being asked as proof the
+// app is live again, which is right for a start or a deploy and wrong for a
+// screen: rendering the data console of a removed app would otherwise take it
+// off its deletion clock, and a page that mutates retention by being looked
+// at is not one anybody would guess at.
+func AppDataDirIfPresent(ctx context.Context, owner, repo string) (string, bool) {
+	if !AppDataEnabled() {
+		return "", false
+	}
+	id, err := resolveAppDataRepoID(ctx, owner, repo)
+	if err != nil {
+		return "", false
+	}
+	dir := appDataDirFor(id)
+	if _, err := os.Stat(dir); err != nil {
+		return "", false
+	}
+	return dir, true
 }
 
 // MarkAppDataRemoved starts the retention clock without touching the data.
@@ -186,6 +216,9 @@ func MarkAppDataRemoved(ctx context.Context, owner, repo string) {
 // here, which is why nothing calls it except the sweep and an administrator
 // who confirmed it.
 func PurgeAppData(repoID int64) error {
+	if err := os.RemoveAll(appSnapshotDirFor(repoID)); err != nil {
+		return err
+	}
 	return os.RemoveAll(appDataDirFor(repoID))
 }
 
@@ -208,8 +241,10 @@ func ListAppDataArchives() []AppDataArchive {
 		removed := time.Unix(meta.RemovedAt, 0)
 		out = append(out, AppDataArchive{
 			appDataMeta: meta,
-			Bytes:       appDataBytes(dir),
-			Until:       removed.Add(retention),
+			// Both trees: this number answers "how much comes back if I
+			// delete this", and the snapshots go with it.
+			Bytes: appDataBytes(dir) + appDataBytes(appSnapshotDirForApp(dir)),
+			Until: removed.Add(retention),
 		})
 	}
 	return out
@@ -415,7 +450,32 @@ type dataInfo struct {
 // Probed through Python rather than a Go driver: every app already needs an
 // interpreter, and the migration runner will use the same one, so there is
 // exactly one SQLite in play instead of two that can disagree.
-var dataProbe = sync.OnceValues(func() (dataInfo, error) {
+var (
+	dataProbeMu     sync.Mutex
+	dataProbeResult *dataInfo // cached only on success
+)
+
+// dataProbe measures, with a deadline, and does not remember a failure.
+//
+// Memoising the error would be worse than not caching at all: python3 briefly
+// absent, or one ENOSPC while making the temp directory, and every app would
+// silently run in TRUNCATE for the rest of the process's life with nothing
+// said again. The success is stable and is cached; the failure is retried.
+func dataProbe() (dataInfo, error) {
+	dataProbeMu.Lock()
+	defer dataProbeMu.Unlock()
+	if dataProbeResult != nil {
+		return *dataProbeResult, nil
+	}
+	info, err := runDataProbe()
+	if err != nil {
+		return dataInfo{}, err
+	}
+	dataProbeResult = &info
+	return info, nil
+}
+
+func runDataProbe() (dataInfo, error) {
 	info, err := pythonProbe()
 	if err != nil {
 		return dataInfo{}, fmt.Errorf("no interpreter to test the data directory with: %w", err)
@@ -431,7 +491,12 @@ var dataProbe = sync.OnceValues(func() (dataInfo, error) {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	cmd := exec.Command(info.Path, "-", filepath.Join(dir, "probe.db")) //nolint:gosec // interpreter path is admin-owned config
+	// Bounded: this runs while callers hold the probe lock, and a stuck
+	// interpreter or a hung network mount would otherwise pile every one of
+	// them up behind it with no way out.
+	probeCtx, cancel := context.WithTimeout(graceful.GetManager().ShutdownContext(), dataProbeTimeout)
+	defer cancel()
+	cmd := process.CommandContext(probeCtx, info.Path, "-", filepath.Join(dir, "probe.db")) //nolint:gosec // interpreter path is admin-owned config
 	cmd.Stdin = strings.NewReader(dataProbeScript)
 	out, err := cmd.Output()
 	if err != nil {
@@ -450,7 +515,7 @@ var dataProbe = sync.OnceValues(func() (dataInfo, error) {
 		return dataInfo{}, errors.New(result.Message)
 	}
 	return dataInfo{JournalMode: result.Mode, SQLiteVersion: result.SQLite}, nil
-})
+}
 
 const dataProbeScript = `
 import json, sqlite3, sys
@@ -507,6 +572,7 @@ func DataStatus() (available bool, detail string) {
 
 const (
 	appDataQuotaMBDefault     = 512
+	maxDataQuotaMB            = 1 << 22 // 4 TB; past here the byte count overflows
 	appDataWarnPctDefault     = 80
 	appDataHostFloorMBDefault = 1024
 	// The walk is cheaper than it looks — the directory holds one database —
@@ -553,6 +619,13 @@ func appDataQuotaBytes(settings AppSettings) int64 {
 	mb := settings.Limits.DataMB
 	if mb <= 0 {
 		mb = companySettingPositiveInt("APP_DATA_QUOTA_MB", appDataQuotaMBDefault)
+	}
+	// Clamped, because the shift overflows into a negative quota on an absurd
+	// value and Full()/Warning() both read a negative quota as "no limit" —
+	// the checks would disappear rather than complain.
+	if mb > maxDataQuotaMB {
+		log.Warn("company: a data quota of %d MB is not usable; capping at %d", mb, maxDataQuotaMB)
+		mb = maxDataQuotaMB
 	}
 	return int64(mb) << 20
 }
@@ -642,6 +715,18 @@ func checkDataLimit(owner, repo string, settings AppSettings) {
 		return
 	}
 
+	// Every exit below records the attempt, so the throttle applies to
+	// failures too: without that, a database that is down turns this into a
+	// query per app every five seconds, on the same goroutine as the memory
+	// watchdog.
+	defer func() {
+		dataUsageMu.Lock()
+		if entry, ok := dataUsageCache[key]; !ok || entry.MeasuredAt.Before(last.MeasuredAt) || entry.MeasuredAt.IsZero() {
+			dataUsageCache[key] = AppDataUsage{QuotaBytes: appDataQuotaBytes(settings), MeasuredAt: time.Now()}
+		}
+		dataUsageMu.Unlock()
+	}()
+
 	ctx := graceful.GetManager().ShutdownContext()
 	id, err := resolveAppDataRepoID(ctx, owner, repo)
 	if err != nil {
@@ -700,10 +785,32 @@ func RefuseDeployIfDataFull(ctx context.Context, owner, repo string) error {
 }
 
 const (
-	appDataSnapshotDir         = ".snapshots"
+	appSnapshotDirName         = "company-app-snapshots"
+	sandboxSnapshotPath        = "/snapshots"
 	appDataSnapshotKeepDefault = 10
 	appDataRollbackDaysDefault = 30
 )
+
+// appSnapshotDirFor is where one app's recovery copies live.
+//
+// A sibling tree, not a subdirectory of the data it copies. The data
+// directory is bound read-write into the app's sandbox, so anything inside it
+// is one `shutil.rmtree(os.environ["DATA_DIR"])` away from gone — and
+// snapshots are named in docs/company/app-data.md as the only answer to an
+// app destroying its own rows. A recovery point the failing process can reach
+// is not one.
+func appSnapshotDirFor(repoID int64) string {
+	return filepath.Join(setting.AppDataPath, appSnapshotDirName, strconv.FormatInt(repoID, 10))
+}
+
+// appSnapshotDirForApp resolves the snapshot directory from an app's data
+// directory, which is what the callers that already hold one have.
+func appSnapshotDirForApp(dataDir string) string {
+	if dataDir == "" {
+		return ""
+	}
+	return filepath.Join(setting.AppDataPath, appSnapshotDirName, filepath.Base(dataDir))
+}
 
 // appRunForProcess is the run directory as the app sees it — the same
 // two-names-for-one-directory split as the data directory above.

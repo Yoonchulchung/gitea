@@ -51,11 +51,6 @@ func AdminUserPanel(ctx *gitea_context.Context) {
 		}
 	}
 
-	var all []*repo_model.Repository
-	if err := db.GetEngine(ctx).In("id", orgOwnedRepoIDs()).Find(&all); err != nil {
-		log.Error("company: listing department repositories: %v", err)
-	}
-
 	ctx.Data["CompanyDepartments"] = departments
 	ctx.Data["CompanyOwnedDepartments"] = owned
 	ctx.Data["CompanyAllDepartments"] = allDepartments(ctx)
@@ -110,9 +105,17 @@ func userStorage(ctx *gitea_context.Context, u *user_model.User, departments []*
 	for _, org := range departments {
 		var repos []*repo_model.Repository
 		if err := db.GetEngine(ctx).Where("owner_id = ?", org.ID).Find(&repos); err != nil {
+			log.Error("company: listing repositories of %s: %v", org.Name, err)
 			continue
 		}
 		for _, repo := range repos {
+			// Only repositories that are actually apps. Counting a quota for
+			// every plain repository would dilute the percentage with
+			// allowances nothing can ever spend, and this is the one figure
+			// that is supposed to say the volume is filling up.
+			if _, live := AppDataDirIfPresent(ctx, org.Name, repo.Name); !live {
+				continue
+			}
 			usage, ok := AppDataUsageForRepoID(org.Name, repo.Name, repo.ID)
 			if !ok {
 				continue

@@ -45,6 +45,9 @@ const (
 	// drops something is sometimes genuinely right; it just must not happen
 	// because nobody noticed.
 	destructiveMarker = "-- platform: destructive"
+
+	// killGraceTimeout bounds the wait after a timeout kill.
+	killGraceTimeout = 5 * time.Second
 )
 
 // migrationFile is one NNN_name.sql from the release.
@@ -99,7 +102,7 @@ func loadMigrations(appDir string) ([]migrationFile, error) {
 			Name:        match[2],
 			SQL:         string(body),
 			Checksum:    migrationChecksum(body),
-			Destructive: strings.Contains(string(body), destructiveMarker),
+			Destructive: declaresDestructive(string(body)),
 		}
 		if err := guardMigration(entry.Name(), file); err != nil {
 			return nil, err
@@ -164,27 +167,70 @@ func guardMigration(filename string, file migrationFile) error {
 
 // stripSQLComments removes comments so the guard does not read the word
 // "DROP" in a sentence explaining why nothing is dropped.
+//
+// Quote-aware, and that is the whole point rather than a refinement. A naive
+// cut at the first "--" is not merely imprecise: it truncates
+//
+//	INSERT INTO t VALUES('--'); DROP TABLE records;
+//
+// at the quote, so the guard reads an INSERT and passes, while SQLite runs
+// both statements. That one line would defeat the additive-only rule the
+// entire rollback design rests on (docs/company/app-data.md §7), and the
+// migration would be recorded as non-destructive, so the floor would wave an
+// older release straight past it.
 func stripSQLComments(sql string) string {
 	var b strings.Builder
+	var quote byte // 0 outside any literal, else the closing character
+	for i := 0; i < len(sql); i++ {
+		c := sql[i]
+		if quote != 0 {
+			b.WriteByte(c)
+			if c == quote {
+				// '' and "" are escapes, not the end of the literal.
+				if i+1 < len(sql) && sql[i+1] == quote {
+					b.WriteByte(quote)
+					i++
+					continue
+				}
+				quote = 0
+			}
+			continue
+		}
+		switch {
+		case c == '\'' || c == '"' || c == '`':
+			quote = c
+			b.WriteByte(c)
+		case c == '-' && i+1 < len(sql) && sql[i+1] == '-':
+			for i < len(sql) && sql[i] != '\n' {
+				i++
+			}
+			b.WriteByte('\n')
+		case c == '/' && i+1 < len(sql) && sql[i+1] == '*':
+			end := strings.Index(sql[i+2:], "*/")
+			if end < 0 {
+				return b.String()
+			}
+			i += end + 3
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// declaresDestructive reports whether the file opts out of the guard.
+//
+// Anchored to the start of a line, because a marker found anywhere would let
+// `SELECT '-- platform: destructive'` switch the guard off from inside a
+// string literal — the same hole as above, in the other direction.
+func declaresDestructive(sql string) bool {
 	for line := range strings.SplitSeq(sql, "\n") {
-		if idx := strings.Index(line, "--"); idx >= 0 {
-			line = line[:idx]
+		if strings.HasPrefix(strings.TrimSpace(line), destructiveMarker) {
+			return true
 		}
-		b.WriteString(line)
-		b.WriteByte('\n')
 	}
-	out := b.String()
-	for {
-		start := strings.Index(out, "/*")
-		if start < 0 {
-			return out
-		}
-		end := strings.Index(out[start:], "*/")
-		if end < 0 {
-			return out[:start]
-		}
-		out = out[:start] + " " + out[start+end+2:]
-	}
+	return false
 }
 
 func migrateTimeout() time.Duration {
@@ -234,7 +280,7 @@ func runMigrations(ctx context.Context, owner, repo, release, dataDir string, se
 	inSandbox := appDataDirForProcess(dataDir)
 	payload, err := json.Marshal(map[string]any{
 		"db":          filepath.Join(inSandbox, appDataDBName),
-		"snapshotDir": filepath.Join(inSandbox, appDataSnapshotDir),
+		"snapshotDir": sandboxSnapshotPath,
 		"journalMode": DataJournalMode(),
 		"migrations":  files,
 		"sha":         sha,
@@ -253,7 +299,11 @@ func runMigrations(ctx context.Context, owner, repo, release, dataDir string, se
 	runCtx, cancel := context.WithTimeout(ctx, migrateTimeout())
 	defer cancel()
 
-	cmd, err := buildSandboxCommand(release, p, settings, dataDir,
+	snapshotDir := appSnapshotDirForApp(dataDir)
+	if err := os.MkdirAll(snapshotDir, 0o700); err != nil {
+		return nil, err
+	}
+	cmd, err := buildSandboxCommand(release, p, settings, dataDir, snapshotDir,
 		[]string{"python3", "-", filepath.Join(appRunForProcess(p), "migrate.json")})
 	if err != nil {
 		return nil, err
@@ -261,15 +311,22 @@ func runMigrations(ctx context.Context, owner, repo, release, dataDir string, se
 	cmd.Stdin = strings.NewReader(migrateScript)
 	cmd.Env = buildEnv(p, "/apps/"+owner+"/"+repo, dataDir, nil, false)
 
-	out, runErr := runWithContext(runCtx, cmd)
+	out, stderr, runErr := runWithContext(runCtx, cmd)
 	var result migrateResult
 	if jsonErr := json.Unmarshal(out, &result); jsonErr != nil {
+		// stderr either way: this message is what lands in the build log as
+		// the reason a deploy failed, and "invalid character" on its own
+		// leaves an operator with nothing to act on.
 		if runErr != nil {
-			return nil, fmt.Errorf("the schema migration could not be run: %w", runErr)
+			return nil, fmt.Errorf("the schema migration could not be run: %w: %s", runErr, stderr)
 		}
-		return nil, fmt.Errorf("unreadable answer from the schema migration: %w", jsonErr)
+		return nil, fmt.Errorf("unreadable answer from the schema migration: %w: %s", jsonErr, stderr)
 	}
 	if !result.OK {
+		// Pruned here too: every failed attempt has already taken a snapshot,
+		// and pruning only on success is how an app with a broken migration
+		// fills its own quota until nothing can deploy at all.
+		pruneSnapshots(dataDir)
 		return &result, migrateError(result)
 	}
 
@@ -305,30 +362,40 @@ func migrateError(result migrateResult) error {
 // The command is already built (sandbox flags, binds, limits), so it cannot
 // go through process.CommandContext — this adds the one thing that was
 // missing, a migration that hangs must not hold the deploy forever.
-func runWithContext(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
+func runWithContext(ctx context.Context, cmd *exec.Cmd) ([]byte, string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	// Its own process group, set here rather than inherited: the kill below
+	// is a group kill, and without this the child sits in Gitea's own group,
+	// so kill(-pid) names a group that does not exist, returns ESRCH, and the
+	// timeout does nothing at all. The wait that follows it would then block
+	// forever — holding deployMu, which rollback and removal also need.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
 	select {
 	case err := <-done:
-		if err != nil && stderr.Len() > 0 {
-			return stdout.Bytes(), fmt.Errorf("%w: %s", err, lastLines(stderr.String(), 5))
-		}
-		return stdout.Bytes(), err
+		return stdout.Bytes(), lastLines(stderr.String(), 5), err
 	case <-ctx.Done():
 		// The whole group: a sandboxed run is bwrap plus what it started, and
 		// killing only the parent leaves the migration running on the data.
 		if cmd.Process != nil {
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}
-		<-done
-		return stdout.Bytes(), ctx.Err()
+		// Bounded, because Wait also waits on the output copiers and a
+		// grandchild holding the pipe would keep this goroutine here.
+		select {
+		case <-done:
+		case <-time.After(killGraceTimeout):
+			log.Error("company: a sandboxed run did not exit after being killed; leaking its wait")
+		}
+		return stdout.Bytes(), lastLines(stderr.String(), 5),
+			fmt.Errorf("it did not finish within %s ([company] APP_DATA_MIGRATE_TIMEOUT)", migrateTimeout())
 	}
 }
 
@@ -337,7 +404,10 @@ func runWithContext(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 // hundred of them inside the age window, and a quiet one would keep its last
 // ten forever.
 func pruneSnapshots(dataDir string) {
-	dir := filepath.Join(dataDir, appDataSnapshotDir)
+	dir := appSnapshotDirForApp(dataDir)
+	if dir == "" {
+		return // no app, so no "*.db" to go deleting relative to the cwd
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
@@ -348,7 +418,19 @@ func pruneSnapshots(dataDir string) {
 	}
 	var snaps []snap
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".db") {
+		if entry.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(entry.Name(), ".partial") {
+			// A backup that never finished. Invisible to the listing by its
+			// name, but it still occupies the disk, and only an interrupted
+			// run leaves one — so an old one is always rubbish.
+			if info, err := entry.Info(); err == nil && time.Since(info.ModTime()) > time.Hour {
+				_ = os.Remove(filepath.Join(dir, entry.Name()))
+			}
+			continue
+		}
+		if !strings.HasSuffix(entry.Name(), ".db") {
 			continue
 		}
 		info, err := entry.Info()
@@ -443,7 +525,13 @@ def run(out):
         os.makedirs(payload["snapshotDir"], exist_ok=True)
         path = os.path.join(payload["snapshotDir"],
                             "%d-%s.db" % (int(time.time()), (payload["sha"] or "unknown")[:12]))
-        dst = sqlite3.connect(path)
+        # Written beside its final name and moved only once it has passed.
+        # sqlite3.connect() creates the file immediately, so a backup that
+        # dies partway — disk full, the process killed — would otherwise leave
+        # a truncated file that looks exactly like a good snapshot to anyone
+        # restoring from the list.
+        tmp = path + ".partial"
+        dst = sqlite3.connect(tmp)
         # Default pages=-1: one shot. Copying in chunks lets SQLite restart
         # the whole backup whenever the source is written, which on a busy
         # app need never finish.
@@ -451,31 +539,40 @@ def run(out):
         verdict = dst.execute("PRAGMA integrity_check").fetchone()[0]
         dst.close()
         if verdict != "ok":
-            os.remove(path)
+            os.remove(tmp)
             out["error"] = "the pre-migration snapshot failed its integrity check: %s" % verdict
             return
+        os.replace(tmp, path)
         out["snapshot"] = path
 
     for m in pending:
         try:
+            # No COMMIT in the script: executescript only commits what was
+            # pending *before* it, so the transaction is still open here and
+            # the foreign-key check below is inside it. Checking after a
+            # commit would leave the broken schema applied and recorded, and
+            # a second deploy would then find nothing pending and sail past
+            # the check entirely.
             conn.executescript(
                 "BEGIN;\n" + m["sql"] +
                 "\n;INSERT INTO _schema_migrations(version,name,checksum,applied_at,sha,destructive)"
-                " VALUES(%d,'%s','%s',%d,'%s',%d);\nCOMMIT;" % (
+                " VALUES(%d,'%s','%s',%d,'%s',%d);" % (
                     m["version"], m["name"].replace("'", "''"), m["checksum"],
                     int(time.time()), (payload["sha"] or "").replace("'", "''"),
                     1 if m["destructive"] else 0))
+            violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+            if violations:
+                conn.execute("ROLLBACK")
+                out["error"] = "migration %03d_%s would leave %d broken foreign key reference(s)" % (
+                    m["version"], m["name"], len(violations))
+                return
+            conn.execute("COMMIT")
         except Exception as e:
             try:
                 conn.execute("ROLLBACK")
             except Exception:
                 pass
             out["error"] = "migration %03d_%s failed: %s" % (m["version"], m["name"], e)
-            return
-        violations = conn.execute("PRAGMA foreign_key_check").fetchall()
-        if violations:
-            out["error"] = "migration %03d_%s left %d broken foreign key reference(s)" % (
-                m["version"], m["name"], len(violations))
             return
         out["applied"].append(m["version"])
 

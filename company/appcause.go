@@ -109,6 +109,24 @@ func departmentCause(st *AppState) *AppCause {
 			Action:      "deploy",
 			ActionLabel: "company.app.cause.package_denied.action",
 		}
+	case ReasonDataFull:
+		return &AppCause{
+			Summary:   "company.app.cause.data_full",
+			AdminHint: "company.app.cause.data_full.admin",
+			// Written by the watchdog, which runs with no reader and so has
+			// no language of its own — same as the memory case below.
+			Detail:     st.UserMessageKey,
+			DetailArg:  st.UserMessageArg,
+			DetailText: st.UserMessage,
+		}
+	case ReasonMigrationFailed:
+		return &AppCause{
+			Summary:     "company.app.cause.migration_failed",
+			AdminHint:   "company.app.cause.migration_failed.admin",
+			DetailText:  st.UserMessage,
+			Action:      "deploy",
+			ActionLabel: "company.app.cause.migration_failed.action",
+		}
 	case ReasonOOM:
 		return &AppCause{
 			Summary:   "company.app.cause.oom",
