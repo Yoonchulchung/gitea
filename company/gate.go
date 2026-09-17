@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"gitea.dev/models/organization"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
 	"gitea.dev/modules/templates"
 	"gitea.dev/services/context"
@@ -122,6 +124,10 @@ func GateNonAdminUI(ctx *context.Context) {
 		}
 	}
 
+	// Before the allowlist, because this is what makes the allowlist's
+	// refusal survivable rather than a trap.
+	clearLocalPasswordChange(ctx)
+
 	if ctx.Doer.IsAdmin {
 		return // admins keep full native access — see docs/company/departments.md
 	}
@@ -199,7 +205,10 @@ func isPrefixAllowed(path string) bool {
 // packages, actions, organization, repos, hooks, blocked_users) stays
 // blocked. Account is blocked deliberately: it owns email changes, password
 // changes and account deletion, which are administered centrally here
-// rather than self-served. Deliberately its own function rather than plain
+// rather than self-served — and with accounts coming from the directory, a
+// local password is not the credential anyway, so changing one would achieve
+// nothing but the appearance of having done something. There is no exception:
+// see clearLocalPasswordChange below for the redirect loop that tempted one. Deliberately its own function rather than plain
 // uiWhitelist entries: uiWhitelist's isPrefixAllowed treats every entry as
 // a prefix, and "/user/settings" as a bare prefix would swallow all of the
 // above right back in.
@@ -315,4 +324,36 @@ func isProtocolExempt(path string) bool {
 		}
 	}
 	return strings.Contains(path, "/info/lfs/")
+}
+
+// clearLocalPasswordChange takes a department member out of Gitea's forced
+// local password change.
+//
+// Accounts here come from the directory, so the local password is not the
+// credential and changing it accomplishes nothing. The page that would do it
+// is closed to non-admins by policy and stays closed — but Gitea's own
+// middleware redirects anyone carrying this flag to that page on every
+// request, and a closed page plus a forced redirect is a loop with no way
+// through and no way out, not even to log out. An administrator who sets the
+// flag from the user screen, not knowing it does not apply here, locks that
+// person out of the instance.
+//
+// So the flag is cleared rather than the page opened. Logged, because an
+// administrator who set it deliberately deserves to learn it had no effect —
+// and what they actually want is a directory-side reset.
+//
+// Administrators keep the flag: they are the ones who may still have a local
+// password worth changing, and their own screens are not gated.
+func clearLocalPasswordChange(ctx *context.Context) {
+	if ctx.Doer == nil || ctx.Doer.IsAdmin || !ctx.Doer.MustChangePassword {
+		return
+	}
+	ctx.Doer.MustChangePassword = false
+	if err := user_model.UpdateUserCols(ctx, ctx.Doer, "must_change_password"); err != nil {
+		// Best-effort: a failure here means the loop persists for this
+		// request, not that the request should fail.
+		log.Error("company: clearing the forced password change for %s: %v", ctx.Doer.Name, err)
+		return
+	}
+	log.Warn("company: %s was flagged to change their local password; the flag was cleared because passwords here come from the directory. Reset it there instead.", ctx.Doer.Name)
 }
