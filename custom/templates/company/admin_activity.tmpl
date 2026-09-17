@@ -1,20 +1,38 @@
 {{template "admin/layout_head" (dict "pageClass" "admin company-activity")}}
 	<div class="admin-setting-content">
-		<h4 class="ui top attached header">Cross-department activity</h4>
+		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.activity.title"}}</h4>
 		<div class="ui attached table segment">
 			<table class="ui very basic table">
 				<thead>
-					<tr><th>When</th><th>Repo</th><th>Action</th></tr>
+					<tr>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.activity.col_when"}}</th>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.activity.col_who"}}</th>
+						<th>{{ctx.Locale.Tr "company.activity.col_what"}}</th>
+						<th class="tw-w-1/4">{{ctx.Locale.Tr "company.activity.col_where"}}</th>
+					</tr>
 				</thead>
 				<tbody>
-					{{range .Actions}}
+					{{range .Rows}}
 						<tr>
-							<td>{{DateUtils.FullTime .CreatedUnix}}</td>
+							<td title="{{DateUtils.FullTime .At}}">{{DateUtils.TimeSince .At}}</td>
+							<td>
+								{{/* A deleted account still has to be attributable: the row is
+								     evidence that something happened, and dropping the name
+								     because the user record went away loses exactly that. */}}
+								{{if .Actor}}
+									<a href="{{AppSubUrl}}/{{PathEscape .Actor.Name}}">{{.Actor.Name}}</a>
+								{{else}}
+									<span class="text-grey">{{ctx.Locale.Tr "company.activity.who_gone"}}</span>
+								{{end}}
+							</td>
+							<td>
+								{{ctx.Locale.Tr .OpKey}}
+								{{if .Detail}}<span class="tw-font-mono text-grey tw-ml-2">{{.Detail}}</span>{{end}}
+							</td>
 							<td>{{if .Repo}}<a href="{{.Repo.Link}}">{{.Repo.OwnerName}}/{{.Repo.Name}}</a>{{end}}</td>
-							<td>{{.OpType}}</td>
 						</tr>
 					{{else}}
-						<tr><td colspan="3" class="text-grey">No activity yet.</td></tr>
+						<tr><td colspan="4" class="text-grey">{{ctx.Locale.Tr "company.activity.none"}}</td></tr>
 					{{end}}
 				</tbody>
 			</table>

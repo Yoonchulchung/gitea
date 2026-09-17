@@ -75,6 +75,7 @@ func TestDynamicTrKeysComeFromOurOwnVocabulary(t *testing.T) {
 		"$r.Label":   true, // admin_packages pending list: HasKey-guarded
 		".Evidence":  true, // stored request evidence: HasKey-guarded
 		".DetailKey": true, // PermissionRequest.DetailKey: written only by our own code, never from a form
+		".OpKey":     true, // describeActivity: looked up in activityOpKeys, never assembled from the stored op_type
 	}
 	for _, path := range companyTemplateRoots(t) {
 		body, err := os.ReadFile(path)
