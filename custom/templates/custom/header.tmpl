@@ -228,6 +228,15 @@
 .company-perm-reason { flex-basis: 100%; color: var(--color-text-light-2); font-size: .86rem; font-weight: 400; line-height: 1.45; }
 
 .company-kpis { display: flex; flex-wrap: wrap; gap: 10px; }
+/* The deploys page stacks three answers to three different questions — can
+   the platform build at all, how is the fleet, what needs acting on — and
+   Fomantic's "attached" strips the margin off the first, so they butt into
+   one grey mass with nothing telling the eye where one ends. Spaced only
+   where they sit bare like that: the same KPI row inside a segment on the
+   other admin pages already has the segment's own padding, and adding to it
+   would double up. */
+.admin-setting-content > .ui.attached.message { margin-bottom: 16px; }
+.admin-setting-content > .company-kpis { margin: 16px 0; }
 .company-kpi {
 	flex: 1 1 120px;
 	border: 1px solid var(--color-secondary);

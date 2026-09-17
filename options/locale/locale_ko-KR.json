@@ -4710,5 +4710,6 @@
   "company.err.data_full": "앱이 데이터 저장 용량을 모두 써서, 공간이 확보되기 전까지 배포할 수 없습니다. 관리자에게 알려 주세요.",
   "company.err.data_full.admin": "앱 데이터가 한도 %d MB 중 %d MB 를 쓰고 있습니다. 이 앱의 limits.dataMB 나 [company] APP_DATA_QUOTA_MB 를 올리거나 공간을 확보하세요.",
   "company.err.data_dir": "앱의 데이터 저장소를 열지 못해 시작하지 못했습니다. 관리자에게 알려 주세요.",
-  "company.err.data_dir.admin": "앱 데이터 디렉터리를 확인하지 못했습니다: %s"
+  "company.err.data_dir.admin": "앱 데이터 디렉터리를 확인하지 못했습니다: %s",
+  "company.settings_ai.unavailable": "이 인스턴스는 아직 AI 를 사용할 수 없습니다. 관리자가 활성화해야 여기 설정이 적용됩니다."
 }

@@ -4740,5 +4740,6 @@
   "company.req.duplicate": "line %[1]d %[2]q — already listed above",
   "company.err.deps_unapproved": "These packages are needed as dependencies but are not approved yet: %s",
   "company.cause.check_requirements": "Check the package names and versions in requirements.txt.",
-  "company.cause.fix_and_redeploy": "Fix requirements.txt, then deploy again."
+  "company.cause.fix_and_redeploy": "Fix requirements.txt, then deploy again.",
+  "company.settings_ai.unavailable": "AI is not available on this instance yet. Your administrator has to switch it on before anything here takes effect."
 }

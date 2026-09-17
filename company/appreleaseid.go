@@ -261,8 +261,9 @@ func writeReleaseManifest(release string, packages []string) error {
 // the running environment — and until now every screen showed the policy in a
 // panel titled as though it were the contents.
 //
-// Empty for a release built before this was recorded, which reads as "not
-// known" rather than "nothing installed".
+// Never "not known" for a release still on disk: backfillInstalledPackages
+// below fills the record in at startup for anything built before it was kept.
+// An empty answer therefore means the environment really is bare.
 func InstalledPackages(owner, repo string) []string {
 	target, err := os.Readlink(appPathsFor(owner, repo).current)
 	if err != nil {
@@ -279,4 +280,39 @@ func InstalledPackages(owner, repo string) []string {
 		}
 	}
 	return out
+}
+
+// backfillInstalledPackages records what is installed in releases that were
+// built before the platform kept that list.
+//
+// "We do not know what is running" is not a state this platform may be in.
+// Package policy decides what an app is allowed to install, and an
+// administrator reviewing that has to be able to compare it against what the
+// live release actually has — a screen that answers "unknown" makes the
+// policy unauditable for exactly the apps that have been running longest.
+//
+// The venv is still on disk beside the release, so the answer is recoverable
+// rather than lost: pip is asked now and the result written where a deploy
+// would have written it. Only the live release, not every old one — the
+// question is about what is running.
+func backfillInstalledPackages(ctx context.Context) {
+	for _, st := range ListAppStates() {
+		release, err := os.Readlink(appPathsFor(st.Owner, st.Repo).current)
+		if err != nil {
+			continue // never deployed
+		}
+		if _, err := os.Stat(filepath.Join(release, releaseManifestFile)); err == nil {
+			continue // already recorded
+		}
+		venv := filepath.Join(release, ".venv")
+		if _, err := os.Stat(venv); err != nil {
+			// No environment to ask. Rare — a release whose venv was garbage
+			// collected under it — and the screen is honest about it rather
+			// than inventing a list.
+			log.Warn("company: %s/%s: no virtualenv to read its package list from", st.Owner, st.Repo)
+			continue
+		}
+		recordInstalledPackages(ctx, venv, release)
+		log.Info("company: %s/%s: recorded the running release's package list, which predated that record", st.Owner, st.Repo)
+	}
 }

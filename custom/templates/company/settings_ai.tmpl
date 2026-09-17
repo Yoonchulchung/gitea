@@ -11,12 +11,28 @@
 			AI Agent
 		</h4>
 		<div class="ui attached segment">
-			{{if .AIDisabled}}
-				<div class="ui negative message">{{ctx.Locale.Tr "company.settings_ai.disabled"}}</div>
-			{{end}}
-			{{if not .GatewayConfigured}}
+			{{/* Both of these name a config key and an administrator's next
+			     action. That is the right message for the person who can act on
+			     it and the wrong one for everybody else: a department member
+			     reading "[company] AI_ENABLED" on their own settings page has
+			     been handed an instruction they cannot follow. Same split the
+			     rest of the platform makes between the two audiences — see
+			     company/usererror.go. */}}
+			{{if $.IsAdmin}}
+				{{if .AIDisabled}}
+					<div class="ui negative message">{{ctx.Locale.Tr "company.settings_ai.disabled"}}</div>
+				{{end}}
+				{{if not .GatewayConfigured}}
+					<div class="ui warning message">
+						{{ctx.Locale.Tr "company.settings_ai.gateway_not_configured"}}
+					</div>
+				{{end}}
+			{{else if or .AIDisabled (not .GatewayConfigured)}}
+				{{/* Silence would leave them filling in a form that does
+				     nothing. One sentence, no internals, and who to ask. */}}
 				<div class="ui warning message">
-					{{ctx.Locale.Tr "company.settings_ai.gateway_not_configured"}}
+					{{ctx.Locale.Tr "company.settings_ai.unavailable"}}
+					{{if .CompanySupportEmail}}<a href="mailto:{{.CompanySupportEmail}}">{{.CompanySupportEmail}}</a>{{end}}
 				</div>
 			{{end}}
 			<p class="text-grey">{{ctx.Locale.Tr "company.settings_ai.description"}}</p>

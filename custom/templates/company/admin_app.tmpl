@@ -321,18 +321,6 @@
 					{{range .ApprovedExtra}}<span class="ui green basic label tw-mr-1">{{.}}</span>{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_approved_empty"}}</span>{{end}}
 				</div>
 			</div>
-			{{/* Policy is what the app may install; this is what the release that
-			     is running actually has. They are the same only until someone
-			     approves a package and nobody redeploys, and the panel above was
-			     being read as though it were this. */}}
-			<div class="tw-mt-3">
-				<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_installed"}}</span>
-				<div class="tw-mt-1">
-					{{range .InstalledPackages}}<span class="ui basic label tw-mr-1 tw-mb-1">{{.}}</span>{{else}}
-						<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_installed_unknown"}}</span>
-					{{end}}
-				</div>
-			</div>
 			{{/* The case this exists for: a dependency the build resolved that
 			     appears in no file anyone wrote, so the department has nothing
 			     to tick and cannot raise a request for it at all. The button

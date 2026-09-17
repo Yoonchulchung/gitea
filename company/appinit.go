@@ -58,6 +58,9 @@ func InitAppPlatform(ctx context.Context) {
 	// identified from the deploy history, and until they are no screen can say
 	// which version is serving (company/appreleaseid.go).
 	backfillReleaseSHAs(ctx)
+	// And what those releases have installed: an administrator comparing
+	// package policy against reality cannot do it against "unknown".
+	backfillInstalledPackages(ctx)
 
 	StartDeployWorkers()
 	StartMetricsFlusher()
