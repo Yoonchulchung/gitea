@@ -160,6 +160,15 @@ func WorkspaceSave(ctx *context.Context) {
 			ctx.HTTPError(http.StatusBadRequest, "empty file path")
 			return
 		}
+		// Refused here, at the edge, rather than left to git. Gitea collapses
+		// ".." for its own checks but still hands the raw path to git ls-files,
+		// which rejects it as outside the repository — as a plain wrapped
+		// error no type check can name, so it surfaced as a 500. Nothing
+		// escapes either way; this just answers a malformed request as one.
+		if hasParentSegment(treePath) || (f.FromPath != "" && hasParentSegment(strings.TrimPrefix(f.FromPath, "/"))) {
+			ctx.JSON(http.StatusBadRequest, map[string]any{"error": "path may not contain '..': " + f.Path})
+			return
+		}
 		if f.Deleted {
 			deleted++
 			files = append(files, &files_service.ChangeRepoFile{
@@ -363,4 +372,15 @@ func firstTreePathFor(files []*files_service.ChangeRepoFile, op string) string {
 		}
 	}
 	return ""
+}
+
+// hasParentSegment reports whether any path component is "..", the one thing
+// a tree path can carry that git will not accept from a caller.
+func hasParentSegment(p string) bool {
+	for seg := range strings.SplitSeq(p, "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
 }

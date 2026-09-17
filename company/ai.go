@@ -95,6 +95,9 @@ func aiGatewayURL() string {
 // feature (workspace editor's "Ask AI" button, Deploy Request's review
 // comment) checks this and no-ops/hides itself while it's false.
 func AIConfiguredFor(ctx context.Context, userID int64) bool {
+	if !AIEnabled() {
+		return false // every AI screen hides itself behind this
+	}
 	c, err := loadAIUserConfig(ctx, userID)
 	if err != nil || c.apiKey == "" {
 		return false
@@ -181,6 +184,11 @@ func aiChatTurn(ctx context.Context, userID int64, messages []aiChatMessage, too
 // ToolCalls themselves, since a tool-capable model may return either a
 // final text answer or a list of calls to execute and feed back.
 func aiChatTurnStream(ctx context.Context, userID int64, model string, messages []aiChatMessage, tools []aiTool, onDelta func(string)) (*aiChatMessage, error) {
+	// Before anything is loaded or built: with the switch off there must be
+	// no code path that assembles a request, let alone sends one.
+	if !AIEnabled() {
+		return nil, errAIDisabled
+	}
 	uc, err := loadAIUserConfig(ctx, userID)
 	if err != nil {
 		return nil, err

@@ -63,6 +63,7 @@ func AISettings(ctx *gitea_context.Context) {
 	ctx.Data["ReasoningEffort"] = reasoningEffort
 	ctx.Data["APIKeySet"] = apiKeyStored != "" // never echo the key itself back into the form
 	ctx.Data["GatewayConfigured"] = aiGatewayURL() != ""
+	ctx.Data["AIDisabled"] = !AIEnabled()
 	anthropicAllowed := anthropicAllowedFor(ctx, ctx.Doer.ID)
 	ctx.Data["AnthropicAllowed"] = anthropicAllowed
 	if !anthropicAllowed && provider == aiProviderAnthropic {
@@ -127,6 +128,10 @@ type aiListModelsResponse struct {
 // to their already-saved key if the field was left blank (e.g. re-checking
 // after the gateway added a model, without retyping the key).
 func AIListModels(ctx *gitea_context.Context) {
+	if !AIEnabled() {
+		ctx.HTTPError(http.StatusForbidden, "AI is disabled on this instance")
+		return
+	}
 	url := aiGatewayURL()
 	if url == "" {
 		ctx.HTTPError(http.StatusServiceUnavailable, "AI gateway not configured")

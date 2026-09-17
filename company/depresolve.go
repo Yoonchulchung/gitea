@@ -93,7 +93,8 @@ func resolveSet(ctx context.Context, requirements string) ([]resolvedPackage, er
 		"--only-binary=:all:", "--report", reportFile, "-r", reqFile)
 	// pip writes caches and temporary trees relative to HOME; without one of
 	// its own it would touch the Gitea account's.
-	cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + dir, "TMPDIR=" + dir, "LANG=C.UTF-8"}
+	cmd.Env = append([]string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + dir, "TMPDIR=" + dir, "LANG=C.UTF-8"},
+		pipIndexEnv()...) // same sanctioned index as the real install (company/pip_policy.go)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// The output names the index and the local paths pip tried, so it goes
 		// to the log in full and to the caller as a classified error.

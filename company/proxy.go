@@ -92,6 +92,19 @@ func AppProxy(ctx *gitea_context.Context) {
 	if !checkAppAccess(ctx, ref, settings) {
 		return // checkAppAccess has written the response
 	}
+	// After the access check, so a refusal here is never a hint about
+	// whether a private app exists; before the running check, so a flood
+	// does not get to learn whether it is up (company/proxy_guard.go).
+	if verdict := guardRequest(ctx, ref); verdict != nil {
+		if verdict.retry > 0 {
+			ctx.Resp.Header().Set("Retry-After", strconv.Itoa(int(verdict.retry.Seconds())+1))
+		}
+		ctx.PlainText(verdict.status, verdict.body)
+		return
+	}
+	if !guardBodyLimit(ctx) {
+		return
+	}
 	if !IsAppRunning(ref.Owner, ref.Repo) {
 		// Deliberately plain and specific: whoever hits this needs to know it
 		// is the app that is down, not the platform.

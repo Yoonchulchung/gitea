@@ -11,6 +11,9 @@
 			AI Agent
 		</h4>
 		<div class="ui attached segment">
+			{{if .AIDisabled}}
+				<div class="ui negative message">{{ctx.Locale.Tr "company.settings_ai.disabled"}}</div>
+			{{end}}
 			{{if not .GatewayConfigured}}
 				<div class="ui warning message">
 					{{ctx.Locale.Tr "company.settings_ai.gateway_not_configured"}}

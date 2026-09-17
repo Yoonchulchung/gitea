@@ -62,6 +62,8 @@ func InitAppPlatform(ctx context.Context) {
 	StartDeployWorkers()
 	StartMetricsFlusher()
 	StartAppDataGC()
+	StartProxyGuard()
+	logAIPolicyAtBoot()
 
 	// Bring back what was running before this restart. Runs in the
 	// background: reconciliation starts app processes and health-checks them,

@@ -226,6 +226,13 @@ func runDeploy(ctx context.Context, job deployJob) {
 		return true
 	})
 
+	// Before the build starts, because the build's first act is pip reaching
+	// an index: refusing here is a message, refusing later is a connection.
+	if !pipEgressAllowed() {
+		failBuild(owner, repo, ReasonInstallFailed, AdminError(errPipNoIndex), priorActual, DepartmentSafeError("deploy", errPipNoIndex))
+		return
+	}
+
 	p := appPathsFor(owner, repo)
 	release := releaseDir(p, job.SHA)
 	if err := buildRelease(ctx, job, p, release, settings); err != nil {
@@ -773,12 +780,12 @@ func waitHealthy(socket string, settings AppSettings) error {
 // inherit Gitea's environment either.
 func runBuildCmd(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := process.CommandContext(ctx, name, args...) //nolint:gosec // name is a fixed interpreter/pip path, args are validated requirements
-	cmd.Env = []string{
+	cmd.Env = append([]string{
 		"PATH=/usr/local/bin:/usr/bin:/bin",
 		"HOME=" + os.TempDir(),
 		"LANG=C.UTF-8",
 		"PIP_DISABLE_PIP_VERSION_CHECK=1",
-	}
+	}, pipIndexEnv()...) // the sanctioned index, if one is set (company/pip_policy.go)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

@@ -123,6 +123,12 @@ func WorkspaceAI(ctx *context.Context) {
 	if !requireWorkspaceWrite(ctx) {
 		return
 	}
+	if !AIEnabled() {
+		// Before the "set up your key" check: a feature policy switched off
+		// must not send someone to go and configure it.
+		ctx.HTTPError(http.StatusServiceUnavailable, errAIDisabled.Error())
+		return
+	}
 	if !AIConfiguredFor(ctx, ctx.Doer.ID) {
 		ctx.HTTPError(http.StatusServiceUnavailable, "AI not set up yet — add your API key at /user/settings/ai")
 		return
