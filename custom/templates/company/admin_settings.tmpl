@@ -1,0 +1,35 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-settings")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.adminsettings.title"}}</h4>
+		<div class="ui attached segment">
+			<form method="post" action="{{AppSubUrl}}/-/admin/company-settings" class="ui form">
+				{{.CsrfTokenHtml}}
+
+				<h5>{{ctx.Locale.Tr "company.adminsettings.contact_header"}}</h5>
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.contact_explain"}}</p>
+				<div class="field">
+					<label for="support_email">{{ctx.Locale.Tr "company.adminsettings.contact_label"}}</label>
+					<input id="support_email" type="email" name="support_email" value="{{.SupportEmail}}"
+					       placeholder="it-help@example.com">
+				</div>
+
+				<div class="ui divider"></div>
+
+				<h5>{{ctx.Locale.Tr "company.adminsettings.ai_header"}}</h5>
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.ai_explain"}}</p>
+				<div class="field">
+					<div class="ui checkbox">
+						<input id="anthropic_visible" type="checkbox" name="anthropic_visible" value="true" {{if .AnthropicVisible}}checked{{end}}>
+						<label for="anthropic_visible">{{ctx.Locale.Tr "company.adminsettings.ai_anthropic"}}</label>
+					</div>
+				</div>
+				{{/* Said plainly, because an administrator who cannot see the option
+				     on their own settings page would otherwise read the toggle as
+				     broken. */}}
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.ai_admin_note"}}</p>
+
+				<button class="ui primary button tw-mt-3">{{ctx.Locale.Tr "company.adminsettings.save"}}</button>
+			</form>
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}

@@ -61,6 +61,10 @@ func RegisterRoutes(m *web.Router) {
 // adminReq middleware for free — see docs/company/mount-points.md.
 func RegisterAdminRoutes(m *web.Router) {
 	m.Get("/company-activity", AdminActivity)
+	// Platform choices an administrator changes while the instance runs — who
+	// to contact, which AI provider departments are offered.
+	m.Get("/company-settings", AdminSettings)
+	m.Post("/company-settings", AdminSettingsPost)
 	// App deployment management — see docs/company/app-platform.md. Kept
 	// under "/-/admin" rather than a repo-scoped path on purpose: these
 	// pages carry logs and failure detail, and isRepoScopedAllow

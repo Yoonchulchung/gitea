@@ -11,6 +11,15 @@
 	<div class="ui container tw-max-w-2xl tw-mt-5">
 		<h1 class="tw-mb-4">{{.Title}}</h1>
 		<p class="tw-mb-4">{{.Message}}</p>
+		{{/* The way out, not a footnote: someone on this page cannot reach
+		     anything else, so the one action that helps them belongs where
+		     they are already looking. The address comes from admin settings
+		     (company/adminsettings.go) because whoever is responsible changes. */}}
+		{{if .SupportEmail}}
+			<div class="ui info message">
+				{{ctx.Locale.Tr "company.gate.contact" (HTMLFormat `<a href="mailto:%s">%s</a>` .SupportEmail .SupportEmail)}}
+			</div>
+		{{end}}
 		{{if .Orgs}}
 			<div class="ui relaxed list">
 				{{range .Orgs}}

@@ -63,6 +63,13 @@ func AISettings(ctx *gitea_context.Context) {
 	ctx.Data["ReasoningEffort"] = reasoningEffort
 	ctx.Data["APIKeySet"] = apiKeyStored != "" // never echo the key itself back into the form
 	ctx.Data["GatewayConfigured"] = aiGatewayURL() != ""
+	anthropicAllowed := anthropicAllowedFor(ctx, ctx.Doer.ID)
+	ctx.Data["AnthropicAllowed"] = anthropicAllowed
+	if !anthropicAllowed && provider == aiProviderAnthropic {
+		// Shown as what it will actually be, not as what is stored: the form
+		// must not display a choice this account is no longer allowed to use.
+		ctx.Data["Provider"] = aiProviderOpenAI
+	}
 	ctx.HTML(http.StatusOK, tplSettingsAI)
 }
 
@@ -74,7 +81,9 @@ func AISettings(ctx *gitea_context.Context) {
 // someone out of AI features from a copy-paste mistake.
 func AISettingsPost(ctx *gitea_context.Context) {
 	provider := strings.TrimSpace(ctx.Req.FormValue("provider"))
-	if provider != aiProviderAnthropic {
+	// Re-checked here rather than trusted from the form: the option is hidden
+	// when it is not allowed, and hidden is not the same as refused.
+	if provider != aiProviderAnthropic || !anthropicAllowedFor(ctx, ctx.Doer.ID) {
 		provider = aiProviderOpenAI
 	}
 	modelID := strings.TrimSpace(ctx.Req.FormValue("model_id"))

@@ -25,7 +25,7 @@
 						<div class="text"></div> {{svg "octicon-triangle-down" 14 "dropdown icon"}}
 						<div class="menu">
 							<div class="item" data-value="openai">{{ctx.Locale.Tr "company.settings_ai.provider_openai"}}</div>
-							<div class="item" data-value="anthropic">{{ctx.Locale.Tr "company.settings_ai.provider_anthropic"}}</div>
+							{{if .AnthropicAllowed}}<div class="item" data-value="anthropic">{{ctx.Locale.Tr "company.settings_ai.provider_anthropic"}}</div>{{end}}
 						</div>
 					</div>
 					<p class="help">{{ctx.Locale.Tr "company.settings_ai.provider_help"}}</p>

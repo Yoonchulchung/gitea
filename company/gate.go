@@ -151,10 +151,15 @@ func redirectToDepartment(ctx *context.Context, orgs []*organization.MinimalOrg)
 	case 0:
 		ctx.Data["Title"] = string(ctx.Locale.Tr("company.gate.no_department_title"))
 		ctx.Data["Message"] = string(ctx.Locale.Tr("company.gate.no_department"))
+		// Whoever is currently responsible, not a name baked into a template:
+		// the person who adds people to departments changes, and a page that
+		// still names the one who left is worse than one that names nobody.
+		ctx.Data["SupportEmail"] = SupportEmail(ctx)
 		ctx.HTML(http.StatusOK, tplNoDepartment)
 	default:
 		ctx.Data["Title"] = string(ctx.Locale.Tr("company.gate.multiple_departments_title"))
 		ctx.Data["Message"] = string(ctx.Locale.Tr("company.gate.multiple_departments"))
+		ctx.Data["SupportEmail"] = SupportEmail(ctx)
 		ctx.Data["Orgs"] = orgs
 		ctx.HTML(http.StatusOK, tplNoDepartment)
 	}

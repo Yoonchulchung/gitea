@@ -57,6 +57,14 @@ func loadAIUserConfig(ctx context.Context, userID int64) (aiUserConfig, error) {
 	if err != nil {
 		return aiUserConfig{}, err
 	}
+	// Every AI call loads its configuration here, so this is the one place
+	// the administrator's choice has to be honoured — a check on the settings
+	// form alone would leave whoever saved "anthropic" before it was switched
+	// off still reaching Anthropic on every request. The stored preference is
+	// left alone, so turning it back on restores it.
+	if provider == aiProviderAnthropic && !anthropicAllowedFor(ctx, userID) {
+		provider = aiProviderOpenAI
+	}
 	modelID, err := user_model.GetUserSetting(ctx, userID, userSettingAIModelID)
 	if err != nil {
 		return aiUserConfig{}, err
