@@ -160,10 +160,17 @@
 
 				<div class="divider"></div>
 
+				{{/* company/: no delete button. Accounts are the directory's, not
+				     this platform's — deleting one here removes the Gitea-side
+				     record while the person still exists upstream and the next
+				     login recreates them, so the button promises something it
+				     cannot deliver. What ends someone's access to *this*
+				     platform is "활성" above, which is reversible and leaves
+				     their history attributable. See docs/company/patches.md. */}}
 				<div class="field">
 					<button class="ui primary button">{{ctx.Locale.Tr "admin.users.update_profile"}}</button>
-					<button class="ui red button show-modal" data-modal="#delete-user-modal">{{ctx.Locale.Tr "admin.users.delete_account"}}</button>
 				</div>
+				<p class="help">{{ctx.Locale.Tr "company.adminuser.no_delete"}}</p>
 			</form>
 		</div>
 
@@ -204,25 +211,7 @@
 		</div>
 	</div>
 
-<div class="ui g-modal-confirm delete modal" id="delete-user-modal">
-	<div class="header">
-		{{svg "octicon-trash"}}
-		{{ctx.Locale.Tr "settings.delete_account_title"}}
-	</div>
-	<form class="ui form" method="post" action="./delete">
-		<div class="content">
-			<p>{{ctx.Locale.Tr "settings.delete_account_desc"}}</p>
-			<div class="field">
-				<div class="ui checkbox">
-					<label for="purge">{{ctx.Locale.Tr "admin.users.purge"}}</label>
-					<input name="purge" type="checkbox">
-				</div>
-				<p class="help">{{ctx.Locale.Tr "admin.users.purge_help"}}</p>
-			</div>
-		</div>
-		{{template "base/modal_actions_confirm" .}}
-	</form>
-</div>
+{{/* company/: the delete modal is gone with its button — see above. */}}
 
 {{/* company/ addition — everything above this line is upstream's file and is
      re-diffed on rebase (docs/company/patches.md). An administrator looking at
@@ -230,6 +219,25 @@
      in, on the page where they discovered they are in none, and what their
      work occupies. See company/admin_user.go. */}}
 {{if .CompanyUserStats}}
+	{{if .CompanyAccountSource}}
+		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.adminuser.source_header"}}</h4>
+		<div class="ui attached segment">
+			{{/* Stated before the department and storage panels because it
+			     qualifies them: what an administrator may do with this account
+			     depends on whether this platform owns it. */}}
+			{{if .CompanyAccountSource.External}}
+				<p>
+					<span class="ui label">{{.CompanyAccountSource.Label}}</span>
+					{{if .CompanyAccountSource.Name}}<span class="text-grey tw-ml-2">{{.CompanyAccountSource.Name}}</span>{{end}}
+				</p>
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminuser.source_external_note"}}</p>
+			{{else}}
+				<p><span class="ui label">{{ctx.Locale.Tr "company.adminuser.source_local"}}</span></p>
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminuser.source_local_note"}}</p>
+			{{end}}
+		</div>
+	{{end}}
+
 	<h4 class="ui top attached header">{{ctx.Locale.Tr "company.adminuser.header"}}</h4>
 	<div class="ui attached segment">
 		<div class="company-kpis">

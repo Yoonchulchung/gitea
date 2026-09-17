@@ -1,9 +1,27 @@
+<!--
+	Override of templates/base/head_navbar.tmpl. Only change: the
+	anonymous-visitor branch no longer shows "Explore" or "Help" — this is
+	the nav a non-technical user sees on the /user/login?redirect_to=/company
+	entry point, and neither concept is relevant to them.
+	Signed-in users (including admins) are otherwise untouched — see
+	docs/company/repo-ui.md for why admins keep full native access.
+	Added: a site-wide "Deploy Requests" link, right of the logo, for anyone
+	with exactly one department (company/gate.go sets the data value).
+	Keep this in sync with the upstream file; diff it on every Gitea
+	upgrade — see docs/company/architecture.md on custom/templates drift.
+-->
 <nav id="navbar" aria-label="{{ctx.Locale.Tr "aria.navbar"}}">
 	<div class="navbar-left">
 		<!-- the logo -->
 		<a class="item" id="navbar-logo" href="{{AppSubUrl}}/" aria-label="{{if .IsSigned}}{{ctx.Locale.Tr "dashboard"}}{{else}}{{ctx.Locale.Tr "home_title"}}{{end}}">
 			<img width="30" height="30" src="{{AssetUrlPrefix}}/img/logo.svg" alt="{{ctx.Locale.Tr "logo"}}" aria-hidden="true">
 		</a>
+		{{if .CompanyDeployRequestsLink}}
+		{{/* set by company/gate.go, GateNonAdminUI — see docs/company/architecture.md */}}
+		<a class="item" href="{{.CompanyDeployRequestsLink}}">
+			Deploy Requests
+		</a>
+		{{end}}
 
 		<!-- mobile right menu, it must be here because in mobile view, each item is a flex column, the first item is a full row column -->
 		<div class="ui secondary menu navbar-mobile-right only-mobile">
@@ -14,7 +32,9 @@
 		<!-- navbar links non-mobile -->
 		{{if and .IsSigned .MustChangePassword}}
 			{{/* No links */}}
-		{{else if .IsSigned}}
+		{{else if and .IsSigned .IsAdmin}}
+			{{/* non-admins: none of these — same reasoning as repo/header.tmpl and
+			     user/dashboard/navbar.tmpl, see docs/company/repo-ui.md */}}
 			{{if not ctx.Consts.RepoUnitTypeIssues.UnitGlobalDisabled}}
 				<a class="item{{if .PageIsIssues}} active{{end}}" href="{{AppSubUrl}}/issues">{{ctx.Locale.Tr "issues"}}</a>
 			{{end}}
@@ -27,21 +47,13 @@
 				{{end}}
 			{{end}}
 			<a class="item{{if .PageIsExplore}} active{{end}}" href="{{AppSubUrl}}/explore/repos">{{ctx.Locale.Tr "explore_title"}}</a>
-		{{else if .IsLandingPageOrganizations}}
-			<a class="item{{if .PageIsExplore}} active{{end}}" href="{{AppSubUrl}}/explore/organizations">{{ctx.Locale.Tr "explore_title"}}</a>
-		{{else}}
-			<a class="item{{if .PageIsExplore}} active{{end}}" href="{{AppSubUrl}}/explore/repos">{{ctx.Locale.Tr "explore_title"}}</a>
 		{{end}}
+		{{/* anonymous visitors: no Explore link, company/ui-gate.md decision */}}
+		{{/* signed-in non-admins: no Issues/Pulls/Milestones/Explore either, same decision */}}
 
 		{{template "custom/extra_links" .}}
 
-		{{if not .IsSigned}}
-			{{/* company/: Gitea's documentation answers questions nobody here is
-			     asking, so Help goes where an administrator pointed it
-			     (/-/admin/company-settings) or nowhere at all. See
-			     company/adminsettings.go and docs/company/patches.md. */}}
-			{{if .CompanyHelpURL}}<a class="item" target="_blank" rel="noopener noreferrer" href="{{.CompanyHelpURL}}">{{ctx.Locale.Tr "help"}}</a>{{end}}
-		{{end}}
+		{{/* anonymous visitors: no Help link, company/ui-gate.md decision */}}
 	</div>
 
 	<!-- the full dropdown menus -->
@@ -67,6 +79,7 @@
 			</div><!-- end dropdown avatar menu -->
 		{{else if .IsSigned}}
 			{{template "base/head_navbar_icons" dict "ItemExtraClass" "not-mobile" "PageGlobalData" .PageGlobalData}}
+			{{if .IsAdmin}}
 			<div class="ui dropdown jump item" data-tooltip-content="{{ctx.Locale.Tr "create_new"}}">
 				<span class="flex-text-block">
 					{{svg "octicon-plus"}}
@@ -89,6 +102,14 @@
 					{{end}}
 				</div><!-- end content create new menu -->
 			</div><!-- end dropdown menu create new -->
+			{{else if .CompanyNewRepoLink}}
+			{{/* non-admins: "+" goes straight to their department's repo-create
+			     page — no dropdown, since it was the only real option anyway.
+			     Set by company/gate.go — see docs/company/architecture.md. */}}
+			<a class="item" href="{{.CompanyNewRepoLink}}" data-tooltip-content="{{ctx.Locale.Tr "new_repo"}}">
+				{{svg "octicon-plus"}}
+			</a>
+			{{end}}
 
 			<div class="ui dropdown jump item" data-tooltip-content="{{ctx.Locale.Tr "user_profile_and_more"}}" data-signed-in-username="{{.SignedUser.Name}}">
 				<span class="flex-text-block">
@@ -105,6 +126,9 @@
 					</div>
 
 					<div class="divider"></div>
+					{{if .IsAdmin}}
+					{{/* profile/starred link to /{username}, which the gate blocks for
+					     non-admins (company/gate.go) — hidden here to match, no dead link */}}
 					<a class="item" href="{{.SignedUser.HomeLink}}">
 						{{svg "octicon-person"}}
 						{{ctx.Locale.Tr "your_profile"}}
@@ -115,14 +139,17 @@
 							{{ctx.Locale.Tr "your_starred"}}
 						</a>
 					{{end}}
-					<a class="item" href="{{AppSubUrl}}/notifications/subscriptions">
-						{{svg "octicon-bell"}}
-						{{ctx.Locale.Tr "notification.subscriptions"}}
-					</a>
+					{{end}}
+					{{/* "구독"/subscriptions removed — blocked by the gate (notifications
+					     inbox stays reachable via the separate bell icon, base/head_navbar_icons.tmpl) */}}
 					<a class="{{if .PageIsUserSettings}}active {{end}}item" href="{{AppSubUrl}}/user/settings">
 						{{svg "octicon-tools"}}
 						{{ctx.Locale.Tr "your_settings"}}
 					</a>
+					{{/* company/: Gitea's documentation answers questions nobody in a
+					     department is asking, so Help goes where an administrator
+					     pointed it (/-/admin/company-settings) or nowhere at all.
+					     See company/adminsettings.go. */}}
 					{{if .CompanyHelpURL}}
 					<a class="item" target="_blank" rel="noopener noreferrer" href="{{.CompanyHelpURL}}">
 						{{svg "octicon-question"}}

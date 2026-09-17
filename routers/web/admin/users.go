@@ -475,6 +475,12 @@ func ImpersonateUser(ctx *context.Context) {
 
 // DeleteUser response for deleting a user
 func DeleteUser(ctx *context.Context) {
+	// Accounts belong to the directory here, so deleting one leaves a broken
+	// half-state rather than removing anybody — deactivation is what ends
+	// access. docs/company/patches.md
+	if company.RefuseAccountDeletion(ctx); ctx.Written() {
+		return
+	}
 	u, err := user_model.GetUserByID(ctx, ctx.PathParamInt64("userid"))
 	if err != nil {
 		ctx.ServerError("GetUserByID", err)

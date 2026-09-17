@@ -70,6 +70,14 @@
 		{{end}}
 
 		<form class="ui form company-deploy-form" id="deploy-form" method="post">
+			{{/* Two columns: what is being deployed on the left, what is being
+			     asked for on the right. They are separate questions — one is a
+			     description, the other a set of approvals — and stacked they
+			     read as one long form where the request at the bottom is the
+			     part people scroll past. Collapses to one column on a narrow
+			     screen (.company-deploy-cols). */}}
+			<div class="company-deploy-cols">
+			<div class="company-deploy-col">
 			<div class="company-deploy-section-lbl">{{ctx.Locale.Tr .DeployFormHeadingKey}}</div>
 			<div class="field">
 				<label>{{ctx.Locale.Tr "company.deploy.title_field_label"}}</label>
@@ -111,6 +119,9 @@
 				</div>
 			{{end}}
 
+			</div>{{/* .company-deploy-col — left */}}
+
+			<div class="company-deploy-col">
 			<div class="company-perm-request">
 				{{with .PermissionRequests}}
 					<div class="company-deploy-section-lbl">{{ctx.Locale.Tr "company.deploy.approvals_needed"}}</div>
@@ -176,6 +187,8 @@
 					<input type="text" name="perm_reason" value="{{$.SubmittedReason}}" placeholder="{{ctx.Locale.Tr "company.deploy.reason_placeholder"}}" autocomplete="off">
 				</div>
 			</div>
+			</div>{{/* .company-deploy-col — right */}}
+			</div>{{/* .company-deploy-cols */}}
 			{{/* The label is wrapped so the loading state can hide it: .is-loading
 			     dims child *elements*, and a bare text node would stay visible
 			     behind the spinner. */}}
@@ -323,6 +336,12 @@
 <style>
 .company-deploy-wrap { padding-top: 16px; padding-bottom: 64px; }
 .company-deploy-back { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 14px; }
+/* Two columns on a wide screen, one on a narrow one. minmax(0,1fr) rather
+   than 1fr: a grid track defaults to min-content, so one long unbroken string
+   in a field would widen its column and squeeze the other to nothing. */
+.company-deploy-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.company-deploy-col { min-width: 0; }
+@media (max-width: 900px) { .company-deploy-cols { grid-template-columns: minmax(0, 1fr); gap: 0; } }
 .company-deploy-title { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
 .company-deploy-title h1 { margin: 0; font-size: 22px; display: flex; align-items: center; }
 .company-deploy-subline { display: flex; align-items: center; gap: 6px; color: var(--color-text-light-2); font-size: 13px; margin-top: 8px; }

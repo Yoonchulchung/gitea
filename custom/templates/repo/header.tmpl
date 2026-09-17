@@ -147,7 +147,9 @@
 		{{if .IsGenerated}}<div class="secondary-info">{{ctx.Locale.Tr "repo.generated_from"}} <a href="{{(.TemplateRepo ctx).Link}}">{{(.TemplateRepo ctx).FullName}}</a></div>{{end}}
 	</div>
 	{{end}}
-	{{if .IsSigned}}{{template "repo/watch_options_modal"}}{{end}}
+	{{/* The watch-options modal belongs to a control non-admins do not have;
+	     rendering it for them ships markup for a button that is not there. */}}
+	{{if and .IsSigned .IsAdmin}}{{template "repo/watch_options_modal"}}{{end}}
 
 	{{if .IsAdmin}}
 	{{/* non-admins only ever have the Code tab left — a one-item tab bar is

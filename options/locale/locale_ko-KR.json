@@ -4711,5 +4711,12 @@
   "company.err.data_full.admin": "앱 데이터가 한도 %d MB 중 %d MB 를 쓰고 있습니다. 이 앱의 limits.dataMB 나 [company] APP_DATA_QUOTA_MB 를 올리거나 공간을 확보하세요.",
   "company.err.data_dir": "앱의 데이터 저장소를 열지 못해 시작하지 못했습니다. 관리자에게 알려 주세요.",
   "company.err.data_dir.admin": "앱 데이터 디렉터리를 확인하지 못했습니다: %s",
-  "company.settings_ai.unavailable": "이 인스턴스는 아직 AI 를 사용할 수 없습니다. 관리자가 활성화해야 여기 설정이 적용됩니다."
+  "company.settings_ai.unavailable": "이 인스턴스는 아직 AI 를 사용할 수 없습니다. 관리자가 활성화해야 여기 설정이 적용됩니다.",
+  "company.adminuser.no_delete": "계정은 디렉터리에서 오며 여기서 삭제하지 않습니다 — 위의 \"활성\"을 끄면 이 플랫폼 접근이 끝나고, 되돌릴 수 있으며, 그 사람이 한 일은 그대로 남습니다.",
+  "company.adminuser.delete_refused": "이 플랫폼은 계정 삭제가 꺼져 있습니다. 대신 계정을 비활성화하세요.",
+  "company.adminuser.col_source": "계정 출처",
+  "company.adminuser.source_header": "이 계정의 출처",
+  "company.adminuser.source_local": "로컬",
+  "company.adminuser.source_external_note": "이 계정은 디렉터리가 소유합니다. 비밀번호와 계정의 존재 자체가 거기서 관리되며 여기서가 아닙니다 — 위의 \"활성\"을 끄면 상위 기록을 건드리지 않고 이 플랫폼 접근만 끝납니다.",
+  "company.adminuser.source_local_note": "이 계정은 이 플랫폼이 소유합니다. 디렉터리에서 온 것이 아니라 여기서 만들어졌습니다. 디렉터리를 붙인 인스턴스에서는 한 번 살펴볼 만합니다 — 보통 서비스 계정이거나, 디렉터리 연결 전에 만든 계정입니다."
 }

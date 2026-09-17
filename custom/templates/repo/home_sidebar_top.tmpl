@@ -91,17 +91,25 @@
 			{{svg "octicon-database"}} <b>{{ctx.Locale.PrettyNumber (index $fileSizeFields 0)}}</b> {{index $fileSizeFields 1}}
 		</div>
 
-		{{if not .DisableStars}}
-			<a class="flex-text-block muted" href="{{.RepoLink}}/stars">
-				{{svg "octicon-star"}} <b>{{CountFmt .Repository.NumStars}}</b> {{ctx.Locale.Tr "repo.stars"}}
+		{{/* Stars, watchers and forks are links into /stars, /watchers and
+		     /forks, all of which the gate refuses for non-admins
+		     (company/gate.go) — and starring, watching and forking are not
+		     concepts this platform asks a department to have. Shown to admins,
+		     who keep full native access, so nobody else is offered a count
+		     that leads to a refusal. */}}
+		{{if .IsAdmin}}
+			{{if not .DisableStars}}
+				<a class="flex-text-block muted" href="{{.RepoLink}}/stars">
+					{{svg "octicon-star"}} <b>{{CountFmt .Repository.NumStars}}</b> {{ctx.Locale.Tr "repo.stars"}}
+				</a>
+			{{end}}
+			<a class="flex-text-block muted" href="{{.RepoLink}}/watchers">
+				{{svg "octicon-eye"}} <b>{{CountFmt .Repository.NumWatches}}</b> {{ctx.Locale.Tr "repo.watchers"}}
+			</a>
+			<a class="flex-text-block muted" href="{{.RepoLink}}/forks">
+				{{svg "octicon-repo-forked"}} <b>{{CountFmt .Repository.NumForks}}</b> {{ctx.Locale.Tr "repo.forks"}}
 			</a>
 		{{end}}
-		<a class="flex-text-block muted" href="{{.RepoLink}}/watchers">
-			{{svg "octicon-eye"}} <b>{{CountFmt .Repository.NumWatches}}</b> {{ctx.Locale.Tr "repo.watchers"}}
-		</a>
-		<a class="flex-text-block muted" href="{{.RepoLink}}/forks">
-			{{svg "octicon-repo-forked"}} <b>{{CountFmt .Repository.NumForks}}</b> {{ctx.Locale.Tr "repo.forks"}}
-		</a>
 	</div>
 </div>
 {{else}}

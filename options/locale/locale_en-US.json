@@ -4741,5 +4741,12 @@
   "company.err.deps_unapproved": "These packages are needed as dependencies but are not approved yet: %s",
   "company.cause.check_requirements": "Check the package names and versions in requirements.txt.",
   "company.cause.fix_and_redeploy": "Fix requirements.txt, then deploy again.",
-  "company.settings_ai.unavailable": "AI is not available on this instance yet. Your administrator has to switch it on before anything here takes effect."
+  "company.settings_ai.unavailable": "AI is not available on this instance yet. Your administrator has to switch it on before anything here takes effect.",
+  "company.adminuser.no_delete": "Accounts come from the directory and are not deleted here — deactivating one above ends its access to this platform, reversibly, and keeps what the person did attributable.",
+  "company.adminuser.delete_refused": "Account deletion is switched off on this platform. Deactivate the account instead.",
+  "company.adminuser.col_source": "Account from",
+  "company.adminuser.source_header": "Where this account comes from",
+  "company.adminuser.source_local": "local",
+  "company.adminuser.source_external_note": "The directory owns this account. Its password and its existence are managed there, not here — deactivating it above ends its access to this platform without touching the record upstream.",
+  "company.adminuser.source_local_note": "This platform owns this account: it was created here rather than provisioned from the directory. On a directory-backed instance that is worth a second look — it is usually a service account, or one made before the directory was connected."
 }

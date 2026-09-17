@@ -4,6 +4,7 @@
 package company
 
 import (
+	auth_model "gitea.dev/models/auth"
 	"gitea.dev/models/db"
 	org_model "gitea.dev/models/organization"
 	repo_model "gitea.dev/models/repo"
@@ -51,6 +52,12 @@ func AdminUserPanel(ctx *gitea_context.Context) {
 		}
 	}
 
+	// Where this account came from. On a directory-backed instance the answer
+	// changes what an administrator may do with it: a local account is one
+	// this platform owns and can reset, an LDAP one is a mirror of a record
+	// that lives somewhere else, and treating the second like the first is
+	// how somebody ends up "fixed" here and unchanged where it counts.
+	ctx.Data["CompanyAccountSource"] = accountSource(ctx, u)
 	ctx.Data["CompanyDepartments"] = departments
 	ctx.Data["CompanyOwnedDepartments"] = owned
 	ctx.Data["CompanyAllDepartments"] = allDepartments(ctx)
@@ -186,4 +193,27 @@ func assignToDepartment(ctx *gitea_context.Context, org *org_model.Organization,
 		return err
 	}
 	return org_service.AddTeamMember(ctx, team, u)
+}
+
+// AccountSource says where an account's credentials actually live.
+type AccountSource struct {
+	// External is true when the directory owns this account. It is the field
+	// every decision keys on; Label is only for reading.
+	External bool
+	Label    string // "LDAP (via BindDN)", "OAuth2", "로컬" …
+	Name     string // the configured source's own name, when there is one
+}
+
+// accountSource resolves it. A user whose login source has since been
+// deleted still reports as external — the account was provisioned, and that
+// does not stop being true because the source row went away.
+func accountSource(ctx *gitea_context.Context, u *user_model.User) AccountSource {
+	if u.LoginType <= auth_model.Plain {
+		return AccountSource{Label: "local"}
+	}
+	src := AccountSource{External: true, Label: u.LoginType.String()}
+	if source, err := auth_model.GetSourceByID(ctx, u.LoginSource); err == nil {
+		src.Name = source.Name
+	}
+	return src
 }

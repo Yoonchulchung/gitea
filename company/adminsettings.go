@@ -209,3 +209,32 @@ func invalidatePlatformSettings() {
 	platformSettingsLoaded = false
 	platformSettingsMu.Unlock()
 }
+
+// AccountDeletionAllowed reports whether an administrator may delete a user
+// account from this platform.
+//
+// Off unless an operator says otherwise, and the reason is not squeamishness.
+// Accounts come from the directory: deleting one here removes the Gitea-side
+// record while the person still exists upstream, so the next login recreates
+// them — emptied of their org membership, their history detached from the
+// repositories that still carry their commits. The button promises to remove
+// somebody and delivers a broken half-state instead.
+//
+// What actually ends access to this platform is deactivation, which is
+// reversible, survives the next directory sync, and leaves everything they
+// did still attributable to a name.
+func AccountDeletionAllowed() bool { return companySetting("ALLOW_ACCOUNT_DELETION") == "true" }
+
+// RefuseAccountDeletion blocks the delete route.
+//
+// The button is gone from the page, but a route left reachable is a route:
+// this is the half that holds when somebody types the URL, replays a form, or
+// reaches it from a screen the fork has not overridden.
+func RefuseAccountDeletion(ctx *gitea_context.Context) {
+	if AccountDeletionAllowed() {
+		return
+	}
+	log.Warn("company: %s tried to delete a user account; deletion is switched off ([company] ALLOW_ACCOUNT_DELETION). Deactivate instead.", ctx.Doer.Name)
+	ctx.Flash.Error(ctx.Locale.TrString("company.adminuser.delete_refused"))
+	ctx.Redirect(setting.AppSubURL + "/-/admin/users/" + ctx.PathParam("userid"))
+}

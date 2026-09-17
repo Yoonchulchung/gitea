@@ -43,3 +43,13 @@ func TestSafeLinkURLAcceptsWebLinks(t *testing.T) {
 	assert.True(t, ok)
 	assert.Empty(t, got)
 }
+
+// Accounts come from the directory: deleting one here removes the Gitea-side
+// record while the person still exists upstream, so the next login recreates
+// them emptied of their membership. Off unless an operator says otherwise.
+func TestAccountDeletionIsOffUnlessExplicitlyOn(t *testing.T) {
+	for raw, want := range map[string]bool{"": false, "false": false, "yes": false, "1": false, "true": true} {
+		withCompanyINI(t, "ALLOW_ACCOUNT_DELETION = "+raw)
+		assert.Equal(t, want, AccountDeletionAllowed(), "ALLOW_ACCOUNT_DELETION=%q", raw)
+	}
+}
