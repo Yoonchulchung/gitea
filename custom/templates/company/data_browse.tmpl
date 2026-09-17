@@ -1,0 +1,100 @@
+{{/* Shared by the admin data console and a department's own app page. The
+     connection behind it is opened read-only (company/appdatatool.go), which
+     is why it is offered while the app is still serving requests and the SQL
+     console is not — and why the same markup is safe for both audiences. */}}
+{{if .Browse}}
+	<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.browse_header"}}</h4>
+	<div class="ui attached segment">
+		<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.data.browse_explain"}}</p>
+
+		{{if .Browse.Tables}}
+			<div class="company-db">
+				{{/* The table list stays on screen while a table is open: which
+				     tables exist is the context for reading any one of them, and
+				     a list that disappears on the first click means going back to
+				     it for every question. */}}
+				<div class="company-db-tables">
+					<div class="company-db-tables-head">
+						{{ctx.Locale.Tr "company.data.browse_tables"}}
+						<span class="company-db-count">{{len .Browse.Tables}}</span>
+					</div>
+					{{range .Browse.Tables}}
+						<a class="company-db-table{{if eq $.BrowseTable .Name}} active{{end}}" href="{{$.DataLink}}?table={{.Name}}">
+							{{svg "octicon-table" 14}}
+							<span class="company-db-table-name">{{.Name}}</span>
+							{{if ge .Rows 0}}<span class="company-db-count">{{ctx.Locale.Tr "company.data.browse_rows" .Rows}}</span>{{end}}
+						</a>
+					{{end}}
+				</div>
+
+				<div class="company-db-main">
+					<form method="get" class="ui form tw-flex tw-gap-2 tw-items-end tw-mb-3">
+						<div class="field tw-flex-1 tw-mb-0">
+							<input type="search" name="sql" value="{{.BrowseSQL}}" placeholder="SELECT * FROM records WHERE ...">
+						</div>
+						<button class="ui small button">{{ctx.Locale.Tr "company.data.browse_run"}}</button>
+					</form>
+
+					{{if .BrowseError}}<div class="ui negative message">{{.BrowseError}}</div>{{end}}
+
+					{{if .Browse.Schema}}
+						{{/* A column name says what something is called, never what it
+						     holds: "status" is 0/1 in one app and "open"/"closed" in
+						     the next, and the types and defaults are the difference. */}}
+						<details class="company-db-schema">
+							<summary>{{ctx.Locale.Tr "company.data.browse_schema"}}</summary>
+							<table class="ui very basic compact table tw-mt-2">
+								<thead><tr>
+									<th>{{ctx.Locale.Tr "company.data.schema_column"}}</th>
+									<th>{{ctx.Locale.Tr "company.data.schema_type"}}</th>
+									<th>{{ctx.Locale.Tr "company.data.schema_rules"}}</th>
+								</tr></thead>
+								<tbody>
+									{{range .Browse.Schema}}
+										<tr>
+											<td>{{.Name}}</td>
+											<td class="text-grey">{{.Type}}</td>
+											<td class="text-grey tw-text-12">
+												{{if .PK}}<span class="company-db-flag">{{ctx.Locale.Tr "company.data.schema_pk"}}</span>{{end}}
+												{{if .NotNull}}<span class="company-db-flag">{{ctx.Locale.Tr "company.data.schema_notnull"}}</span>{{end}}
+												{{if .Default}}<span class="company-db-flag">{{ctx.Locale.Tr "company.data.schema_default" .Default}}</span>{{end}}
+											</td>
+										</tr>
+									{{end}}
+								</tbody>
+							</table>
+							{{if .Browse.CreateSQL}}<pre class="company-db-sql">{{.Browse.CreateSQL}}</pre>{{end}}
+							{{range .Browse.Indexes}}{{if .SQL}}<pre class="company-db-sql">{{.SQL}}</pre>{{end}}{{end}}
+						</details>
+					{{end}}
+
+					{{if .Browse.Columns}}
+						{{/* Values are whatever the app stored, so they are printed as
+						     text and nothing here is marked safe. */}}
+						<div class="company-db-rows">
+							<table class="ui very basic compact table">
+								<thead><tr>{{range .Browse.Columns}}<th>{{.}}</th>{{end}}</tr></thead>
+								<tbody>
+									{{range .Browse.Rows}}<tr>{{range .}}<td class="tw-text-12">{{.}}</td>{{end}}</tr>{{end}}
+								</tbody>
+							</table>
+						</div>
+						<div class="tw-flex tw-gap-2 tw-items-center tw-mt-2">
+							{{if .Browse.Offset}}
+								<a class="ui tiny basic button" href="{{.DataLink}}?table={{.BrowseTable}}&sql={{.BrowseSQL}}&offset={{Eval .Browse.Offset "-" .BrowsePageSize}}">{{ctx.Locale.Tr "company.data.browse_prev"}}</a>
+							{{end}}
+							{{if .Browse.More}}
+								<a class="ui tiny basic button" href="{{.DataLink}}?table={{.BrowseTable}}&sql={{.BrowseSQL}}&offset={{Eval .Browse.Offset "+" .BrowsePageSize}}">{{ctx.Locale.Tr "company.data.browse_next"}}</a>
+							{{end}}
+							<span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.data.browse_range" (Eval .Browse.Offset "+" 1) (Eval .Browse.Offset "+" (len .Browse.Rows))}}</span>
+						</div>
+					{{else if not .BrowseError}}
+						<p class="text-grey">{{ctx.Locale.Tr "company.data.browse_pick"}}</p>
+					{{end}}
+				</div>
+			</div>
+		{{else}}
+			<p class="text-grey">{{ctx.Locale.Tr "company.data.browse_no_tables"}}</p>
+		{{end}}
+	</div>
+{{end}}

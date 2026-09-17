@@ -59,6 +59,23 @@ func AdminAppData(ctx *context.Context) {
 		ctx.Data["DataUsage"] = usage
 	}
 	ctx.Data["Archives"] = ListAppDataArchives()
+
+	// Looking at the data is the first thing an administrator opening this
+	// page wants, and unlike everything else here it changes nothing, so it
+	// runs on the plain GET rather than behind a button.
+	if hasData {
+		table, statement := ctx.FormString("table"), ctx.FormString("sql")
+		browse, err := BrowseAppData(ctx, st.Owner, st.Repo, table, statement, ctx.FormInt("offset"))
+		if browse != nil {
+			ctx.Data["Browse"] = browse
+		}
+		if err != nil {
+			ctx.Data["BrowseError"] = AdminErrorL(ctx.Locale, err)
+		}
+		ctx.Data["BrowseTable"] = table
+		ctx.Data["BrowseSQL"] = statement
+		ctx.Data["BrowsePageSize"] = browsePageSize
+	}
 	ctx.HTML(http.StatusOK, tplAdminAppData)
 }
 

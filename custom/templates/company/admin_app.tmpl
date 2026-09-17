@@ -17,7 +17,10 @@
 				<a class="ui tiny basic button" href="{{.AdminAppLink}}/logs">{{svg "octicon-log" 14}} {{ctx.Locale.Tr "company.logs.title"}}</a>
 				{{if .AppRepo}}<a class="ui tiny basic button" href="{{.AppRepo.Link}}">{{svg "octicon-repo" 14}} {{ctx.Locale.Tr "company.adminapp.repo"}}</a>{{end}}
 				<a class="ui tiny basic button" href="{{.AdminAppLink}}/history">{{svg "octicon-history" 14}} {{ctx.Locale.Tr "company.history.title"}}</a>
-				{{if .DataUsage}}<a class="ui tiny basic button" href="{{.AdminAppLink}}/data">{{svg "octicon-database" 14}} {{ctx.Locale.Tr "company.data.title"}}</a>{{end}}
+				{{/* Not conditional on there being data: a missing button and a
+				     switched-off feature look identical from here, and the page
+				     itself is what explains which one it is. */}}
+				<a class="ui tiny basic button" href="{{.AdminAppLink}}/data">{{svg "octicon-database" 14}} {{ctx.Locale.Tr "company.data.title"}}</a>
 				<div class="tw-flex-1"></div>
 				{{if eq .App.Actual "running"}}
 					<form method="post" action="{{.AdminAppLink}}/restart">{{.CsrfTokenHtml}}<button class="ui tiny button">{{ctx.Locale.Tr "company.app.restart"}}</button></form>

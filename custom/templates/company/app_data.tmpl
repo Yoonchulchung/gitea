@@ -1,0 +1,44 @@
+{{template "base/head" .}}
+<div role="main" class="page-content repository company-app-page">
+	{{template "repo/header" .}}
+	<div class="ui container">
+		<h4 class="ui top attached header">
+			<a href="{{.AppLink}}">{{.App.Owner}}/{{.App.Repo}}</a>
+			<span class="text-grey tw-mx-2">/</span>{{ctx.Locale.Tr "company.data.title"}}
+		</h4>
+
+		{{if not .DataEnabled}}
+			<div class="ui attached segment">
+				<p>{{ctx.Locale.Tr "company.data.disabled_user"}}</p>
+			</div>
+		{{else if not .HasData}}
+			<div class="ui attached segment">
+				<p>{{ctx.Locale.Tr "company.data.none_yet"}}</p>
+			</div>
+		{{else}}
+			<div class="ui attached segment">
+				{{/* What is stored and how much room is left. A department can act
+				     on the second one — by storing less — which is why the number
+				     is theirs to see and not only the administrator's. */}}
+				{{if .DataUsage}}
+					<div class="company-kpis">
+						<div class="company-kpi{{if .DataUsage.Full}} bad{{end}}">
+							<b>{{FormatByteSize .DataUsage.Bytes}}<small>/{{FormatByteSize .DataUsage.QuotaBytes}}</small></b>
+							<span>{{ctx.Locale.Tr "company.adminapp.kpi_data"}}</span>
+						</div>
+					</div>
+				{{end}}
+				{{/* Said plainly rather than left to be discovered by a button that
+				     is not there: changing or restoring data is an administrator's
+				     to do, and who to ask is the useful half of that sentence. */}}
+				<p class="text-grey tw-text-13 tw-mb-0">
+					{{ctx.Locale.Tr "company.data.read_only_note"}}
+					{{if .CompanySupportEmail}}<a href="mailto:{{.CompanySupportEmail}}">{{.CompanySupportEmail}}</a>{{end}}
+				</p>
+			</div>
+
+			{{template "company/data_browse" .}}
+		{{end}}
+	</div>
+</div>
+{{template "base/footer" .}}

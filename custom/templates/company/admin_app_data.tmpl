@@ -72,6 +72,8 @@
 				{{end}}
 			</div>
 
+			{{template "company/data_browse" .}}
+
 			{{if .SQLConsole}}
 				<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.sql_header"}}</h4>
 				<div class="ui attached segment">

@@ -571,7 +571,7 @@ func DataStatus() (available bool, detail string) {
 }
 
 const (
-	appDataQuotaMBDefault     = 512
+	appDataQuotaMBDefault     = 128
 	maxDataQuotaMB            = 1 << 22 // 4 TB; past here the byte count overflows
 	appDataWarnPctDefault     = 80
 	appDataHostFloorMBDefault = 1024

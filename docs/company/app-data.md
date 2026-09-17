@@ -438,7 +438,7 @@ Gitea 자신의 프로세스에서 파싱하면, 샌드박스로 막아 둔 신�
 | 키 | 기본 | 뜻 |
 |---|---|---|
 | `APP_DATA_ENABLED` | `false` | 기능 전체 스위치 |
-| `APP_DATA_QUOTA_MB` | `512` | 앱당 상한 |
+| `APP_DATA_QUOTA_MB` | `128` | 앱당 상한 |
 | `APP_DATA_WARN_PCT` | `80` | 경고 시작 비율 |
 | `APP_DATA_HOST_FLOOR_MB` | `1024` | 볼륨 여유 하한 — 밑돌면 앱 정지 |
 | `APP_DATA_RETENTION_DAYS` | `90` | 삭제·고아 데이터, 스냅샷 보관 기간 |

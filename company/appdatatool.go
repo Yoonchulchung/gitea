@@ -89,6 +89,38 @@ type dataToolResult struct {
 	// Files maps a table name to the CSV holding it. The two differ whenever
 	// a table name cannot be a filename, which an app can arrange.
 	Files map[string]string `json:"files"`
+
+	// Browse mode. Cells rather than "rows", which the export mode already
+	// uses for its table-to-count map.
+	Tables    []BrowseTable  `json:"tables"`
+	Columns   []string       `json:"columns"`
+	Cells     [][]string     `json:"cells"`
+	More      bool           `json:"more"`
+	Schema    []BrowseColumn `json:"schema"`
+	CreateSQL string         `json:"createSQL"`
+	Indexes   []BrowseIndex  `json:"indexes"`
+}
+
+// BrowseColumn is one column as PRAGMA table_info describes it.
+type BrowseColumn struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	NotNull bool   `json:"notnull"`
+	Default string `json:"default"`
+	PK      bool   `json:"pk"`
+}
+
+// BrowseIndex is one index on the table being looked at.
+type BrowseIndex struct {
+	Name string `json:"name"`
+	SQL  string `json:"sql"`
+}
+
+// BrowseTable is one table as the data console lists it. Rows is -1 when it
+// could not be counted — a view, or a table the app has broken.
+type BrowseTable struct {
+	Name string `json:"name"`
+	Rows int    `json:"rows"`
 }
 
 // runDataTool executes one helper mode inside the app's sandbox.
@@ -300,6 +332,60 @@ func RunAdminSQL(ctx context.Context, owner, repo, statement, actor string) (*Ad
 	return &AdminSQLResult{Changed: result.Changed, Snapshot: snapshot}, nil
 }
 
+// BrowseResult is one page of a table, plus what tables exist.
+type BrowseResult struct {
+	Tables    []BrowseTable
+	Table     string
+	Columns   []string
+	Rows      [][]string
+	Offset    int
+	More      bool
+	Schema    []BrowseColumn
+	CreateSQL string
+	Indexes   []BrowseIndex
+}
+
+// BrowseAppData reads an app's database without changing it.
+//
+// Separate from RunAdminSQL, and not behind APP_DATA_SQL_CONSOLE, because
+// they are different acts. That console edits data: it needs the app stopped,
+// it takes a snapshot first, and it is switched off by default. Looking is
+// none of those things — the connection is opened read-only so the engine
+// refuses a write whatever the statement says, which means it is safe while
+// the app is serving requests, and an administrator answering "what does this
+// app actually have in it" should not have to stop it to find out.
+func BrowseAppData(ctx context.Context, owner, repo, table, statement string, offset int) (*BrowseResult, error) {
+	payload := map[string]any{"mode": "browse", "limit": browsePageSize, "offset": offset}
+	if statement = strings.TrimSpace(statement); statement != "" {
+		payload["sql"] = statement
+	} else if table != "" {
+		payload["table"] = table
+	}
+	result, err := runDataTool(ctx, owner, repo, payload)
+	if err != nil {
+		// The table listing still comes back on a failed query, so the page
+		// can show what is there alongside the error.
+		if result != nil {
+			// "no such column: naem" is the reader's own typo and the only
+			// useful thing to say back, whichever audience is reading — so it
+			// is shown rather than replaced by the generic sentence. Redacted
+			// anyway: an error raised while opening the file names its path.
+			return &BrowseResult{Tables: result.Tables, Table: table, Offset: offset},
+				userErrorf("%s", RedactServerPaths(result.Error))
+		}
+		return nil, err
+	}
+	return &BrowseResult{
+		Tables: result.Tables, Table: table, Columns: result.Columns,
+		Rows: result.Cells, Offset: offset, More: result.More,
+		Schema: result.Schema, CreateSQL: result.CreateSQL, Indexes: result.Indexes,
+	}, nil
+}
+
+// browsePageSize is one screenful. Small on purpose: this is for looking at
+// data, and anyone who needs all of it wants the export instead.
+const browsePageSize = 50
+
 // WriteExportBundle streams a zip of everything needed to take this app's
 // data elsewhere.
 //
@@ -415,7 +501,7 @@ func addBytesToZip(zw *zip.Writer, name string, body []byte) error {
 // The helper. Runs in the app's sandbox with the app's interpreter, because
 // what it parses was written by the app.
 const dataToolScript = `
-import csv, json, os, re, sqlite3, sys
+import csv, json, os, re, sqlite3, sys, urllib.parse
 
 def csv_name(name, used):
     # The table name comes from sqlite_master, so it comes from whatever the
@@ -428,6 +514,17 @@ def csv_name(name, used):
         candidate, n = "%s_%d" % (base, n), n + 1
     used.add(candidate)
     return candidate
+
+def cell(v):
+    # Rendered as text, never as the value's own repr: a BLOB is usually an
+    # image or a hash and printing it fills the page with bytes, and a long
+    # text column would push every other column off the screen.
+    if v is None:
+        return ""
+    if isinstance(v, (bytes, bytearray, memoryview)):
+        return "<%d bytes>" % len(bytes(v))
+    s = v if isinstance(v, str) else str(v)
+    return s[:200] + "\u2026" if len(s) > 200 else s
 
 def objects(conn):
     return ["%s %s" % (t, n) for t, n in conn.execute(
@@ -443,7 +540,19 @@ def run(out):
     if not os.path.exists(db):
         out["error"] = "this app has no database yet"
         return
-    conn = sqlite3.connect(db, timeout=30, isolation_level=None)
+    if mode == "browse":
+        # Read-only enforced by the engine, not by inspecting the statement:
+        # deciding whether some SQL writes is a parser's job, and getting it
+        # wrong here means an admin browsing data silently changed it. The
+        # fallback covers a database left with an uncheckpointed WAL, which a
+        # mode=ro connection cannot always open.
+        try:
+            conn = sqlite3.connect("file:%s?mode=ro" % urllib.parse.quote(db), uri=True, timeout=30)
+        except sqlite3.Error:
+            conn = sqlite3.connect(db, timeout=30)
+            conn.execute("PRAGMA query_only=1")
+    else:
+        conn = sqlite3.connect(db, timeout=30, isolation_level=None)
     conn.execute("PRAGMA busy_timeout=30000")
 
     if mode == "snapshot":
@@ -462,6 +571,79 @@ def run(out):
             return
         os.replace(tmp, path)
         out["snapshot"], out["integrity"] = path, verdict
+        out["ok"] = True
+        return
+
+    if mode == "browse":
+        # Read-only stops writes, not reads of other files: ATTACH would open
+        # any database the process can reach and SELECT out of it, which on a
+        # department's own page is an arbitrary file read. PRAGMA goes with it
+        # because pragma_database_list answers with the server's paths and
+        # browsing never needs one. Installed here rather than at connect
+        # time, which is still setting this connection's own pragmas.
+        ATTACH = getattr(sqlite3, "SQLITE_ATTACH", 24)
+        DETACH = getattr(sqlite3, "SQLITE_DETACH", 25)
+        PRAGMA = getattr(sqlite3, "SQLITE_PRAGMA", 19)
+        # Named rather than "every pragma": the schema view needs table_info
+        # and index_list, while database_list answers with the server's paths
+        # and temp_store_directory writes one.
+        readable = {"table_info", "table_xinfo", "index_list", "index_info", "foreign_key_list"}
+
+        def guard(action, arg1, arg2, dbname, source):
+            if action == PRAGMA:
+                return 0 if (arg1 or "").lower() in readable else 1
+            return 1 if action in (ATTACH, DETACH) else 0  # 1 = SQLITE_DENY
+
+        conn.set_authorizer(guard)
+
+        # The table list is always returned, so the page can show what is
+        # there even when the asked-for table has since been dropped.
+        listing = []
+        for name in tables(conn):
+            try:
+                n = conn.execute('SELECT COUNT(*) FROM "%s"' % name.replace('"', '""')).fetchone()[0]
+            except sqlite3.Error:
+                n = -1  # a view or a table the app broke; still worth listing
+            listing.append({"name": name, "rows": n})
+        out["tables"] = listing
+
+        limit = max(1, min(int(payload.get("limit") or 50), 200))
+        offset = max(0, int(payload.get("offset") or 0))
+        sql, table = payload.get("sql"), payload.get("table")
+        if sql:
+            cur = conn.execute(sql)
+        elif table:
+            if table not in [t["name"] for t in listing]:
+                out["error"] = "no such table"
+                return
+            cur = conn.execute('SELECT * FROM "%s" LIMIT ? OFFSET ?' % table.replace('"', '""'), (limit, offset))
+        else:
+            out["ok"] = True   # nothing asked for: the listing is the answer
+            return
+        out["columns"] = [d[0] for d in (cur.description or [])]
+        out["cells"] = [[cell(v) for v in row] for row in cur.fetchmany(limit)]
+        out["more"] = len(cur.fetchmany(1)) > 0
+
+        # The shape of the table, alongside its contents. Reading a column
+        # called "status" tells you nothing about whether it holds 0/1 or
+        # "open"/"closed", and the CREATE statement is where the defaults, the
+        # types and the constraints actually are.
+        if table:
+            quoted = table.replace('"', '""')
+            out["schema"] = [
+                {"name": r[1], "type": r[2] or "", "notnull": bool(r[3]),
+                 "default": "" if r[4] is None else str(r[4]), "pk": bool(r[5])}
+                for r in conn.execute('PRAGMA table_info("%s")' % quoted)
+            ]
+            row = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE name = ?", (table,)).fetchone()
+            out["createSQL"] = (row[0] or "") if row else ""
+            out["indexes"] = [
+                {"name": r[0], "sql": r[1] or ""}
+                for r in conn.execute(
+                    "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name = ?"
+                    " AND name NOT LIKE 'sqlite_%' ORDER BY name", (table,))
+            ]
         out["ok"] = True
         return
 

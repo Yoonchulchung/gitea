@@ -333,4 +333,83 @@
 .company-log-warn { color: var(--color-orange); }
 .company-log-error,
 .company-log-fatal { color: var(--color-red); }
+
+/* Data browser. Two columns because the table list is the context for
+   reading any one table, and it collapses to one on a narrow screen. */
+.company-db {
+	display: grid;
+	grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+	gap: 16px;
+	align-items: start;
+}
+@media (max-width: 800px) {
+	.company-db { grid-template-columns: minmax(0, 1fr); }
+	.company-db-tables { max-height: 220px; }
+}
+.company-db-tables {
+	border: 1px solid var(--color-secondary);
+	border-radius: 6px;
+	max-height: 60vh;
+	overflow: auto;
+}
+.company-db-tables-head {
+	display: flex;
+	justify-content: space-between;
+	padding: 8px 10px;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--color-text-light-2);
+	border-bottom: 1px solid var(--color-secondary);
+	position: sticky;
+	top: 0;
+	background: var(--color-box-header);
+}
+.company-db-table {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	font-size: 13px;
+	color: var(--color-text);
+}
+.company-db-table:hover { background: var(--color-hover); }
+.company-db-table.active {
+	background: var(--color-active);
+	font-weight: var(--font-weight-medium);
+}
+.company-db-table-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.company-db-count {
+	color: var(--color-text-light-3);
+	font-size: 11px;
+	white-space: nowrap;
+}
+.company-db-rows { overflow-x: auto; }
+.company-db-rows td {
+	max-width: 320px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.company-db-schema { margin-bottom: 12px; }
+.company-db-schema > summary { cursor: pointer; font-size: 13px; }
+.company-db-sql {
+	background: var(--color-code-bg);
+	border-radius: 4px;
+	padding: 8px;
+	font-size: 12px;
+	white-space: pre-wrap;
+	margin: 8px 0 0;
+}
+.company-db-flag {
+	border: 1px solid var(--color-secondary);
+	border-radius: 3px;
+	padding: 0 4px;
+	margin-right: 4px;
+}
 </style>
