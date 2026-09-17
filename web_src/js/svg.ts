@@ -14,6 +14,7 @@ import octiconBlocked from '../../public/assets/img/svg/octicon-blocked.svg';
 import octiconBold from '../../public/assets/img/svg/octicon-bold.svg';
 import octiconCheck from '../../public/assets/img/svg/octicon-check.svg';
 import octiconCheckbox from '../../public/assets/img/svg/octicon-checkbox.svg';
+import octiconCheckCircle from '../../public/assets/img/svg/octicon-check-circle.svg';
 import octiconCheckCircleFill from '../../public/assets/img/svg/octicon-check-circle-fill.svg';
 import octiconChevronDown from '../../public/assets/img/svg/octicon-chevron-down.svg';
 import octiconChevronLeft from '../../public/assets/img/svg/octicon-chevron-left.svg';
@@ -88,6 +89,7 @@ import octiconTag from '../../public/assets/img/svg/octicon-tag.svg';
 import octiconTrash from '../../public/assets/img/svg/octicon-trash.svg';
 import octiconTriangleDown from '../../public/assets/img/svg/octicon-triangle-down.svg';
 import octiconX from '../../public/assets/img/svg/octicon-x.svg';
+import octiconXCircle from '../../public/assets/img/svg/octicon-x-circle.svg';
 import octiconXCircleFill from '../../public/assets/img/svg/octicon-x-circle-fill.svg';
 import octiconZoomIn from '../../public/assets/img/svg/octicon-zoom-in.svg';
 import octiconZoomOut from '../../public/assets/img/svg/octicon-zoom-out.svg';
@@ -106,6 +108,7 @@ const svgs = {
   'octicon-blocked': octiconBlocked,
   'octicon-bold': octiconBold,
   'octicon-check': octiconCheck,
+  'octicon-check-circle': octiconCheckCircle,
   'octicon-check-circle-fill': octiconCheckCircleFill,
   'octicon-checkbox': octiconCheckbox,
   'octicon-chevron-down': octiconChevronDown,
@@ -181,6 +184,7 @@ const svgs = {
   'octicon-trash': octiconTrash,
   'octicon-triangle-down': octiconTriangleDown,
   'octicon-x': octiconX,
+  'octicon-x-circle': octiconXCircle,
   'octicon-x-circle-fill': octiconXCircleFill,
   'octicon-zoom-in': octiconZoomIn,
   'octicon-zoom-out': octiconZoomOut,
