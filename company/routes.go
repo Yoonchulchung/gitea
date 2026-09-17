@@ -81,6 +81,8 @@ func RegisterAdminRoutes(m *web.Router) {
 	// visible; the question is which apps have an exception, and that one
 	// cannot be answered a page at a time.
 	m.Get("/company-network", AdminNetwork)
+	m.Post("/company-network/unban", AdminNetworkUnban)
+	m.Get("/company-network/{owner}/{repo}", AdminNetworkApp)
 	m.Get("/company-packages", AdminPackages)
 	m.Post("/company-packages/base", AdminSetBasePackages)
 	m.Group("/company-deploys/{owner}/{repo}", func() {

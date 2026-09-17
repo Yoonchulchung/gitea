@@ -125,6 +125,7 @@ func sampleApp(owner, repo string) {
 
 	checkMemoryLimit(owner, repo, usage.rssBytes, settings)
 	checkDataLimit(owner, repo, settings)
+	checkListeners(owner, repo, pid)
 }
 
 // memoryWatchdogHeadroom is how far over the configured limit resident memory

@@ -283,9 +283,19 @@ func ParseAppsConfig(data []byte) (*AppsConfig, error) {
 			return fmt.Errorf("%s: access %q must be one of public, login, org", what, s.Access)
 		}
 		switch s.Network.Mode {
-		case "", NetworkNone, NetworkBroker, NetworkOpen:
+		case "", NetworkNone, NetworkBroker:
+		case NetworkOpen:
+			if !NetworkOpenAllowed() {
+				// The one mode in which an app can bind a port and become a
+				// server on the company network. Refused at load, so it
+				// cannot be committed in through git either.
+				return fmt.Errorf("%s: network.mode \"open\" is not permitted on this instance ([company] APP_NETWORK_ALLOW_OPEN)", what)
+			}
 		default:
 			return fmt.Errorf("%s: network.mode %q must be one of none, broker, open", what, s.Network.Mode)
+		}
+		if s.Access != "" && accessWiderThanCeiling(s.Access) {
+			return fmt.Errorf("%s: access %q is wider than this instance allows (max %s, [company] APP_MAX_ACCESS)", what, s.Access, MaxAppAccess())
 		}
 		// Hosts are normalised on the way in rather than rejected, because
 		// entries written before the form did this are already in the file:

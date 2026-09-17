@@ -35,9 +35,18 @@ func TestOutboundRuleMatchesHostMethodAndPath(t *testing.T) {
 	assert.False(t, allowed("other.internal", "GET", "/api/v1/x"), "unapproved host")
 	assert.True(t, allowed("files.internal", "DELETE", "/anything"), "a bare rule covers the host")
 
-	// none blocks everything; open allows everything — the explicit exception.
+	// none blocks everything.
 	assert.False(t, outboundRuleFor(AppSettings{Network: AppNetwork{Mode: NetworkNone}}, "erp.internal", "GET", "/"))
-	assert.True(t, outboundRuleFor(AppSettings{Network: AppNetwork{Mode: NetworkOpen}}, "anywhere.example", "POST", "/"))
+
+	// open allows everything — but only where the instance permits the mode
+	// at all. A committed "open" on an instance that forbids it goes out
+	// nowhere: it was approved for everything, never for a list, so there
+	// is no list to fall back to (company/inbound_policy.go).
+	open := AppSettings{Network: AppNetwork{Mode: NetworkOpen}}
+	withCompanyINI(t, "APP_NETWORK_ALLOW_OPEN = true")
+	assert.True(t, outboundRuleFor(open, "anywhere.example", "POST", "/"), "the explicit exception, when permitted")
+	withCompanyINI(t, "")
+	assert.False(t, outboundRuleFor(open, "anywhere.example", "POST", "/"), "forbidden by default: nothing goes out")
 }
 
 // "/api/v1*" must not quietly cover "/api/v1000" — a prefix that ignores the

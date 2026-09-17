@@ -21,6 +21,47 @@
 			<p class="text-grey tw-text-13 tw-mt-2">{{ctx.Locale.Tr "company.adminnetwork.explain"}}</p>
 		</div>
 
+		<h4 class="ui attached header">{{ctx.Locale.Tr "company.adminnetwork.inbound_header"}}</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminnetwork.inbound_explain"}}</p>
+			<div class="company-kpis">
+				<div class="company-kpi{{if .Inbound.OpenAllowed}} bad{{end}}">
+					<b>{{if .Inbound.OpenAllowed}}{{ctx.Locale.Tr "company.adminnetwork.yes"}}{{else}}{{ctx.Locale.Tr "company.adminnetwork.no"}}{{end}}</b>
+					<span>{{ctx.Locale.Tr "company.adminnetwork.kpi_open_allowed"}}</span>
+				</div>
+				<div class="company-kpi"><b>{{.Inbound.MaxAccess}}</b><span>{{ctx.Locale.Tr "company.adminnetwork.kpi_max_access"}}</span></div>
+				<div class="company-kpi{{if not .Inbound.ListenerWatch}} bad{{end}}">
+					<b>{{if .Inbound.ListenerWatch}}{{ctx.Locale.Tr "company.adminnetwork.yes"}}{{else}}{{ctx.Locale.Tr "company.adminnetwork.no"}}{{end}}</b>
+					<span>{{ctx.Locale.Tr "company.adminnetwork.kpi_listener_watch"}}</span>
+				</div>
+				<div class="company-kpi{{if .Banned}} bad{{end}}"><b>{{len .Banned}}</b><span>{{ctx.Locale.Tr "company.adminnetwork.kpi_banned"}}</span></div>
+			</div>
+			{{/* The ceilings are app.ini settings, not buttons: they are the
+			     operator's policy, and a page where an administrator could
+			     loosen "no app may be a server" with one click would be the
+			     thing the policy exists to prevent. */}}
+			<p class="text-grey tw-text-13 tw-mt-2">{{ctx.Locale.Tr "company.adminnetwork.inbound_where"}}</p>
+			{{if .Banned}}
+				<table class="ui very basic table tw-text-13 tw-mt-2">
+					<thead><tr><th>{{ctx.Locale.Tr "company.adminnetwork.col_visitor"}}</th><th>{{ctx.Locale.Tr "company.adminnetwork.col_until"}}</th><th></th></tr></thead>
+					<tbody>
+						{{range .Banned}}
+							<tr>
+								<td class="tw-font-mono">{{.Key}}</td>
+								<td title="{{DateUtils.AbsoluteShort .Until}}">{{DateUtils.TimeSince .Until}}</td>
+								<td class="tw-text-right">
+									<form method="post" action="{{$.NetworkLink}}/unban" class="tw-inline">
+										{{$.CsrfTokenHtml}}<input type="hidden" name="key" value="{{.Key}}">
+										<button class="ui tiny button">{{ctx.Locale.Tr "company.adminnetwork.unban"}}</button>
+									</form>
+								</td>
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			{{end}}
+		</div>
+
 		<div class="ui attached segment">
 			{{if .Rows}}
 				<table class="ui very basic table tw-text-13">
@@ -29,6 +70,8 @@
 							<th>{{ctx.Locale.Tr "company.admin.col_app"}}</th>
 							<th class="tw-w-1/6">{{ctx.Locale.Tr "company.adminnetwork.col_mode"}}</th>
 							<th>{{ctx.Locale.Tr "company.adminnetwork.col_allow"}}</th>
+							<th class="tw-w-1/6">{{ctx.Locale.Tr "company.adminnetwork.col_exposure"}}</th>
+							<th class="tw-w-1/6">{{ctx.Locale.Tr "company.adminnetwork.col_traffic"}}</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -54,6 +97,14 @@
 									{{else}}
 										<span class="text-grey">—</span>
 									{{end}}
+								</td>
+								<td>
+									{{.Access}}
+									{{if ne .Access .Written}}<span class="text-grey tw-ml-1" title="{{ctx.Locale.Tr "company.adminnetwork.clamped_from" .Written}}">({{ctx.Locale.Tr "company.adminnetwork.clamped"}})</span>{{end}}
+								</td>
+								<td>
+									<a href="{{$.NetworkLink}}/{{.Owner}}/{{.Repo}}">{{.Recent}} {{ctx.Locale.Tr "company.adminnetwork.requests"}}</a>
+									{{if .Blocked}}<span class="company-data-full tw-ml-1">{{.Blocked}} {{ctx.Locale.Tr "company.adminnetwork.blocked"}}</span>{{end}}
 								</td>
 							</tr>
 						{{end}}

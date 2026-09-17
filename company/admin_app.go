@@ -414,6 +414,11 @@ func AdminSetNetwork(ctx *context.Context) {
 			ctx.Redirect(back)
 			return
 		}
+		if accessWiderThanCeiling(access) {
+			ctx.Flash.Error(ctx.Locale.TrString("company.err.access_over_ceiling", access, MaxAppAccess()))
+			ctx.Redirect(back)
+			return
+		}
 		subject, mutate = "set access to "+access, setAccess(access)
 
 	case "outbound-add":

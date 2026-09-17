@@ -1,0 +1,52 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-network-app")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">
+			<a href="{{.NetworkLink}}">{{ctx.Locale.Tr "company.adminnetwork.title"}}</a>
+			<span class="text-grey tw-mx-2">/</span>
+			<a href="{{.AppLink}}">{{.Owner}}/{{.Repo}}</a>
+		</h4>
+
+		<h4 class="ui attached header">{{ctx.Locale.Tr "company.adminnetwork.inbound_rows"}} <span class="text-grey tw-font-normal tw-text-13">({{len .Access}}{{if .AccessBlocked}}, {{.AccessBlocked}} {{ctx.Locale.Tr "company.adminnetwork.blocked"}}{{end}})</span></h4>
+		<div class="ui attached segment">
+			{{/* Every decision, newest first — the refused ones included, because
+			     a refusal nobody can see later is indistinguishable from one that
+			     never happened. The in-memory ring holds the last few hundred;
+			     access.log beside the app's other logs holds the rest. */}}
+			{{if .Access}}
+				<table class="ui very basic table tw-text-13">
+					<thead><tr>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.activity.col_when"}}</th>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.adminnetwork.col_client"}}</th>
+						<th>{{ctx.Locale.Tr "company.adminnetwork.col_request"}}</th>
+						<th class="tw-w-1/12">{{ctx.Locale.Tr "company.adminnetwork.col_status"}}</th>
+						<th class="tw-w-1/5">{{ctx.Locale.Tr "company.adminnetwork.col_blocked"}}</th>
+					</tr></thead>
+					<tbody>
+						{{range .Access}}
+							<tr{{if .Blocked}} class="company-network-blocked"{{end}}>
+								<td title="{{DateUtils.FullTime .At}}">{{DateUtils.TimeSince .At}}</td>
+								<td class="tw-font-mono">{{.Client}}{{if .User}} <span class="text-grey">{{.IP}}</span>{{end}}</td>
+								<td class="tw-font-mono">{{.Method}} {{.Path}}</td>
+								<td>{{.Status}}</td>
+								<td>{{if .Blocked}}<span class="company-data-full">{{.Blocked}}</span>{{else}}<span class="text-grey">—</span>{{end}}</td>
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			{{else}}
+				<p class="text-grey">{{ctx.Locale.Tr "company.adminnetwork.no_inbound"}}</p>
+			{{end}}
+			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminnetwork.log_hint"}}</p>
+		</div>
+
+		<h4 class="ui attached header">{{ctx.Locale.Tr "company.adminnetwork.outbound_rows"}}</h4>
+		<div class="ui attached segment">
+			{{if .Outbound}}
+				<pre class="company-log tw-text-13">{{range .Outbound}}{{.}}
+{{end}}</pre>
+			{{else}}
+				<p class="text-grey">{{ctx.Locale.Tr "company.adminnetwork.no_outbound"}}</p>
+			{{end}}
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}

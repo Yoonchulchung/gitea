@@ -99,7 +99,8 @@ func proxyGuardEnabled() bool { return companySetting("APP_PROXY_GUARD") != "fal
 
 type guardVerdict struct {
 	status int
-	body   string
+	body   string        // what the client is told — for a probe, the same 404 the app would give
+	reason string        // why, for the audit trail — never the body, which is written to mislead a scanner
 	retry  time.Duration // for Retry-After, when the refusal is temporary
 }
 
@@ -126,8 +127,8 @@ func guardRequest(ctx *gitea_context.Context, ref AppRef) *guardVerdict {
 
 	if now.Before(v.bannedTo) {
 		return &guardVerdict{
-			status: http.StatusTooManyRequests,
-			body:   "Too many requests. Try again later.", retry: v.bannedTo.Sub(now),
+			status: http.StatusTooManyRequests, reason: "banned",
+			body: "Too many requests. Try again later.", retry: v.bannedTo.Sub(now),
 		}
 	}
 
@@ -137,15 +138,16 @@ func guardRequest(ctx *gitea_context.Context, ref AppRef) *guardVerdict {
 		for _, bot := range guardBotAgents {
 			if strings.Contains(ua, bot) {
 				guardStrike(v, now, key, ref, "scanner user agent")
-				return &guardVerdict{status: http.StatusForbidden, body: "Forbidden."}
+				return &guardVerdict{status: http.StatusForbidden, reason: "scanner user agent", body: "Forbidden."}
 			}
 		}
 	}
 	if isProbePath(appRelativePath(ctx.Req.URL.Path)) {
 		guardStrike(v, now, key, ref, "probe for "+ctx.Req.URL.Path)
 		// The same 404 the app would give, so a scanner learns nothing from
-		// the difference between "blocked" and "absent".
-		return &guardVerdict{status: http.StatusNotFound, body: "This app does not exist."}
+		// the difference between "blocked" and "absent". The audit trail gets
+		// the truth; the wire gets the lie.
+		return &guardVerdict{status: http.StatusNotFound, reason: "probe for " + ctx.Req.URL.Path, body: "This app does not exist."}
 	}
 
 	// Token bucket, refilled on read rather than by a timer per visitor:
@@ -161,8 +163,8 @@ func guardRequest(ctx *gitea_context.Context, ref AppRef) *guardVerdict {
 	if v.tokens < 1 {
 		guardStrike(v, now, key, ref, "rate limit")
 		return &guardVerdict{
-			status: http.StatusTooManyRequests,
-			body:   "Too many requests. Slow down.", retry: time.Second,
+			status: http.StatusTooManyRequests, reason: "rate limit",
+			body: "Too many requests. Slow down.", retry: time.Second,
 		}
 	}
 	v.tokens--

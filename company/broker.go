@@ -192,7 +192,12 @@ func copyBrokerHeaders(dst, src http.Header) {
 // "may POST to the payroll endpoint" are different approvals, and the
 // per-method, per-path grain is the thing a firewall cannot do and this can.
 func outboundRuleFor(settings AppSettings, host, method, path string) bool {
-	if settings.Network.Mode == NetworkOpen {
+	// A committed "open" does not stay open once the instance forbids it.
+	// It falls through to the check below and, not being "broker", is
+	// refused outright — nothing goes out. That is deliberate: the app was
+	// approved for everything, never for a list, and with everything
+	// withdrawn there is no list to fall back to (company/inbound_policy.go).
+	if settings.Network.Mode == NetworkOpen && NetworkOpenAllowed() {
 		return true
 	}
 	if settings.Network.Mode != NetworkBroker {

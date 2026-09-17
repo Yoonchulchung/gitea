@@ -109,6 +109,12 @@ func departmentCause(st *AppState) *AppCause {
 			Action:      "deploy",
 			ActionLabel: "company.app.cause.package_denied.action",
 		}
+	case ReasonRogueListener:
+		return &AppCause{
+			Summary:    "company.app.cause.rogue_listener",
+			AdminHint:  "company.app.cause.rogue_listener.admin",
+			DetailText: st.UserMessage,
+		}
 	case ReasonDataFull:
 		return &AppCause{
 			Summary:   "company.app.cause.data_full",

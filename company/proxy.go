@@ -100,9 +100,11 @@ func AppProxy(ctx *gitea_context.Context) {
 			ctx.Resp.Header().Set("Retry-After", strconv.Itoa(int(verdict.retry.Seconds())+1))
 		}
 		ctx.PlainText(verdict.status, verdict.body)
+		RecordAccess(ctx, ref, verdict.status, verdict.reason) // the reason, not the body: the body is written to mislead a scanner
 		return
 	}
 	if !guardBodyLimit(ctx) {
+		RecordAccess(ctx, ref, http.StatusRequestEntityTooLarge, "body over limit")
 		return
 	}
 	if !IsAppRunning(ref.Owner, ref.Repo) {
@@ -116,6 +118,7 @@ func AppProxy(ctx *gitea_context.Context) {
 	started := time.Now()
 	appProxyFor(ref).ServeHTTP(rec, ctx.Req)
 	RecordRequest(ref.Owner, ref.Repo, rec.status, time.Since(started), visitorKey(ctx))
+	RecordAccess(ctx, ref, rec.status, "")
 }
 
 // visitorKey identifies a distinct user for the "how many people used this"
@@ -135,7 +138,10 @@ func visitorKey(ctx *gitea_context.Context) string {
 // checkAppAccess enforces the app's access mode, writing the response and
 // returning false when it denies.
 func checkAppAccess(ctx *gitea_context.Context, ref AppRef, settings AppSettings) bool {
-	switch settings.Access {
+	// The instance ceiling wins over what is written for the app: a mode
+	// committed before the ceiling was lowered must not stay in force just
+	// because it is still in the file (company/inbound_policy.go).
+	switch clampAccess(settings.Access) {
 	case AccessLogin:
 		if !ctx.IsSigned {
 			redirectToLogin(ctx)

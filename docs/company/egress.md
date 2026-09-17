@@ -17,12 +17,21 @@
 | 모델 목록 조회 | `company/settings_ai.go` | `AI_API_URL` | `AI_ENABLED` | 꺼짐 |
 | 패키지 설치 (배포마다) | `company/deployworker.go`, `depresolve.go` | `PIP_INDEX_URL` 또는 pypi.org | `PIP_INDEX_URL` 설정, `PIP_ALLOW_PUBLIC_INDEX` | **인덱스 없으면 배포 거부** |
 | 앱의 아웃바운드 (브로커) | `company/broker.go` | apps.yml 허용목록 | `network.mode` (`none`/`broker`/`open`) | `none` |
-| 아바타 | Gitea | gravatar.com | `[picture] DISABLE_GRAVATAR`, `ENABLE_FEDERATED_AVATAR` | 꺼짐 (설정함) |
+| 아바타 | Gitea | gravatar.com | 관리자 패널 → Configuration (`system_setting`의 `picture.disable_gravatar`) — **app.ini 키는 이 버전에서 무시됨**(deprecation 오류) | 내장 기본 꺼짐; DB에 정책으로 명시함 |
 | 웹훅 | Gitea | 사용자가 입력한 URL | `[webhook] ALLOWED_HOST_LIST` | 빈 목록 (설정함) |
 | 미러 | Gitea | 외부 git 서버 | `[mirror] DISABLE_NEW_PULL/PUSH` | 꺼짐 (설정함) |
 | 리포 마이그레이션 | Gitea | 외부 git 서버 | `[repository] DISABLE_MIGRATIONS` | 꺼짐 |
 | 메일 | Gitea | SMTP | `[mailer] ENABLED` | 꺼짐 |
 | 버전 확인 | Gitea | gitea.io | `[cron.update_checker] ENABLED` | 꺼짐 |
+
+### 닫힌 것처럼 보이지만 안 닫힌 스위치
+
+이 표를 만들면서 하나 걸렸다. `[picture] DISABLE_GRAVATAR = true`를 app.ini에 써 두면 닫힌
+것처럼 보이지만, 이 Gitea 버전은 그 키를 **읽지 않는다** — 관리자 패널로 옮겨졌고 DB에
+저장되며, 파일에 있으면 deprecation 오류만 낸다. 다행히 내장 기본값이 꺼짐이라 실제로 열려
+있지는 않았지만, "기본값이라 닫혀 있음"과 "정책으로 닫아 둠"은 다르다: 전자는 관리자 패널에서
+누가 켜면 아무 흔적 없이 열린다. 그래서 DB에 명시했고, 감사 스크립트는 ini가 아니라 **실효값**을
+읽는다. 교훈은 일반적이다 — 스위치를 껐다고 믿지 말고, 실효값을 재라.
 
 ## 설계 원칙 — 조용히 나가는 것보다 시끄럽게 거부한다
 
@@ -57,3 +66,37 @@ docs/company/scripts/check-egress.sh custom/conf/app.ini
 1) LISTEN 포트, 2) 지금 살아 있는 외부 연결, 3) 방화벽 OUTPUT 정책, 4) 금지 목적지
 (`api.anthropic.com`, `pypi.org`, `gravatar.com` …) 연결 시도 — **전부 실패해야 정상**,
 5) 위 표의 설정 키가 실제로 그 값인지. 하나라도 열려 있으면 종료 코드 1.
+
+## 인바운드 — 앱이 무엇이 *될* 수 있는가
+
+밖으로 나가는 경로가 전부라면 절반이다. 코드를 배포하게 해 주는 플랫폼은 반대 질문에도
+답해야 한다: 앱이 **자체 서버**가 될 수 있는가. 네트워크가 있는 앱은
+`uvicorn --host 0.0.0.0` 한 줄이면 사내망의 누구에게나 닿는, 어떤 접근 정책에도 답하지
+않는 서버가 된다.
+
+| 위험 | 통제 | 스위치 | 기본 |
+|---|---|---|---|
+| 앱이 이그레스 전면 허용(`open`)을 받아 임의 목적지와 통신 | apps.yml 로드·관리자 설정·요청 시 세 지점에서 거부/클램프 | `[company] APP_NETWORK_ALLOW_OPEN` | **금지** |
+| 앱이 부서 밖·비로그인에게 노출 | 노출 상한 — 파일에 뭐라 쓰여 있든 요청 시 상한이 이김 | `[company] APP_MAX_ACCESS` (`org`/`login`/`public`) | `public` (기존 동작 유지; 낮추는 건 운영자 결정) |
+| 앱이 리스닝 포트를 열어 프록시를 우회 | 샌드박스 netns 안의 소켓 테이블 감시 → 즉시 정지 + 원인 기록 | 자동 (Linux + 샌드박스일 때만 신뢰) | 켜짐 |
+
+리스너 감시는 **네트워크 네임스페이스가 있을 때만** 믿는다. 없으면 `/proc/<pid>/net/tcp`가
+호스트 전체의 테이블이라 sshd 때문에 모든 앱을 세우게 되고, 그건 통제를 스스로 불신하게
+만드는 오탐이다. 그래서 페이지가 "감시 중인가"를 명시하고, 확신할 수 없는 곳에서는 침묵한다.
+
+상한 둘은 화면의 버튼이 아니라 app.ini다. 클릭 한 번으로 "어떤 앱도 서버가 될 수 없다"를
+풀 수 있는 페이지는, 그 정책이 막으려는 것 자체이기 때문이다.
+
+## 감사 — row level
+
+정책이 무엇을 막았는지는 **막힌 요청이 기록될 때만** 안다. 프록시가 내리는 모든 결정 —
+통과든 거부든 — 을 앱마다 두 번 쓴다: 메모리 링(최근 수백 건, 관리자 화면이 읽음)과
+`logs/access.log`(회전, 재시작에도 남음, 사고 때 grep 하는 것). 한 줄 형식:
+
+```
+<RFC3339> <IP> <사용자|-> <메서드> <경로> <상태> <차단사유|->
+```
+
+아웃바운드는 브로커가 같은 원칙으로 이미 `broker.log`에 남긴다. 둘 다
+`/-/admin/company-network/{owner}/{repo}`에서 최신순으로 본다. 차단된 방문자(IP 또는 계정)
+목록과 수동 해제는 `/-/admin/company-network` 상단에 있다.

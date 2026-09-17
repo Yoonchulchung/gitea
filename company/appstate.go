@@ -67,6 +67,7 @@ const (
 	ReasonVersionPinned      = "version_pinned"   // a specific past commit was chosen
 	ReasonDataFull           = "data_full"        // the volume is out of room
 	ReasonMigrationFailed    = "migration_failed" // the schema could not be brought up to date
+	ReasonRogueListener      = "rogue_listener"   // the app opened a port of its own
 )
 
 // appHistoryLimit bounds the per-app history. It doubles as the rollback

@@ -51,8 +51,21 @@ hdr "5) app.ini egress keys (each closes one path; 'missing' means Gitea's permi
 chk() { v=$(grep -E "^[[:space:]]*$1[[:space:]]*=" "$INI" 2>/dev/null | head -1 | sed 's/^[^=]*=[[:space:]]*//;s/[[:space:]]*$//'); if [ -z "$v" ]; then say "  MISSING   $1  (expected: $2)"; fail=1; elif [ "$v" != "$2" ]; then say "  DIFFERS   $1=$v  (expected: $2)"; else say "  ok        $1=$v"; fi; }
 chk AI_ENABLED false
 chk PIP_ALLOW_PUBLIC_INDEX false
-chk DISABLE_GRAVATAR true
-chk ENABLE_FEDERATED_AVATAR false
+# Avatars: NOT an app.ini key any more. Gitea moved these to the admin panel
+# and stores them in system_setting; an app.ini line is ignored (and logged as
+# a deprecation error). So the effective value is read from the database. The
+# built-in default for disable_gravatar is true, but a default is not a
+# policy: "absent" is reported, so an operator sees it was never stated.
+DB="${GITEA_DB:-data/gitea.db}"
+dbchk() {
+  if ! command -v sqlite3 >/dev/null 2>&1 || [ ! -f "$DB" ]; then say "  SKIP      $1  (no sqlite3 or no $DB — check admin panel > Configuration)"; return; fi
+  v=$(sqlite3 "$DB" "SELECT setting_value FROM system_setting WHERE setting_key='$1';" 2>/dev/null)
+  if [ -z "$v" ]; then say "  ABSENT    $1  (running on the built-in default of $3; state it in admin panel > Configuration)"; [ "$3" = "$2" ] || fail=1
+  elif [ "$v" != "$2" ]; then say "  DIFFERS   $1=$v  (expected: $2)"; fail=1
+  else say "  ok        $1=$v"; fi
+}
+dbchk picture.disable_gravatar true true
+dbchk picture.enable_federated_avatar false false
 chk DISABLE_NEW_PULL true
 chk DISABLE_NEW_PUSH true
 chk DISABLE_MIGRATIONS true
