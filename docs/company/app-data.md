@@ -572,7 +572,7 @@ Gitea 백업 경로에 `company-app-data/`를 포함시키는 것이다. **그�
 
 - [x] 60초 순회 측정(심링크 미추적) + 메모리 캐시
 - [x] 부서 화면 사용량 막대, 관리자 앱 화면 KPI
-- [ ] `/company-deploys` 목록에 앱별 사용량 열
+- [x] `/company-deploys` 목록에 앱별 사용량 열
 - [x] 단계별 대응과 `ReasonDataFull`, 100%에서 배포 거부
 
 **Phase 3 — 마이그레이션** (`company/appmigrate.go`)

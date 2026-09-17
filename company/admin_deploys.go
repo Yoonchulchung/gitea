@@ -49,6 +49,12 @@ type adminDeployRow struct {
 	// division by zero in a template is a blank page at render time.
 	Sparkline string
 	Requests  int
+
+	// Data is how much of its storage allowance this app has spent. Shown on
+	// the list because a department that has filled it cannot deploy, and an
+	// administrator finding that out one app at a time finds it out late.
+	Data    AppDataUsage
+	HasData bool
 }
 
 // AdminDeploys lists every department app and its current state.
@@ -95,6 +101,7 @@ func AdminDeploys(ctx *context.Context) {
 		// deployed reads a file that is not there, once per row.
 		if byKey[key] != nil {
 			row.Sparkline, row.Requests = requestSparkline(st.Owner, st.Repo, since)
+			row.Data, row.HasData = AppDataUsageForRepoID(st.Owner, st.Repo, repo.ID)
 		}
 		rows = append(rows, row)
 	}
@@ -143,6 +150,7 @@ func AdminDeploys(ctx *context.Context) {
 	ctx.Data["SandboxDetail"] = sandboxDetail
 	ctx.Data["ConfigError"] = configErr
 
+	ctx.Data["DataEnabled"] = AppDataEnabled()
 	ctx.Data["Title"] = "App deployments"
 	ctx.Data["Rows"] = rows
 	ctx.Data["Attention"] = attention

@@ -69,6 +69,7 @@
 						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_deploy"}}</th>
 						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_health"}}</th>
 						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_requests"}}</th>
+						{{if $.DataEnabled}}<th class="tw-w-1/12">{{ctx.Locale.Tr "company.admin.col_data"}}</th>{{end}}
 					</tr>
 				</thead>
 				<tbody>
@@ -113,9 +114,19 @@
 									<span class="text-grey">—</span>
 								{{end}}
 							</td>
+							{{if $.DataEnabled}}
+								<td class="tw-text-13">
+									{{if .HasData}}
+										<span{{if .Data.Full}} class="company-data-full"{{else if .Data.Warning}} class="company-data-warn"{{end}}>{{.Data.Percent}}%</span>
+										<span class="text-grey tw-ml-1">{{FormatByteSize .Data.Bytes}}</span>
+									{{else}}
+										<span class="text-grey">—</span>
+									{{end}}
+								</td>
+							{{end}}
 						</tr>
 					{{else}}
-						<tr><td colspan="5" class="text-grey">{{ctx.Locale.Tr "company.admin.no_repos"}}</td></tr>
+						<tr><td colspan="6" class="text-grey">{{ctx.Locale.Tr "company.admin.no_repos"}}</td></tr>
 					{{end}}
 				</tbody>
 			</table>

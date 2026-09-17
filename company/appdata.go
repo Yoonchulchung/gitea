@@ -593,11 +593,30 @@ func AppDataUsageFor(ctx context.Context, owner, repo string) (AppDataUsage, boo
 	if err != nil {
 		return usage, ok
 	}
-	dir := appDataDirFor(id)
-	if _, err := os.Stat(dir); err != nil {
-		return AppDataUsage{QuotaBytes: appDataQuotaBytes(SettingsFor(owner, repo))}, true
+	return AppDataUsageForRepoID(owner, repo, id)
+}
+
+// AppDataUsageForRepoID is the same answer for a caller that already holds
+// the repository — the app list holds one per row, and looking each of them
+// up again by name would be a query per line of the page.
+func AppDataUsageForRepoID(owner, repo string, repoID int64) (AppDataUsage, bool) {
+	if !AppDataEnabled() {
+		return AppDataUsage{}, false
 	}
-	usage = measureAppDataUsage(dir, SettingsFor(owner, repo))
+	key := appKey(owner, repo)
+	dataUsageMu.Lock()
+	usage, ok := dataUsageCache[key]
+	dataUsageMu.Unlock()
+	if ok && time.Since(usage.MeasuredAt) < dataSampleInterval {
+		return usage, true
+	}
+
+	settings := SettingsFor(owner, repo)
+	dir := appDataDirFor(repoID)
+	if _, err := os.Stat(dir); err != nil {
+		return AppDataUsage{QuotaBytes: appDataQuotaBytes(settings)}, true
+	}
+	usage = measureAppDataUsage(dir, settings)
 	dataUsageMu.Lock()
 	dataUsageCache[key] = usage
 	dataUsageMu.Unlock()
