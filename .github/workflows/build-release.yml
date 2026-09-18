@@ -17,12 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22.18.0'
-
-      - name: Enable corepack
-        run: corepack enable
+      - uses: ./.github/actions/node-setup
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
