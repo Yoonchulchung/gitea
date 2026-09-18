@@ -68,6 +68,7 @@ const (
 	ReasonDataFull           = "data_full"        // the volume is out of room
 	ReasonMigrationFailed    = "migration_failed" // the schema could not be brought up to date
 	ReasonRogueListener      = "rogue_listener"   // the app opened a port of its own
+	ReasonUnresponsive       = "unresponsive"     // stopped answering, and restarts did not help
 )
 
 // appHistoryLimit bounds the per-app history. It doubles as the rollback
@@ -82,6 +83,9 @@ type AppHealth struct {
 	State     string `json:"state"` // "up" | "down" | "unknown"
 	CheckedAt int64  `json:"checkedAt"`
 	Detail    string `json:"detail,omitempty"` // admin-only, e.g. "HTTP 200"
+	// Own is whether the app answered its health path itself, rather than
+	// "up" only meaning it answered at all.
+	Own bool `json:"own,omitempty"`
 }
 
 // AppHistoryEntry is one past deploy or control action.

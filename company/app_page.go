@@ -46,7 +46,19 @@ func AppPage(ctx *context.Context) {
 	ctx.Data["App"] = st
 	ctx.Data["Settings"] = settings
 	ctx.Data["StatusLabel"] = departmentStatusLabel(st)
-	ctx.Data["CauseSummary"] = DepartmentCause(st)
+	cause := DepartmentCause(st)
+	ctx.Data["CauseSummary"] = cause
+	if f := LogFindingFor(st, cause); f != nil {
+		// The hint and the place are about their code, which every reader of
+		// the repository has. The exception line can carry the app's data,
+		// so it goes exactly as far as the log page does.
+		if canWrite {
+			f.Exception = RedactServerPaths(f.Exception)
+		} else {
+			f.Exception = ""
+		}
+		ctx.Data["Finding"] = f
+	}
 	ctx.Data["EnvNames"] = envNames
 	ctx.Data["EnvVersion"] = envVersion
 	// A read failure here is a filesystem error carrying a path; the
@@ -327,6 +339,10 @@ func historyReasonLabel(reason string) string {
 		return "company.app.history.reason.health_timeout"
 	case ReasonCrashLoop:
 		return "company.app.history.reason.crash_loop"
+	case ReasonUnresponsive:
+		return "company.app.history.reason.unresponsive"
+	case livenessRestartReason:
+		return "company.app.history.reason.unresponsive_restart"
 	case ReasonSuspended:
 		return "company.app.history.reason.suspended"
 	case ReasonNoRelease:

@@ -71,6 +71,7 @@ func AdminDeploys(ctx *context.Context) {
 	states := ListAppStates()
 	byKey := make(map[string]*AppState, len(states))
 	for _, st := range states {
+		st.Health = CurrentHealth(st)
 		byKey[st.Owner+"/"+st.Repo] = st
 	}
 
@@ -169,6 +170,11 @@ func AdminDeploys(ctx *context.Context) {
 func needsAttention(st *AppState) bool {
 	switch st.Actual {
 	case AppStateFailed, AppStateSuspended:
+		return true
+	}
+	// Running is a process, not an answer: one that stopped answering is on
+	// its way to an automatic restart, and someone should know it happened.
+	if st.Actual == AppStateRunning && st.Health.State == "down" {
 		return true
 	}
 	// Sandboxing is fail-closed at start time, so an app that is running

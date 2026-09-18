@@ -9,8 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -49,6 +47,7 @@ const (
 	healthCheckTries   = 30
 	healthCheckOK      = 3 // consecutive successes, so an app that answers once and dies fails
 	healthCheckSpacing = time.Second
+	healthCheckTimeout = 3 * time.Second
 
 	// healthSettleDelay is how long the new process has to stay the same one
 	// after passing its health check. Long enough to catch a crash loop
@@ -732,36 +731,20 @@ func swapSymlink(link, target string) error {
 // waitHealthy polls the app's socket until it answers consistently.
 //
 // The contract cannot require a /health route — departments write plain
-// FastAPI apps — so a non-5xx response to the configured path (or "/") counts
-// as healthy. Consecutive successes are required because an app that starts,
-// answers once, and dies would otherwise pass.
+// FastAPI apps — so probeHealth decides what "answers" means. Consecutive
+// successes are required because an app that starts, answers once, and dies
+// would otherwise pass.
 func waitHealthy(socket string, settings AppSettings) error {
-	client := &http.Client{
-		Timeout: 3 * time.Second,
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, "unix", socket)
-			},
-		},
-	}
-	path := settings.HealthPath
-	if path == "" {
-		path = "/"
-	}
-
+	client := healthClient(socket)
 	streak := 0
 	var lastErr error
 	for range healthCheckTries {
 		time.Sleep(healthCheckSpacing)
-		resp, err := client.Get("http://app" + path) //nolint:noctx // the client carries a timeout
+		ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
+		_, err := probeHealth(ctx, client, settings.HealthPath)
+		cancel()
 		if err != nil {
 			lastErr = err
-			streak = 0
-			continue
-		}
-		_ = resp.Body.Close()
-		if resp.StatusCode >= 500 {
-			lastErr = fmt.Errorf("the app answered with HTTP %d", resp.StatusCode)
 			streak = 0
 			continue
 		}

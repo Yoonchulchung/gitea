@@ -166,7 +166,9 @@ func AdminApp(ctx *context.Context) {
 	// of them: the classified cause, the raw detail behind it, and what the
 	// department is being told — because "why is my app broken" arrives as a
 	// question about that sentence, not about the log.
-	ctx.Data["Cause"] = DepartmentCause(st)
+	cause := DepartmentCause(st)
+	ctx.Data["Cause"] = cause
+	ctx.Data["Finding"] = LogFindingFor(st, cause)
 	ctx.Data["AppRepo"] = repo
 	ctx.Data["Settings"] = settings
 	ctx.Data["Summary"] = summary

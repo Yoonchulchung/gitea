@@ -42,13 +42,13 @@ import (
 // the requester's job is worse than telling them nothing.
 var errNoRelease = audienceKeyError("company.err.no_release", "company.err.no_release.admin")
 
-const (
-	// stopGracePeriod is how long a process gets to finish in-flight
-	// requests after SIGTERM before SIGKILL. uvicorn drains on TERM; the
-	// point of the wait is that a deploy or restart doesn't cut off someone
-	// mid-request.
-	stopGracePeriod = 10 * time.Second
+// stopGracePeriod is how long a process gets to finish in-flight requests
+// after SIGTERM before SIGKILL. uvicorn drains on TERM; the point of the wait
+// is that a deploy or restart doesn't cut off someone mid-request. A var so a
+// test need not wait this long.
+var stopGracePeriod = 10 * time.Second
 
+const (
 	// crashRestartLimit is how many times a crashing app is restarted before
 	// giving up. Restarting forever would hide a broken deploy behind an app
 	// that is technically "up" every few seconds, which is worse than it
@@ -404,30 +404,31 @@ func (s *appSupervisor) stopLocked() {
 		_ = s.cmd.Process.Signal(syscall.SIGTERM) // group may not exist on some platforms
 	}
 
-	done := make(chan struct{})
 	cmd := s.cmd
-	go func() {
-		for range int(stopGracePeriod / (200 * time.Millisecond)) {
-			time.Sleep(200 * time.Millisecond)
-			s.mu.Lock()
-			gone := s.cmd != cmd || s.cmd == nil
-			s.mu.Unlock()
-			if gone {
-				close(done)
-				return
-			}
-		}
-		close(done)
-	}()
-	// Release the lock while waiting so watchExit can take it to record the
-	// exit; re-acquire before returning to the caller's critical section.
-	s.mu.Unlock()
-	<-done
-	s.mu.Lock()
-
+	s.waitReaped(cmd)
 	if s.cmd == cmd && cmd.Process != nil {
 		if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
 			_ = cmd.Process.Kill()
+		}
+		// Until watchExit reaps it, s.cmd still names the killed process, and
+		// the start in a restart would take it for a live one and start
+		// nothing — leaving the app down with its state saying running.
+		s.waitReaped(cmd)
+	}
+}
+
+// waitReaped waits up to stopGracePeriod for watchExit to record cmd's exit.
+// Caller holds s.mu; it is released while waiting so watchExit can take it.
+func (s *appSupervisor) waitReaped(cmd *exec.Cmd) {
+	s.mu.Unlock()
+	defer s.mu.Lock()
+	for range int(stopGracePeriod / (200 * time.Millisecond)) {
+		time.Sleep(200 * time.Millisecond)
+		s.mu.Lock()
+		gone := s.cmd != cmd
+		s.mu.Unlock()
+		if gone {
+			return
 		}
 	}
 }

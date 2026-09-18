@@ -90,10 +90,21 @@
 					{{if .AdminHint}}<div class="tw-mt-1">{{ctx.Locale.Tr .AdminHint}}</div>{{end}}
 					{{if or .Detail .DetailText}}
 						<div class="tw-text-13 tw-mt-2 text-grey">{{ctx.Locale.Tr "company.adminapp.dept_sees"}}
-							{{if .Detail}}<div class="company-app-cause-line">{{ctx.Locale.Tr .Detail .DetailArg}}</div>{{end}}
+							{{if .Detail}}<div class="company-app-cause-line">{{if .DetailArg}}{{ctx.Locale.Tr .Detail .DetailArg}}{{else}}{{ctx.Locale.Tr .Detail}}{{end}}</div>{{end}}
 							{{range StringUtils.Split .DetailText "\n"}}<div class="company-app-cause-line">{{.}}</div>{{end}}
 						</div>
 					{{end}}
+				{{end}}
+				{{with .Finding}}
+					{{/* Read out of the log by rule, not by a model, so it is here
+					     whether or not AI is switched on. */}}
+					<div class="tw-mt-2">
+						<div class="tw-text-13 text-grey">{{ctx.Locale.Tr "company.app.finding.from_log"}}{{if gt .Repeats 1}} · {{ctx.Locale.Tr "company.app.finding.repeats" .Repeats}}{{end}}</div>
+						<code class="tw-break-anywhere">{{.Exception}}</code>
+						{{if .File}}<div class="tw-text-13">{{ctx.Locale.Tr "company.app.finding.where" (printf "%s:%d" .File .Line)}}{{if .Func}} · {{.Func}}{{end}}</div>{{end}}
+						{{if .Hint}}<div class="tw-mt-1">{{if .HintArg}}{{ctx.Locale.Tr .Hint .HintArg}}{{else}}{{ctx.Locale.Tr .Hint}}{{end}}</div>{{end}}
+						{{if .AdminHint}}<div class="tw-mt-1">{{ctx.Locale.Tr .AdminHint}}</div>{{end}}
+					</div>
 				{{end}}
 				{{if .App.Message}}
 					{{/* Admin-only by definition — this is the half that can carry

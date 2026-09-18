@@ -45,6 +45,9 @@ type LogLine struct {
 	// version" and "the app raised an exception" are different kinds of
 	// answer and mixing them silently makes neither readable.
 	Build bool
+	// Repeats is set by ErrorLines on the first line of a failure: how many
+	// times it occurred back to back.
+	Repeats int
 }
 
 // LogQuery is a search over an app's logs.
@@ -115,6 +118,9 @@ func ReadAppLogs(owner, repo string, query LogQuery) ([]LogLine, bool, error) {
 			// Matched against the raw line, so searching for a date works, but
 			// split for display so the time is a column rather than noise.
 			at, text := splitLogTime(line)
+			if query.Text == "" && healthProbeLine.MatchString(text) {
+				continue // the platform's own probes (applive.go); a search still finds them
+			}
 			ring = append(ring, LogLine{Text: text, At: at, File: name, Build: strings.HasPrefix(name, buildLogName)})
 		}
 		_ = f.Close()

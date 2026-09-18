@@ -171,7 +171,7 @@
 				{{/* Summary and Detail are locale keys; DetailText is verbatim
 				     data (an admin's words, a pip line) and is never translated. */}}
 				<div class="tw-font-semibold">{{ctx.Locale.Tr .Summary}}</div>
-				{{if .Detail}}<div class="tw-mt-1 company-app-cause-line">{{ctx.Locale.Tr .Detail .DetailArg}}</div>{{end}}
+				{{if .Detail}}<div class="tw-mt-1 company-app-cause-line">{{if .DetailArg}}{{ctx.Locale.Tr .Detail .DetailArg}}{{else}}{{ctx.Locale.Tr .Detail}}{{end}}</div>{{end}}
 				{{range StringUtils.Split .DetailText "\n"}}<div class="tw-mt-1 company-app-cause-line">{{.}}</div>{{end}}
 			</div>
 		{{end}}

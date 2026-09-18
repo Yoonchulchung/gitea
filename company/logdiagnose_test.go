@@ -109,3 +109,78 @@ func TestDiagnosisRedactsServerPathsBeforeSending(t *testing.T) {
 	assert.NotContains(t, redacted, "/srv/gitea/data", "the instance's own path must not travel")
 	assert.Contains(t, redacted, "main.py", "the part that identifies the file still has to survive")
 }
+
+// The shape the server actually produced: uvicorn failing to import an app
+// whose SQLite path points into its read-only code folder, three times over.
+func serverStartupFailure() []string {
+	release := "/srv/gitea/data/company-apps/914369b4/releases/858ad654"
+	tb := []string{
+		"Traceback (most recent call last):",
+		`  File "` + release + `/.venv/bin/uvicorn", line 8, in <module>`,
+		"    sys.exit(main())",
+		"             ^^^^^^",
+		`  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed`,
+		`  File "` + release + `/app/main.py", line 80, in <module>`,
+		"    init_db()",
+		`  File "` + release + `/app/main.py", line 34, in get_db`,
+		"    conn = sqlite3.connect(DB_PATH, timeout=10)",
+		"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+		"sqlite3.OperationalError: unable to open database file",
+	}
+	var out []string
+	for range 3 {
+		out = append(out, tb...)
+		out = append(out, "INFO:     Started server process [1]", "INFO:     Shutting down")
+	}
+	return out
+}
+
+func TestErrorLinesCollapsesRepeatedTracebacks(t *testing.T) {
+	got := ErrorLines(logLines(serverStartupFailure()...))
+	assert.Len(t, got, 11, "one copy of the traceback, frames and all")
+	assert.Equal(t, "Traceback (most recent call last):", got[0].Text)
+	assert.Equal(t, 3, got[0].Repeats)
+	assert.Equal(t, "sqlite3.OperationalError: unable to open database file", got[len(got)-1].Text)
+}
+
+func TestFindFailurePointsAtTheAppsOwnCode(t *testing.T) {
+	f := FindFailure(logLines(serverStartupFailure()...))
+	require.NotNil(t, f)
+	assert.Equal(t, "sqlite3.OperationalError: unable to open database file", f.Exception)
+	assert.Equal(t, "main.py", f.File, "the innermost frame in the code folder, not uvicorn's or the stdlib's")
+	assert.Equal(t, 34, f.Line)
+	assert.Equal(t, "get_db", f.Func)
+	assert.Equal(t, "company.app.finding.database_path", f.Hint)
+	assert.Equal(t, 3, f.Repeats)
+}
+
+func TestFindFailureHints(t *testing.T) {
+	cases := []struct {
+		name, source, exception, hint, arg string
+	}{
+		{"pip name differs from import", "    import cv2", "ModuleNotFoundError: No module named 'cv2'", "company.app.finding.missing_package", "opencv-python"},
+		{"unknown module", "    import openpyxl.styles", "ModuleNotFoundError: No module named 'openpyxl.styles'", "company.app.finding.missing_module", "openpyxl"},
+		{"environment variable", `    url = os.environ["ERP_URL"]`, "KeyError: 'ERP_URL'", "company.app.finding.missing_env", "ERP_URL"},
+		{"a dict of its own", `    row = cache["x"]`, "KeyError: 'x'", "", ""},
+		{"syntax", "    def f(", "SyntaxError: '(' was never closed", "company.app.finding.syntax", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := FindFailure(logLines(
+				"Traceback (most recent call last):",
+				`  File "/app/main.py", line 3`, // bubblewrap's view; SyntaxError frames carry no function
+				c.source,
+				c.exception,
+			))
+			require.NotNil(t, f)
+			assert.Equal(t, "main.py", f.File)
+			assert.Equal(t, c.hint, f.Hint)
+			assert.Equal(t, c.arg, f.HintArg)
+		})
+	}
+
+	f := FindFailure(logLines(`ERROR:    Error loading ASGI app. Attribute "app" not found in module "main".`))
+	require.NotNil(t, f, "uvicorn reports this one without a traceback")
+	assert.Equal(t, "company.app.finding.no_app_object", f.Hint)
+	assert.Nil(t, FindFailure(logLines("INFO:     Application startup complete.")))
+}

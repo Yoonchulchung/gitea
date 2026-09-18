@@ -93,9 +93,9 @@
 							</td>
 							<td class="tw-text-13">
 								{{if eq .State.Health.State "up"}}
-									<span class="text-green">{{ctx.Locale.Tr "company.admin.health_up"}}</span>
+									<span class="text-green" data-tooltip-content="{{if .State.Health.Own}}{{ctx.Locale.Tr "company.admin.health_own"}}{{else}}{{ctx.Locale.Tr "company.admin.health_answering"}}{{end}}">{{ctx.Locale.Tr "company.admin.health_up"}}</span>
 								{{else if eq .State.Health.State "down"}}
-									<span class="text-red">{{ctx.Locale.Tr "company.admin.health_down"}}</span>
+									<span class="text-red" {{with .State.Health.Detail}}data-tooltip-content="{{.}}"{{end}}>{{ctx.Locale.Tr "company.admin.health_down"}}</span>
 								{{else}}
 									<span class="text-grey">—</span>
 								{{end}}

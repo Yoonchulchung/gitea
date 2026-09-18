@@ -7,8 +7,11 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
+	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
 	gitea_context "gitea.dev/services/context"
 )
@@ -60,42 +63,224 @@ const maxDiagnoseLines = 60
 // ErrorLines picks the failures out of a log, newest last so a traceback
 // still reads top to bottom.
 //
-// Consecutive identical texts collapse: an app in a crash loop writes the
-// same traceback every few seconds, and showing it forty times hides
-// everything else that happened.
+// A failure is one line, or a traceback from its header to its exception, and
+// consecutive identical failures collapse into their newest copy with Repeats
+// counting them: an app in a crash loop writes the same traceback every few
+// seconds, and showing it forty times hides everything else that happened.
 func ErrorLines(lines []LogLine) []LogLine {
-	var out []LogLine
+	var out, prev, cur []LogLine
+	flush := func() {
+		if len(cur) == 0 {
+			return
+		}
+		cur[0].Repeats = 1
+		if slices.EqualFunc(cur, prev, func(a, b LogLine) bool { return a.Text == b.Text }) {
+			out = out[:len(out)-len(prev)]
+			cur[0].Repeats = prev[0].Repeats + 1
+		}
+		out = append(out, cur...)
+		prev, cur = cur, nil
+	}
 	inTraceback := false
 	for _, line := range lines {
 		text := strings.TrimRight(line.Text, "\r\n")
-		hit := false
-		switch {
-		case inTraceback && (tracebackContinuation.MatchString(text) || strings.HasPrefix(text, "    ")):
-			hit = true
-		default:
-			for _, re := range errorLinePatterns {
-				if re.MatchString(text) {
-					hit = true
-					break
-				}
-			}
-			// A traceback's frames follow its header; everything until the
-			// exception line belongs with it.
-			inTraceback = hit && strings.Contains(strings.ToLower(text), "traceback")
-		}
-		if !hit {
-			inTraceback = false
+		if inTraceback && (tracebackContinuation.MatchString(text) || strings.HasPrefix(text, "    ")) {
+			cur = append(cur, line)
 			continue
 		}
-		if n := len(out); n > 0 && out[n-1].Text == line.Text {
-			continue // the same failure again
+		closing := inTraceback // the exception line ends the traceback it follows
+		inTraceback = false
+		if !isErrorLine(text) {
+			flush()
+			continue
 		}
-		out = append(out, line)
+		header := strings.Contains(strings.ToLower(text), "traceback")
+		if header || !closing {
+			flush()
+		}
+		cur = append(cur, line)
+		if inTraceback = header; !header {
+			flush()
+		}
 	}
+	flush()
 	if len(out) > maxDiagnoseLines {
 		out = out[len(out)-maxDiagnoseLines:] // the most recent failure is the one being asked about
 	}
 	return out
+}
+
+func isErrorLine(text string) bool {
+	return slices.ContainsFunc(errorLinePatterns, func(re *regexp.Regexp) bool { return re.MatchString(text) })
+}
+
+// LogFinding is the most recent failure in a log, read without a model: what
+// was raised, where in the department's own code, and — for the failures
+// these apps keep hitting — what to change.
+type LogFinding struct {
+	// Exception is the traceback's last line, verbatim. It can carry the
+	// app's data, so it goes only where the log itself may.
+	Exception string
+	File      string // relative to the app's code directory; "" when no frame is in it
+	Line      int
+	Func      string
+	Hint      string // locale key, "" when the failure is not a known one
+	HintArg   string
+	AdminHint string // locale key
+	Repeats   int
+	At        int64
+}
+
+var (
+	tracebackHeader = regexp.MustCompile(`(?i)traceback \(most recent call last\):\s*$`)
+	tracebackFrame  = regexp.MustCompile(`^\s+File "([^"]+)", line (\d+)(?:, in (.+?))?\s*$`)
+	// A dotted name whose last part has a lower-case letter, so "INFO:" and
+	// "ERROR:" from uvicorn do not pass for an exception.
+	exceptionLine = regexp.MustCompile(`^(?:[A-Za-z_]\w*\.)*[A-Z]\w*[a-z]\w*(?::|$)`)
+	// Code lives at /app under bubblewrap and inside the release elsewhere.
+	appCodeFrame   = regexp.MustCompile(`^/app/(.+)$|/releases/[^/]+/app/(.+)$`)
+	asgiLoadError  = regexp.MustCompile(`Error loading ASGI app\. (.+)$`)
+	missingEnvName = regexp.MustCompile(`^KeyError: '([^']+)'`)
+)
+
+// failureHints are the failures department apps actually hit, matched
+// against the exception line; the first capture group is the hint's argument.
+var failureHints = []struct {
+	re        *regexp.Regexp
+	hint      string
+	adminHint string
+}{
+	{regexp.MustCompile(`unable to open database file|attempt to write a readonly database`), "company.app.finding.database_path", "company.app.finding.database_path.admin"},
+	{regexp.MustCompile(`\[Errno 30\] Read-only file system`), "company.app.finding.read_only", ""},
+	{regexp.MustCompile(`^PermissionError: \[Errno 13\]`), "company.app.finding.permission", ""},
+	{regexp.MustCompile(`^ModuleNotFoundError: No module named '([^'.]+)`), "company.app.finding.missing_module", ""},
+	{regexp.MustCompile(`requires "([^"]+)" to be installed`), "company.app.finding.missing_package", ""}, // FastAPI forms without python-multipart
+	{regexp.MustCompile(`^(?:SyntaxError|IndentationError|TabError)\b`), "company.app.finding.syntax", ""},
+	{regexp.MustCompile(`^NameError: name '([^']+)' is not defined`), "company.app.finding.undefined_name", ""},
+	{regexp.MustCompile(`^MemoryError\b`), "company.app.finding.memory", ""},
+	{regexp.MustCompile(`Temporary failure in name resolution|Name or service not known|Network is unreachable|\bConnectError\b`), "company.app.finding.network", ""},
+	{regexp.MustCompile(`^Attribute "app" not found in module "main"`), "company.app.finding.no_app_object", ""},
+}
+
+// pipNames are import names whose package is called something else, where a
+// department adding the import name to requirements.txt would fail again.
+var pipNames = map[string]string{
+	"PIL": "Pillow", "cv2": "opencv-python", "yaml": "PyYAML", "sklearn": "scikit-learn",
+	"bs4": "beautifulsoup4", "dotenv": "python-dotenv", "docx": "python-docx", "pptx": "python-pptx",
+	"dateutil": "python-dateutil", "jwt": "PyJWT", "multipart": "python-multipart",
+}
+
+type tracebackFrameInfo struct {
+	path, fn, source string
+	line             int
+}
+
+// FindFailure returns the most recent failure in an app's own output, or nil.
+func FindFailure(lines []LogLine) *LogFinding {
+	var found []*LogFinding
+	var frames []tracebackFrameInfo
+	inTraceback := false
+	for _, line := range lines {
+		if line.Build {
+			continue // a failed build is explained from its own output (summarizeInstallFailure)
+		}
+		text := strings.TrimRight(line.Text, "\r\n")
+		if tracebackHeader.MatchString(text) {
+			inTraceback, frames = true, frames[:0]
+			continue
+		}
+		if inTraceback {
+			if m := tracebackFrame.FindStringSubmatch(text); m != nil {
+				n, _ := strconv.Atoi(m[2])
+				frames = append(frames, tracebackFrameInfo{path: m[1], line: n, fn: m[3]})
+				continue
+			}
+			if strings.HasPrefix(text, " ") {
+				if n := len(frames); n > 0 && frames[n-1].source == "" && strings.Trim(text, " ^~") != "" {
+					frames[n-1].source = strings.TrimSpace(text)
+				}
+				continue
+			}
+			inTraceback = false
+			if exceptionLine.MatchString(text) {
+				found = append(found, newLogFinding(text, frames, line.At))
+				continue
+			}
+		}
+		if m := asgiLoadError.FindStringSubmatch(text); m != nil {
+			found = append(found, newLogFinding(m[1], nil, line.At))
+		}
+	}
+	if len(found) == 0 {
+		return nil
+	}
+	last := found[len(found)-1]
+	for _, f := range found {
+		if f.Exception == last.Exception && f.File == last.File && f.Line == last.Line {
+			last.Repeats++
+		}
+	}
+	return last
+}
+
+func newLogFinding(exception string, frames []tracebackFrameInfo, at int64) *LogFinding {
+	f := &LogFinding{Exception: exception, At: at}
+	source := ""
+	for _, fr := range slices.Backward(frames) {
+		m := appCodeFrame.FindStringSubmatch(fr.path)
+		if m == nil {
+			continue
+		}
+		f.File, f.Line, source = m[1]+m[2], fr.line, fr.source
+		if !strings.HasPrefix(fr.fn, "<") { // <module>, <lambda>
+			f.Func = fr.fn
+		}
+		break
+	}
+	// Only when the failing line reads the environment: a KeyError elsewhere
+	// is a dictionary the app built itself.
+	if m := missingEnvName.FindStringSubmatch(exception); m != nil && strings.Contains(source, "environ[") {
+		f.Hint, f.HintArg = "company.app.finding.missing_env", m[1]
+		return f
+	}
+	for _, h := range failureHints {
+		m := h.re.FindStringSubmatch(exception)
+		if m == nil {
+			continue
+		}
+		f.Hint, f.AdminHint = h.hint, h.adminHint
+		if len(m) > 1 {
+			f.HintArg = m[1]
+		}
+		if pkg, ok := pipNames[f.HintArg]; ok && f.Hint == "company.app.finding.missing_module" {
+			f.Hint, f.HintArg = "company.app.finding.missing_package", pkg
+		}
+		break
+	}
+	return f
+}
+
+// logFindingWindow is how far before a failure its traceback may be. Wide
+// enough for a health check's full wait, narrow enough that an old
+// traceback is not offered as the reason for a new failure.
+const logFindingWindow = 15 * 60
+
+// LogFindingFor reads the failure behind cause out of the app's log, or nil
+// when the cause is not one the app's own output explains.
+func LogFindingFor(st *AppState, cause *AppCause) *LogFinding {
+	if cause == nil || !slices.Contains([]string{ReasonHealthTimeout, ReasonCrashLoop, ReasonRolledBack, ReasonUnresponsive}, st.Reason) {
+		return nil
+	}
+	lines, _, err := ReadAppLogs(st.Owner, st.Repo, LogQuery{Limit: logDiagnoseScan})
+	if err != nil {
+		log.Warn("company: %s/%s: reading the log for a failure: %v", st.Owner, st.Repo, err)
+		return nil
+	}
+	f := FindFailure(lines)
+	if f == nil || (f.At != 0 && cause.At != 0 && f.At < cause.At-logFindingWindow) {
+		return nil
+	}
+	return f
 }
 
 // logDiagnosePrompt is written for the reader, not for the log.

@@ -76,6 +76,7 @@ func TestDynamicTrKeysComeFromOurOwnVocabulary(t *testing.T) {
 		".Evidence":  true, // stored request evidence: HasKey-guarded
 		".DetailKey": true, // PermissionRequest.DetailKey: written only by our own code, never from a form
 		".OpKey":     true, // describeActivity: looked up in activityOpKeys, never assembled from the stored op_type
+		".Hint":      true, // LogFinding: taken from failureHints, never from the log; its argument is escaped by Tr
 	}
 	for _, path := range companyTemplateRoots(t) {
 		body, err := os.ReadFile(path)
@@ -109,7 +110,7 @@ func TestLabelFunctionsReturnKeysOrPlainText(t *testing.T) {
 		ReasonInstallFailed, ReasonPackageDenied, ReasonOOM, ReasonHealthTimeout,
 		ReasonCrashLoop, ReasonSuspended, ReasonNoPython, ReasonSandboxUnavailable,
 		ReasonSecretError, ReasonDeployQueueFull, ReasonNoRelease,
-		ReasonContractViolation, ReasonRolledBack, "something-new",
+		ReasonContractViolation, ReasonRolledBack, ReasonUnresponsive, "something-new",
 	} {
 		cause := departmentCause(&AppState{Reason: reason, UserMessage: hostile, Message: hostile})
 		require.NotNil(t, cause, reason)
@@ -117,5 +118,13 @@ func TestLabelFunctionsReturnKeysOrPlainText(t *testing.T) {
 		if cause.Detail != "" {
 			assert.True(t, strings.HasPrefix(cause.Detail, "company.app.cause."), reason)
 		}
+	}
+
+	// A finding's hint is picked from a table; what the app printed only ever
+	// becomes its argument.
+	for _, exception := range []string{"ValueError: " + hostile, "KeyError: '" + hostile + "'", "ModuleNotFoundError: No module named '" + hostile + "'"} {
+		f := FindFailure(logLines("Traceback (most recent call last):", `  File "/app/main.py", line 1`, `    os.environ["x"]`, exception))
+		require.NotNil(t, f, exception)
+		assert.True(t, f.Hint == "" || strings.HasPrefix(f.Hint, "company.app.finding."), exception)
 	}
 }

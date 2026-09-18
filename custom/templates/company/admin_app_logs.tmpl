@@ -64,7 +64,7 @@
 			{{/* Build output comes first, then the running app's. The two have no
 			     shared clock, so they are shown as blocks rather than interleaved
 			     — which would imply an ordering that is not there. */}}
-			<pre class="company-log">{{range .Lines}}{{if .At}}<span class="company-log-time" title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.AbsoluteShort .At}}</span> {{end}}{{if .Build}}<span class="company-log-build">{{.Text}}</span>{{else}}{{.Text}}{{end}}
+			<pre class="company-log">{{range .Lines}}{{if .At}}<span class="company-log-time" title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.AbsoluteShort .At}}</span> {{end}}{{if gt .Repeats 1}}<span class="text-grey" title="{{ctx.Locale.Tr "company.logs.repeated" .Repeats}}">×{{.Repeats}}</span> {{end}}{{if .Build}}<span class="company-log-build">{{.Text}}</span>{{else}}{{.Text}}{{end}}
 {{else}}{{ctx.Locale.Tr "company.logs.empty_admin"}}{{end}}</pre>
 			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">
 				{{ctx.Locale.Tr "company.logs.legend" (HTMLFormat `<span class="%s">%s</span>` "company-log-build" (ctx.Locale.Tr "company.logs.legend_colour"))}}
