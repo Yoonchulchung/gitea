@@ -71,7 +71,7 @@ Landlock 지원 수준, python3와 PyPI 접근성을 한 화면에 보여준다.
 | 자원 한도 | 메모리 한도 초과 할당 |
 
 **"막히면 안 되는 것"도 함께 본다** — 자기 디렉터리 쓰기, `/proc/self`,
-unix 소켓, `ssl` import, `/etc/passwd`, `getpass.getuser()`. 이게 없으면
+unix 소켓, `ssl` import, `/etc/passwd`, `getpass.getuser()`, `mimetypes`. 이게 없으면
 "전부 막혔다"와 "파이썬이 아예 뜨지 못했다"를 구분할 수 없고, 후자가 성공처럼
 보인다.
 

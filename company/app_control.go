@@ -72,8 +72,11 @@ func RollbackApp(owner, repo, actor string) error {
 	current, _ := os.Readlink(p.current)
 
 	s.mu.Lock()
-	s.stopLocked()
+	err = s.stopLocked()
 	s.mu.Unlock()
+	if err != nil {
+		return err // still running from the release it would be switched away from
+	}
 
 	if err := swapSymlink(p.current, previous); err != nil {
 		return err
@@ -123,8 +126,11 @@ func RemoveApp(ctx context.Context, owner, repo, actor string) error {
 	defer s.deployMu.Unlock()
 
 	s.mu.Lock()
-	s.stopLocked()
+	err := s.stopLocked()
 	s.mu.Unlock()
+	if err != nil {
+		return err // deleting the files of a process that is still running
+	}
 
 	// Unregister before deleting, so no request can arrive for an app whose
 	// socket is being removed underneath it.

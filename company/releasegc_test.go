@@ -25,6 +25,7 @@ func makeRelease(t *testing.T, p appPaths, name, venvKey string, age time.Durati
 	require.NoError(t, os.Symlink(venv, filepath.Join(release, ".venv")))
 
 	when := time.Now().Add(-age)
+	require.NoError(t, os.Chtimes(filepath.Join(release, "app"), when, when))
 	require.NoError(t, os.Chtimes(release, when, when))
 	return release
 }
@@ -50,6 +51,26 @@ func TestGCReleasesKeepsTheNewest(t *testing.T) {
 	for i := releasesKept; i < len(releases); i++ {
 		assert.NoDirExists(t, releases[i], "release %d should have been collected", i)
 	}
+}
+
+// A file added to an old release later — the installed-package list is
+// backfilled — moves the directory's time, and must not make it look new.
+func TestGCReleasesAgesByTheCode(t *testing.T) {
+	withTempAppData(t)
+	p := appPathsFor("PO", "app")
+
+	var releases []string
+	for i := range releasesKept + 1 {
+		releases = append(releases, makeRelease(t, p,
+			"r"+string(rune('a'+i)), "venv", time.Duration(i)*time.Hour))
+	}
+	oldest := releases[len(releases)-1]
+	require.NoError(t, os.WriteFile(filepath.Join(oldest, "packages"), nil, 0o600))
+	require.NoError(t, os.Chtimes(oldest, time.Now(), time.Now()))
+
+	gcReleases("PO", "app")
+	assert.NoDirExists(t, oldest)
+	assert.DirExists(t, releases[0])
 }
 
 // The running release and the rollback target survive no matter how old they

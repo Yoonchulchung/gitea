@@ -120,6 +120,13 @@ func buildSeccompFilter(spec sandboxSpec) []unix.SockFilter {
 	deny(unix.SYS_RT_SIGQUEUEINFO)
 	deny(unix.SYS_RT_TGSIGQUEUEINFO)
 
+	// Leaving the process group the platform stops as one. A process in a
+	// session of its own outlives every stop and restart, holding the app's
+	// database and output pipe, with nothing left that knows it exists.
+	// Without a PID namespace, the group is the only handle there is.
+	deny(unix.SYS_SETSID)
+	deny(unix.SYS_SETPGID)
+
 	if !spec.AllowNetwork {
 		filter = append(filter, socketFamilyRules()...)
 	}

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"gitea.dev/company"
 	audit_model "gitea.dev/models/audit"
 	"gitea.dev/modules/container"
 	"gitea.dev/modules/graceful"
@@ -237,6 +238,7 @@ func serveInstalled(c *cli.Command) error {
 
 	audit.Record(auditCtx, audit_model.SystemShutdown, nil)
 	<-graceful.GetManager().Done()
+	company.StopAllApps()
 	log.Info("PID: %d Gitea Web Finished", os.Getpid())
 	return err
 }

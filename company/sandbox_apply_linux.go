@@ -155,8 +155,11 @@ func applyLandlock(spec sandboxSpec) error {
 		if err != nil {
 			// A path that is not there is not a failure: /lib64 exists on
 			// some distributions and not others, and refusing to start over
-			// a missing optional directory would be its own outage.
-			if errors.Is(err, os.ErrNotExist) {
+			// a missing optional directory would be its own outage. Nor is
+			// one this UID cannot reach: the app runs as the same user, so a
+			// rule could not give it the path anyway, and a hardened parent
+			// such as /etc/httpd/conf must not stop every app from starting.
+			if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
 				return nil
 			}
 			return fmt.Errorf("opening %s for the sandbox: %w", path, err)

@@ -4,17 +4,12 @@
 package company
 
 import (
-	"bufio"
 	"context"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -100,28 +95,10 @@ func TestLivenessStopsRestartingAStuckApp(t *testing.T) {
 		"restarts older than the window no longer count")
 }
 
-// A stuck app often ignores SIGTERM too, so it is killed — and a restart must
-// wait for that kill to land. Starting straight after it took the dying
-// process for a live one, started nothing, and left the app down while its
-// state said running.
-func TestStopWaitsForAKilledProcess(t *testing.T) {
-	prev := stopGracePeriod
-	stopGracePeriod = 400 * time.Millisecond
-	t.Cleanup(func() { stopGracePeriod = prev })
-
-	cmd := exec.Command("sh", "-c", "trap '' TERM; echo ready; while :; do sleep 1; done")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	out, err := cmd.StdoutPipe()
-	require.NoError(t, err)
-	require.NoError(t, cmd.Start())
-	_, err = bufio.NewReader(out).ReadString('\n') // the trap is in place; a TERM before it would just end the shell
-	require.NoError(t, err)
-	s := &appSupervisor{owner: "PO", repo: "stuck", cmd: cmd}
-	go s.watchExit(cmd, io.NopCloser(strings.NewReader("")))
-
-	s.mu.Lock()
-	s.stopLocked()
-	reaped := s.cmd == nil
-	s.mu.Unlock()
-	assert.True(t, reaped, "stop returned while the killed process still counted as running")
+// Most apps failing together is the host, and restarting them all would add
+// load at the worst moment and then give up on every one of them.
+func TestLivenessHostTrouble(t *testing.T) {
+	assert.True(t, livenessHostTrouble(3, 4))
+	assert.False(t, livenessHostTrouble(3, 10), "a few stuck apps among many are the apps")
+	assert.False(t, livenessHostTrouble(1, 2), "with two apps one stuck app is already half")
 }

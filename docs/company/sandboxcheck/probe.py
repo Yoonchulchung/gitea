@@ -202,6 +202,7 @@ check("create a unix socket (its own)",
 check("import ssl", lambda: __import__("ssl"), expect="allow")
 check("read /etc/passwd (pwd, getpass)", lambda: open("/etc/passwd").read(1), expect="allow")
 check("resolve the current user", lambda: __import__("getpass").getuser(), expect="allow")
+check("guess a MIME type (FileResponse)", lambda: __import__("mimetypes").guess_type("index.html"), expect="allow")
 
 print("\n=== Gitea's environment must not have leaked in ===")
 leaked = sorted(k for k in os.environ

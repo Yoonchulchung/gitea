@@ -28,8 +28,10 @@ import (
 const (
 	livenessInterval = 30 * time.Second
 	livenessTimeout  = 5 * time.Second
-	// One slow answer is a busy app, not a stuck one.
-	livenessFailuresBeforeRestart = 3
+	// One slow answer is a busy app, not a stuck one; about two minutes of
+	// none is. A request that holds the event loop longer than that is
+	// holding every other user up too.
+	livenessFailuresBeforeRestart = 4
 	// Restarted this often inside the window, the app is stuck for a reason a
 	// restart does not fix, and restarting it forever would only hide that.
 	livenessRestartLimit  = 3
@@ -144,50 +146,98 @@ func StartLivenessChecks() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				var wg sync.WaitGroup
-				appRegistry.Range(func(_, v any) bool {
-					if ref, ok := v.(AppRef); ok {
-						wg.Go(func() { checkLiveness(ctx, ref.Owner, ref.Repo) })
-					}
-					return true
-				})
-				wg.Wait() // a slow round delays the next one rather than overlapping it
+				checkAllLiveness(ctx) // a slow round delays the next one rather than overlapping it
 			}
 		}
 	}()
 }
 
-func checkLiveness(ctx context.Context, owner, repo string) {
-	key := appKey(owner, repo)
+type livenessProbe struct {
+	owner, repo string
+	s           *appSupervisor
+	st          *AppState
+	own         bool
+	err         error
+}
+
+// checkAllLiveness probes every app, then decides. Deciding app by app, a
+// host in trouble — swapping, a backup saturating the disk — failed every
+// app at once, restarted them all while it could least afford it, and within
+// fifteen minutes had given up on every one of them.
+func checkAllLiveness(ctx context.Context) {
+	var (
+		mu     sync.Mutex
+		probes []livenessProbe
+		wg     sync.WaitGroup
+	)
+	appRegistry.Range(func(_, v any) bool {
+		if ref, ok := v.(AppRef); ok {
+			wg.Go(func() {
+				if pr, ok := probeLiveness(ctx, ref.Owner, ref.Repo); ok {
+					mu.Lock()
+					probes = append(probes, pr)
+					mu.Unlock()
+				}
+			})
+		}
+		return true
+	})
+	wg.Wait()
+	if ctx.Err() != nil {
+		return // Gitea is shutting down, which says nothing about the apps
+	}
+
+	failing := 0
+	for _, pr := range probes {
+		if pr.err != nil {
+			failing++
+		}
+	}
+	hostTrouble := livenessHostTrouble(failing, len(probes))
+	if hostTrouble {
+		log.Warn("company: %d of %d apps failed their health check at once; treating it as the host, not the apps, and restarting none", failing, len(probes))
+	}
+	for _, pr := range probes {
+		wg.Go(func() { recordLiveness(pr, hostTrouble) })
+	}
+	wg.Wait()
+}
+
+// livenessHostTrouble: at least three apps, and at least half of them. A
+// floor, because with two apps one stuck app is already half.
+func livenessHostTrouble(failing, probed int) bool {
+	return failing >= 3 && failing*2 >= probed
+}
+
+func probeLiveness(ctx context.Context, owner, repo string) (livenessProbe, bool) {
 	s := lookupSupervisor(owner, repo)
 	st := LoadAppState(owner, repo)
 	if s == nil || s.pid() == 0 || st.Actual != AppStateRunning || time.Since(time.Unix(st.StartedAt, 0)) < livenessStartGrace {
 		livenessMu.Lock()
-		livenessFor(key).failures = 0
+		livenessFor(appKey(owner, repo)).failures = 0
 		livenessMu.Unlock()
-		return
+		return livenessProbe{}, false
 	}
-
 	probeCtx, cancel := context.WithTimeout(ctx, livenessTimeout)
+	defer cancel()
 	own, err := probeHealth(probeCtx, healthClient(s.paths.socket), SettingsFor(owner, repo).HealthPath)
-	cancel()
-	if ctx.Err() != nil {
-		return // Gitea is shutting down, which says nothing about the app
-	}
+	return livenessProbe{owner: owner, repo: repo, s: s, st: st, own: own, err: err}, true
+}
 
+func recordLiveness(pr livenessProbe, hostTrouble bool) {
 	livenessMu.Lock()
-	rec := livenessFor(key)
-	if err == nil {
+	rec := livenessFor(appKey(pr.owner, pr.repo))
+	if pr.err == nil {
 		rec.failures = 0
-		rec.health = AppHealth{State: "up", Own: own, CheckedAt: time.Now().Unix()}
+		rec.health = AppHealth{State: "up", Own: pr.own, CheckedAt: time.Now().Unix()}
 	} else if rec.failures++; rec.failures >= livenessFailuresBeforeRestart {
-		rec.health = AppHealth{State: "down", Detail: err.Error(), CheckedAt: time.Now().Unix()}
+		rec.health = AppHealth{State: "down", Detail: pr.err.Error(), CheckedAt: time.Now().Unix()}
 	}
 	health, failures := rec.health, rec.failures
 	livenessMu.Unlock()
 
-	if health.CheckedAt != 0 && (health.State != st.Health.State || health.Own != st.Health.Own) {
-		_ = MutateAppState(owner, repo, func(st *AppState) bool {
+	if health.CheckedAt != 0 && (health.State != pr.st.Health.State || health.Own != pr.st.Health.Own) {
+		_ = MutateAppState(pr.owner, pr.repo, func(st *AppState) bool {
 			if st.Actual != AppStateRunning {
 				return false // stopped while this probe was out
 			}
@@ -195,8 +245,10 @@ func checkLiveness(ctx context.Context, owner, repo string) {
 			return true
 		})
 	}
-	if failures >= livenessFailuresBeforeRestart {
-		restartUnresponsive(owner, repo, s, err)
+	// Still counted, so an app that stays stuck once the host recovers is
+	// restarted on the first round that is not about the host.
+	if failures >= livenessFailuresBeforeRestart && !hostTrouble {
+		restartUnresponsive(pr.owner, pr.repo, pr.s, pr.err)
 	}
 }
 
@@ -240,7 +292,7 @@ func restartUnresponsive(owner, repo string, s *appSupervisor, cause error) {
 	}
 
 	log.Warn("company: %s/%s stopped answering its health check; restarting it: %v", owner, repo, cause)
-	if err := s.Restart(); err != nil {
+	if err := s.bounce(); err != nil {
 		log.Error("company: restarting unresponsive %s/%s: %v", owner, repo, err)
 		return
 	}

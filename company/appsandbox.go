@@ -272,6 +272,11 @@ var sandboxReadOnlyBinds = []string{
 	// to a sandbox. None of them contain a secret: password hashes live in
 	// /etc/shadow, which is deliberately absent.
 	"/etc/passwd", "/etc/group", "/etc/nsswitch.conf", "/etc/localtime",
+	// mimetypes (FileResponse, StaticFiles) opens every one of these that
+	// exists. Landlock still lets it stat one it may not open, so a file left
+	// out here raises PermissionError instead of being skipped.
+	"/etc/mime.types", "/etc/httpd/mime.types", "/etc/httpd/conf/mime.types",
+	"/etc/apache/mime.types", "/etc/apache2/mime.types",
 }
 
 // buildAppCommand assembles the command that runs one release.

@@ -71,6 +71,13 @@ func gcReleaseDirs(p appPaths, protected map[string]bool) []string {
 		if err != nil {
 			continue
 		}
+		// Aged by its code, which is written once at build. The directory's
+		// own time moves whenever a file is added beside the code later — the
+		// installed-package list is backfilled into old releases — and that
+		// ranked a months-old release as new.
+		if app, err := os.Stat(filepath.Join(path, "app")); err == nil {
+			info = app
+		}
 		candidates = append(candidates, release{path: path, modTime: info.ModTime().Unix()})
 	}
 	// Newest first, so the tail is what gets removed.

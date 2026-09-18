@@ -85,6 +85,12 @@ func TestSeccompFilterDenies(t *testing.T) {
 		}
 	})
 
+	t.Run("leaving the process group the platform stops", func(t *testing.T) {
+		for _, nr := range []uintptr{unix.SYS_SETSID, unix.SYS_SETPGID} {
+			assert.Equal(t, seccompDenyPerm, runFilter(t, filter, call(nr)))
+		}
+	})
+
 	t.Run("an app signalling its own workers still works", func(t *testing.T) {
 		assert.Equal(t, uint32(unix.SECCOMP_RET_ALLOW),
 			runFilter(t, filter, call(unix.SYS_KILL, 9999, uint64(unix.SIGTERM))))

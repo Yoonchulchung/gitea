@@ -157,6 +157,12 @@ func departmentCause(st *AppState) *AppCause {
 			Summary: "company.app.cause.crash_loop",
 			Detail:  "company.app.cause.crash_loop.detail",
 		}
+	case ReasonStopFailed:
+		return &AppCause{
+			Summary:   "company.app.cause.stop_failed",
+			AdminHint: "company.app.cause.stop_failed.admin",
+			Detail:    "company.app.cause.stop_failed.detail",
+		}
 	case ReasonUnresponsive:
 		return &AppCause{
 			Summary:   "company.app.cause.unresponsive",

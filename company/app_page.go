@@ -341,6 +341,8 @@ func historyReasonLabel(reason string) string {
 		return "company.app.history.reason.crash_loop"
 	case ReasonUnresponsive:
 		return "company.app.history.reason.unresponsive"
+	case ReasonStopFailed:
+		return "company.app.history.reason.stop_failed"
 	case livenessRestartReason:
 		return "company.app.history.reason.unresponsive_restart"
 	case ReasonSuspended:

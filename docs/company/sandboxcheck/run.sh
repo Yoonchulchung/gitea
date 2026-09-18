@@ -87,6 +87,8 @@ exec "$GITEA" deptapp-exec \
 	--ro /usr --ro /lib --ro /lib64 --ro /bin --ro /sbin \
 	--ro /etc/ssl --ro /etc/ca-certificates --ro /etc/resolv.conf \
 	--ro /etc/passwd --ro /etc/group --ro /etc/nsswitch.conf --ro /etc/localtime \
+	--ro /etc/mime.types --ro /etc/httpd/mime.types --ro /etc/httpd/conf/mime.types \
+	--ro /etc/apache/mime.types --ro /etc/apache2/mime.types \
 	--ro /dev/urandom --ro /dev/null --ro /proc/self \
 	--ro "$WORK/app" \
 	--rw "$WORK/run" \

@@ -4,15 +4,18 @@
 package company
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +24,7 @@ import (
 
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
+	"gitea.dev/modules/util"
 )
 
 // Gitea owns department app processes directly: there is no root on the
@@ -42,11 +46,28 @@ import (
 // the requester's job is worse than telling them nothing.
 var errNoRelease = audienceKeyError("company.err.no_release", "company.err.no_release.admin")
 
+// errStartSuperseded is a start that found the app stopped again by the time
+// it could act. Not a failure: the later decision stands.
+var errStartSuperseded = userKeyError("company.err.start_superseded")
+
+// errStillStopping is a start that waited for a stop in progress and the
+// process still had not gone.
+var errStillStopping = userKeyError("company.err.still_stopping")
+
+func stopFailedError(pid int) error {
+	return audienceKeyError("company.err.stop_failed", "company.err.stop_failed.admin", pid)
+}
+
 // stopGracePeriod is how long a process gets to finish in-flight requests
 // after SIGTERM before SIGKILL. uvicorn drains on TERM; the point of the wait
 // is that a deploy or restart doesn't cut off someone mid-request. A var so a
 // test need not wait this long.
 var stopGracePeriod = 10 * time.Second
+
+// appWaitDelay bounds how long reaping an app waits, once the app itself has
+// exited, for anything it started that still holds its output. A var for the
+// same reason.
+var appWaitDelay = 2 * time.Second
 
 const (
 	// crashRestartLimit is how many times a crashing app is restarted before
@@ -55,6 +76,10 @@ const (
 	// being visibly down.
 	crashRestartLimit = 3
 	crashRestartDelay = 5 * time.Second
+	// crashStreakReset: an app that ran this long before exiting did not die
+	// on start, so its exit begins a new streak rather than extending one
+	// from days ago.
+	crashStreakReset = 5 * time.Minute
 
 	// maxUnixSocketPath is the smaller of the two platform limits for
 	// sun_path — 104 on macOS and the BSDs, 108 on Linux — so a path that
@@ -116,8 +141,9 @@ type appSupervisor struct {
 	cmd      *exec.Cmd
 	stopping bool // set while an intentional stop is in progress, so the
 	// process-exit watcher doesn't treat it as a crash
-	crashes int
-	envVer  int64 // the env version this process was started with
+	crashes   int
+	envVer    int64 // the env version this process was started with
+	startedAt time.Time
 }
 
 var (
@@ -220,8 +246,22 @@ func buildEnv(p appPaths, rootPath, dataDir string, appEnv map[string]string, br
 
 // startLocked launches the app. Caller holds s.mu.
 func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]string, envVer int64, dataDir string) error {
+	if s.cmd != nil && s.stopping {
+		// A stop still waiting for its process: starting now would take the
+		// dying process for a live one and start nothing.
+		s.waitReaped(s.cmd)
+	}
 	if s.cmd != nil && s.cmd.Process != nil {
+		if s.stopping {
+			return errStillStopping
+		}
 		return nil // already running
+	}
+	// Against what is recorded now, under the lock: every stop records its
+	// intent before it begins, so a start that raced one stands down here
+	// rather than bringing back an app someone has just stopped.
+	if LoadAppState(s.owner, s.repo).Desired == AppStateStopped {
+		return errStartSuperseded
 	}
 	target, err := os.Readlink(s.paths.current)
 	if err != nil {
@@ -275,6 +315,17 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	if err := os.Remove(s.paths.socket); err != nil && !os.IsNotExist(err) {
 		log.Warn("company: %s/%s: could not remove stale socket: %v", s.owner, s.repo, err)
 	}
+	// Nothing of the app is running, so nothing needs what is in its temporary
+	// directory — and a process that was killed never deleted its own files.
+	// Best-effort: something left behind that cannot be deleted must not keep
+	// the app down.
+	tmp := filepath.Join(s.paths.run, "tmp")
+	if err := os.RemoveAll(tmp); err != nil {
+		log.Warn("company: %s/%s: could not clear the temporary directory: %v", s.owner, s.repo, err)
+	}
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		return err
+	}
 
 	rootPath := "/apps/" + s.owner + "/" + s.repo
 	cmd, err := buildAppCommand(target, s.paths, settings, rootPath, dataDir)
@@ -304,11 +355,6 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	cmd.Env = buildEnv(s.paths, rootPath, dataDir, appEnv, brokerOn)
 	cmd.Dir = filepath.Join(target, "app")
 	cmd.Env = append(cmd.Env, platformShimEnv+"="+appCodeDirForProcess(cmd.Dir))
-	// Its own process group so a stop reaches everything the app spawned,
-	// not just the process we launched. (Inside a sandbox with a PID
-	// namespace this is belt-and-braces — killing the namespace's PID 1
-	// takes the rest with it — but the dev path has no namespace.)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	logFile, err := openAppLog(s.paths.logs)
 	if err != nil {
@@ -317,8 +363,7 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	// Through a writer rather than straight to the file, so every line is
 	// stamped with when it arrived (company/applogtime.go).
 	stamped := newTimestampWriter(logFile)
-	cmd.Stdout = stamped
-	cmd.Stderr = stamped
+	setAppProcessAttrs(cmd, stamped)
 
 	if err := cmd.Start(); err != nil {
 		_ = stamped.Close()
@@ -327,12 +372,27 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	s.cmd = cmd
 	s.stopping = false
 	s.envVer = envVer
+	s.startedAt = time.Now()
 	// Best-effort, and after start because both need a live pid: keep the app
 	// behind Gitea for CPU, and ahead of it for the OOM killer.
 	deprioritizeAndProtect(cmd.Process.Pid)
 
 	go s.watchExit(cmd, stamped)
 	return nil
+}
+
+// setAppProcessAttrs is how every app process is run.
+func setAppProcessAttrs(cmd *exec.Cmd, output io.Writer) {
+	// Its own process group so a stop reaches everything the app spawned,
+	// not just the process we launched. (Inside a sandbox with a PID
+	// namespace this is belt-and-braces — killing the namespace's PID 1
+	// takes the rest with it — but the dev path has no namespace.)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Stdout, cmd.Stderr = output, output
+	// Output goes through a pipe, and Wait waits for every holder of it — so
+	// a child the app started would otherwise keep Wait, and with it the
+	// supervisor, believing a dead app is alive.
+	cmd.WaitDelay = appWaitDelay
 }
 
 // watchExit reaps the child and decides whether its death was expected.
@@ -342,6 +402,12 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 // this app.
 func (s *appSupervisor) watchExit(cmd *exec.Cmd, logFile io.Closer) {
 	err := cmd.Wait()
+	// The app is gone but what it started may not be — the kernel's OOM
+	// killer, for one, takes a single process — and a leftover still holding
+	// the app's socket makes every later start refuse as "already running".
+	// A group's id is not reissued while any member remains, so this reaches
+	// only what is left of the app.
+	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	// Closing the stamping writer flushes a trailing partial line, which on a
 	// crash is usually the last thing the app managed to say.
 	_ = logFile.Close()
@@ -353,6 +419,9 @@ func (s *appSupervisor) watchExit(cmd *exec.Cmd, logFile io.Closer) {
 	}
 	s.cmd = nil
 	intentional := s.stopping
+	if time.Since(s.startedAt) >= crashStreakReset {
+		s.crashes = 0
+	}
 	s.crashes++
 	crashes := s.crashes
 	s.mu.Unlock()
@@ -384,17 +453,26 @@ func (s *appSupervisor) watchExit(cmd *exec.Cmd, logFile io.Closer) {
 
 	time.Sleep(crashRestartDelay)
 	if st := LoadAppState(s.owner, s.repo); st.Desired == AppStateRunning {
-		if _, err := s.startProcess(false); err != nil {
+		pid, err := s.startProcess(false)
+		switch {
+		case errors.Is(err, errStartSuperseded):
+		case err != nil:
 			log.Error("company: %s/%s: restart after crash failed: %v", s.owner, s.repo, err)
+		default:
+			_ = s.recordStarted(pid)
 		}
 	}
 }
 
 // stopLocked terminates the process group: SIGTERM, then SIGKILL after the
 // grace period. Caller holds s.mu.
-func (s *appSupervisor) stopLocked() {
+//
+// An error means the process outlived even SIGKILL — stuck in the kernel,
+// usually on I/O — and is still there. Callers must not act as though it
+// had gone: starting beside it, or deleting the files it runs from.
+func (s *appSupervisor) stopLocked() error {
 	if s.cmd == nil || s.cmd.Process == nil {
-		return
+		return nil
 	}
 	s.stopping = true
 	stopBroker(s.owner, s.repo) // its lifetime is the app's
@@ -414,7 +492,11 @@ func (s *appSupervisor) stopLocked() {
 		// the start in a restart would take it for a live one and start
 		// nothing — leaving the app down with its state saying running.
 		s.waitReaped(cmd)
+		if s.cmd == cmd {
+			return stopFailedError(pid)
+		}
 	}
+	return nil
 }
 
 // waitReaped waits up to stopGracePeriod for watchExit to record cmd's exit.
@@ -440,17 +522,48 @@ func (s *appSupervisor) waitReaped(cmd *exec.Cmd) {
 // show the department a green badge for the whole check window and only then
 // flip to failed.
 func (s *appSupervisor) Start() error {
+	if err := claimRunning(s.owner, s.repo); err != nil {
+		return err
+	}
 	pid, err := s.startProcess(true)
 	if err != nil {
 		return err
 	}
+	return s.recordStarted(pid)
+}
+
+// claimRunning records that the app is wanted running before anything is
+// done about it, so a stop landing meanwhile records the later decision and
+// wins (startLocked). A suspension is not a race to win: an admin lifts it.
+func claimRunning(owner, repo string) error {
+	suspended := false
+	if err := MutateAppState(owner, repo, func(st *AppState) bool {
+		if suspended = st.Actual == AppStateSuspended; suspended {
+			return false
+		}
+		st.Desired = AppStateRunning
+		return true
+	}); err != nil {
+		return err
+	}
+	if suspended {
+		return userKeyError("company.err.suspended_dept")
+	}
+	return nil
+}
+
+// recordStarted declares a started process running — unless the app was
+// stopped again before this could be written, when the stop's record stands.
+func (s *appSupervisor) recordStarted(pid int) error {
 	s.mu.Lock()
 	envVer := s.envVer
 	s.mu.Unlock()
 
 	return MutateAppState(s.owner, s.repo, func(st *AppState) bool {
+		if st.Desired == AppStateStopped {
+			return false
+		}
 		st.Actual = AppStateRunning
-		st.Desired = AppStateRunning
 		// Also heals a state file written before this field existed.
 		st.HasRelease = true
 		st.PID = pid
@@ -508,6 +621,9 @@ func (s *appSupervisor) startProcess(freshAttempt bool) (int, error) {
 	}
 	s.mu.Unlock()
 
+	if errors.Is(startErr, errStartSuperseded) || errors.Is(startErr, errStillStopping) {
+		return 0, startErr // about another action in flight, not about the app
+	}
 	if startErr != nil {
 		reason := ReasonContractViolation
 		if errors.Is(startErr, errNoRelease) {
@@ -544,12 +660,22 @@ func (s *appSupervisor) startProcess(freshAttempt bool) (int, error) {
 
 // Stop takes the app down and records that this was deliberate, so startup
 // reconciliation won't bring it back.
+//
+// The intent is written first. The lock is released while the process winds
+// down, and a start that gets in then — a restart, the crash watcher, a
+// deploy — has to find the decision already recorded (startLocked).
 func (s *appSupervisor) Stop(actor, newActual, reason string) error {
+	if err := MutateAppState(s.owner, s.repo, func(st *AppState) bool {
+		st.Desired = AppStateStopped
+		return true
+	}); err != nil {
+		return err
+	}
 	s.mu.Lock()
-	s.stopLocked()
+	stopErr := s.stopLocked()
 	s.mu.Unlock()
 
-	return MutateAppState(s.owner, s.repo, func(st *AppState) bool {
+	if err := MutateAppState(s.owner, s.repo, func(st *AppState) bool {
 		st.Desired = AppStateStopped
 		st.Actual = newActual
 		st.PID = 0
@@ -557,16 +683,43 @@ func (s *appSupervisor) Stop(actor, newActual, reason string) error {
 		st.Health = AppHealth{State: "unknown"}
 		st.AppendHistory(AppHistoryEntry{Status: newActual, Actor: actor, Reason: reason})
 		return true
-	})
+	}); err != nil {
+		return err
+	}
+	// Recorded as stopped all the same: it has been sent SIGKILL and goes
+	// the moment the kernel lets it, and nothing will start it again.
+	return stopErr
 }
 
-// Restart is stop-then-start under one lock acquisition each, so the app
-// can't be observed half-transitioned by another control action.
+// Restart is a stop and a start that someone asked for, so it claims the
+// app running first: a stop pressed during it is the later decision.
 func (s *appSupervisor) Restart() error {
+	if err := claimRunning(s.owner, s.repo); err != nil {
+		return err
+	}
 	s.mu.Lock()
-	s.stopLocked()
+	err := s.stopLocked()
 	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	return s.Start()
+}
+
+// bounce restarts the app on the platform's own initiative. Unlike Restart
+// it claims nothing, so a stop someone pressed meanwhile stands.
+func (s *appSupervisor) bounce() error {
+	s.mu.Lock()
+	err := s.stopLocked()
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	pid, err := s.startProcess(true)
+	if err != nil {
+		return err
+	}
+	return s.recordStarted(pid)
 }
 
 // StartApp / StopApp / RestartApp are the package-level entry points used by
@@ -649,15 +802,69 @@ func ReconcileApps() {
 			adoptCurrentReleaseSHA(s, owner, repo)
 			return s.SHA != before
 		})
-		if st.Desired != AppStateRunning || st.Actual == AppStateSuspended {
+		interrupted := interruptedDeploy(st)
+		wantRunning := st.Desired == AppStateRunning && st.Actual != AppStateSuspended
+		if interrupted == "" && !wantRunning {
 			continue
 		}
 		go func() {
-			if err := supervisorFor(owner, repo).Start(); err != nil {
-				log.Error("company: reconcile %s/%s: %v", owner, repo, err)
+			if wantRunning {
+				if err := supervisorFor(owner, repo).Start(); err != nil {
+					log.Error("company: reconcile %s/%s: %v", owner, repo, err)
+				}
+			}
+			if interrupted != "" {
+				log.Warn("company: %s/%s: a deploy of %s was cut short by a restart; running it again",
+					owner, repo, util.TruncateRunes(interrupted, 12))
+				QueueDeploy(owner, repo, interrupted, st.PRID)
 			}
 		}()
 	}
+}
+
+// interruptedDeploy is the commit a deploy was working on when Gitea
+// stopped, or "". The queue lives in memory, so nothing else would finish
+// it: the app kept its old version while its record said a deploy was on
+// the way — and refused another, as one already in flight.
+func interruptedDeploy(st *AppState) string {
+	switch st.Actual {
+	case AppStateQueued, AppStateBuilding, AppStateActivating:
+	default:
+		return ""
+	}
+	for _, h := range st.History {
+		if h.Status == AppStateQueued && h.SHA != "" {
+			return h.SHA
+		}
+	}
+	return st.SHA
+}
+
+// StopAllApps takes every app down as Gitea exits, once the web server has
+// drained, so requests proxied to an app finish first. Called from the end of
+// cmd/web.go rather than registered with the graceful manager: a SIGTERM
+// cancels the manager's parent context, and the process is gone before any
+// terminate hook runs.
+//
+// Without it an app outlived Gitea: nothing watched its memory or its health
+// until the next start, which then killed it with no chance to finish what it
+// was doing. The recorded intent is left alone, so startup brings back what
+// was running.
+func StopAllApps() {
+	supervisorsMu.Lock()
+	all := slices.Collect(maps.Values(supervisors))
+	supervisorsMu.Unlock()
+	var wg sync.WaitGroup
+	for _, s := range all {
+		wg.Go(func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if err := s.stopLocked(); err != nil {
+				log.Error("company: %s/%s did not stop with Gitea: %s", s.owner, s.repo, AdminError(err))
+			}
+		})
+	}
+	wg.Wait()
 }
 
 // openAppLog opens the app's log file, rotating it first if it has grown
@@ -751,36 +958,20 @@ func (s *appSupervisor) stableFor(pid int, d time.Duration) bool {
 // from the UI, and every restart cycle stacks another orphan behind the
 // first.
 //
-// Identified by command line: every process this platform has ever started
-// names its release path in argv, and that path is inside a directory only
-// this platform writes. At startup no app has been started yet, so anything
-// matching is by definition not ours to keep. SIGKILL to the group rather
-// than a graceful TERM: these are processes whose supervisor is gone, and
-// there is nobody to watch a grace period for them.
+// At startup no app has been started yet, so anything found is by
+// definition not ours to keep. SIGKILL to the group rather than a graceful
+// TERM: these are processes whose supervisor is gone, and there is nobody to
+// watch a grace period for them.
 func reapOrphans(owner, repo string) {
 	p := appPathsFor(owner, repo)
-	home := p.home
-	out, err := exec.Command("ps", "-axo", "pid=,command=").Output()
-	if err != nil {
-		return // no ps, no cleanup — the socket probe still protects us
-	}
-	killed := false
-	for line := range strings.SplitSeq(string(out), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 || !strings.Contains(line, home+string(os.PathSeparator)) {
-			continue
-		}
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil || pid == os.Getpid() {
-			continue
-		}
+	pids := orphanPIDs(p)
+	for _, pid := range pids {
 		log.Warn("company: killing orphaned app process %d for %s/%s (left by a previous Gitea)", pid, owner, repo)
 		if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
 		}
-		killed = true
 	}
-	if !killed {
+	if len(pids) == 0 {
 		return
 	}
 	// SIGKILL is not synchronous: the reconcile that follows probes the
@@ -793,4 +984,45 @@ func reapOrphans(owner, repo string) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	log.Warn("company: %s/%s: the orphan's socket is still answering after a kill", owner, repo)
+}
+
+// orphanPIDs finds processes an earlier Gitea started for this app, by what
+// only they carry: the release tree or the socket on the command line, or —
+// for what the app started itself, whose command line can be anything, and
+// which can hold the socket all the same — the socket in the environment
+// every child inherits. The app's directory alone is not enough: an
+// administrator's `tail -f` on its log was killed along with the rest.
+func orphanPIDs(p appPaths) []int {
+	var pids []int
+	if out, err := exec.Command("ps", "-axo", "pid=,command=").Output(); err == nil {
+		for line := range strings.SplitSeq(string(out), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 || !orphanCommandLine(p, line) {
+				continue
+			}
+			if pid, err := strconv.Atoi(fields[0]); err == nil && pid != os.Getpid() {
+				pids = append(pids, pid)
+			}
+		}
+	}
+	// Linux; elsewhere there is no /proc and this finds nothing. Under
+	// bubblewrap the variable names the in-sandbox path and never matches,
+	// which is fine: there the app dies with its parent.
+	marker := []byte("SOCKET=" + p.socket + "\x00")
+	entries, _ := os.ReadDir("/proc")
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil || pid == os.Getpid() || slices.Contains(pids, pid) {
+			continue
+		}
+		env, err := os.ReadFile(filepath.Join("/proc", e.Name(), "environ"))
+		if err == nil && (bytes.HasPrefix(env, marker) || bytes.Contains(env, append([]byte{0}, marker...))) {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
+}
+
+func orphanCommandLine(p appPaths, line string) bool {
+	return strings.Contains(line, p.releases+string(os.PathSeparator)) || strings.Contains(line, p.socket)
 }

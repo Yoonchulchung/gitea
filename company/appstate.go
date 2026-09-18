@@ -69,6 +69,7 @@ const (
 	ReasonMigrationFailed    = "migration_failed" // the schema could not be brought up to date
 	ReasonRogueListener      = "rogue_listener"   // the app opened a port of its own
 	ReasonUnresponsive       = "unresponsive"     // stopped answering, and restarts did not help
+	ReasonStopFailed         = "stop_failed"      // the process outlived SIGKILL
 )
 
 // appHistoryLimit bounds the per-app history. It doubles as the rollback
@@ -328,6 +329,17 @@ func MutateAppState(owner, repo string, mutate func(*AppState) bool) error {
 
 // AppendHistory records one event, newest first, capped at appHistoryLimit.
 // Call from inside a MutateAppState callback.
+// LastOutcomeOf is how the newest attempt to run sha ended — running or
+// failed — or "" when the history no longer reaches it.
+func (st *AppState) LastOutcomeOf(sha string) string {
+	for _, h := range st.History {
+		if sha != "" && h.SHA == sha && (h.Status == AppStateRunning || h.Status == AppStateFailed) {
+			return h.Status
+		}
+	}
+	return ""
+}
+
 func (st *AppState) AppendHistory(entry AppHistoryEntry) {
 	if entry.At == 0 {
 		entry.At = time.Now().Unix()

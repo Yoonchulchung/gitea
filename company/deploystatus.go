@@ -114,6 +114,11 @@ func runtimeStatusFor(pr *issues_model.PullRequest) *deployRequestStatus {
 		status = "deploying"
 	case AppStateRunning:
 		status = "deployed"
+		// Running, but possibly the previous version: a commit that fails to
+		// come up is rolled back and the app keeps serving.
+		if st.LastOutcomeOf(pr.MergedCommitID) == AppStateFailed {
+			status = "deploy_failed"
+		}
 	case AppStateFailed:
 		status = "deploy_failed"
 	default:

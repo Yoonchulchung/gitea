@@ -598,19 +598,20 @@ print(json.dumps(out))
 `
 
 // migrateForDeploy is the deploy's view of the runner: resolve the data
-// directory, apply what is pending, and write what happened into the build
-// log the department reads.
-func migrateForDeploy(ctx context.Context, owner, repo string, p appPaths, release, sha string, settings AppSettings) error {
+// directory, apply what is pending, and say what happened for the build log
+// the department reads — written by the deploy once it knows how it ended,
+// so one attempt is one entry.
+func migrateForDeploy(ctx context.Context, owner, repo, release, sha string, settings AppSettings) (string, error) {
 	dataDir, err := appDataForStart(owner, repo)
 	if err != nil {
-		return err
+		return "", err
 	}
 	result, err := runMigrations(ctx, owner, repo, release, dataDir, settings, sha)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if result == nil || (len(result.Applied) == 0 && len(result.Added) == 0 && len(result.Removed) == 0) {
-		return nil
+		return "", nil
 	}
 
 	var note strings.Builder
@@ -628,6 +629,5 @@ func migrateForDeploy(ctx context.Context, owner, repo string, p appPaths, relea
 		fmt.Fprintf(&note, "\nWARNING: %d object(s) disappeared outside migrations: %s",
 			len(result.Removed), strings.Join(result.Removed, ", "))
 	}
-	appendBuildLog(p, sha, "OK", note.String())
-	return nil
+	return strings.TrimSpace(note.String()), nil
 }

@@ -254,22 +254,27 @@ func runDeploy(ctx context.Context, job deployJob) {
 		failBuild(owner, repo, ReasonInstallFailed, AdminError(err), priorActual)
 		return
 	}
-	appendBuildLog(p, job.SHA, "OK", "build succeeded")
 
 	// Between the build and the swap, and that position is the whole design:
 	// the new venv exists (the runner needs it), the old release is still
 	// serving, and the changes are additive so it cannot see them. A failure
 	// here costs a deploy, never an outage.
-	if err := migrateForDeploy(ctx, owner, repo, p, release, job.SHA, settings); err != nil {
+	migrationNote, err := migrateForDeploy(ctx, owner, repo, release, job.SHA, settings)
+	if err != nil {
 		appendBuildLog(p, job.SHA, "FAILED", AdminError(err))
 		failBuild(owner, repo, ReasonMigrationFailed, AdminError(err), priorActual, DepartmentSafeError("migrate", err))
 		return
 	}
 
+	// One entry per attempt, written once its outcome is known. An entry at
+	// the end of the build said OK for a release that then failed to come up
+	// and was rolled back, and the history showed a success nobody got.
 	if err := activateRelease(owner, repo, p, release, job.SHA, settings); err != nil {
 		log.Error("company: %s/%s: activation failed: %v", owner, repo, err)
-		return // activateRelease has already recorded the outcome
+		appendBuildLog(p, job.SHA, "FAILED", AdminError(err)) // the state already says why
+		return
 	}
+	appendBuildLog(p, job.SHA, "OK", strings.TrimSpace("deployed\n"+migrationNote))
 
 	// Only after a successful activation, and still under deployMu: a failed
 	// deploy leaves the previous release serving, and that is the worst
@@ -620,19 +625,31 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 	// lose: the new release is put in place but not started.
 	stayStopped := LoadAppState(owner, repo).Desired == AppStateStopped
 
+	// The same sentence in the app's state and in the deploy history, which
+	// otherwise got whatever error happened last — a socket refusing — for a
+	// summary.
+	fail := func(reason, msg string) error {
+		failDeploy(owner, repo, reason, msg)
+		return errors.New(msg)
+	}
+
 	s.mu.Lock()
-	s.stopLocked()
+	stopErr := s.stopLocked()
 	s.mu.Unlock()
+	if stopErr != nil {
+		// Still running from the old release: swapping underneath it and
+		// starting a second copy beside it would both be worse than stopping here.
+		return fail(ReasonStopFailed, "the running version could not be stopped: "+AdminError(stopErr))
+	}
 
 	if err := swapSymlink(p.current, release); err != nil {
-		failDeploy(owner, repo, ReasonContractViolation, "switching to the new version failed: "+err.Error())
-		return err
+		return fail(ReasonContractViolation, "switching to the new version failed: "+err.Error())
 	}
 	if previous != "" {
 		_ = swapSymlink(p.previous, previous)
 	}
 
-	if stayStopped {
+	deployedStopped := func() error {
 		return MutateAppState(owner, repo, func(st *AppState) bool {
 			st.Actual = AppStateStopped
 			st.HasRelease = true
@@ -642,26 +659,45 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 			return true
 		})
 	}
+	if stayStopped {
+		return deployedStopped()
+	}
 
 	// startProcess, not Start: the state must not say "running" until the
 	// health check passes, or a release that never answers shows a green
-	// badge for the whole check window before flipping to failed.
+	// badge for the whole check window before flipping to failed. Nor may it
+	// claim the app running: a stop pressed meanwhile is the later decision.
 	pid, startErr := s.startProcess(true)
+	if errors.Is(startErr, errStartSuperseded) {
+		return deployedStopped()
+	}
+	// Why the new release did not go live, for every record of this attempt.
+	notLive := startErr
 	if startErr == nil {
 		// Healthy, and then still the same process a few seconds later. An app
 		// that crashes shortly after boot restarts fast enough to answer every
 		// probe, so the check alone would activate a release that is dying in
 		// a loop and show it as running.
-		if err := waitHealthy(p.socket, settings); err == nil && s.stableFor(pid, healthSettleDelay) {
+		notLive = waitHealthy(p.socket, settings)
+		if notLive == nil && !s.stableFor(pid, healthSettleDelay) {
+			notLive = errors.New("it answered its health check and then exited")
+		}
+		if notLive == nil {
 			return MutateAppState(owner, repo, func(st *AppState) bool {
+				st.HasRelease = true
+				st.SHA = sha
+				st.MissingPackages = nil // it installed; nothing is outstanding
+				if st.Desired == AppStateStopped {
+					// Stopped during the check: the release is in place, and
+					// the stop's record of the app stands.
+					st.AppendHistory(AppHistoryEntry{Status: AppStateStopped, SHA: sha, Reason: "deployed while stopped"})
+					return true
+				}
 				st.Actual = AppStateRunning
 				st.Desired = AppStateRunning
-				st.HasRelease = true
 				st.PID = pid
 				st.StartedAt = time.Now().Unix()
-				st.SHA = sha
 				st.Reason, st.Message, st.UserMessage = "", "", ""
-				st.MissingPackages = nil // it installed; nothing is outstanding
 				st.FailedAt = 0
 				st.Health = AppHealth{State: "up", CheckedAt: time.Now().Unix()}
 				st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, SHA: sha})
@@ -670,42 +706,69 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 		}
 	}
 
+	// A stop pressed during the check is why it failed, not the release, and
+	// the rollback below must not start anything against it.
+	if LoadAppState(owner, repo).Desired == AppStateStopped {
+		return deployedStopped()
+	}
+
+	failure := fmt.Sprintf("the new version did not come up (%s)", AdminError(notLive))
+
 	// The new release is not serving. Put the old one back — nobody should be
 	// left with a broken app because someone pushed a typo.
 	if previous == "" {
-		failDeploy(owner, repo, ReasonHealthTimeout,
-			"the app did not respond after starting, and there is no previous version to fall back to")
-		return errors.New("health check failed with no rollback target")
+		return fail(ReasonHealthTimeout, failure+", and there is no previous version to fall back to")
 	}
 	log.Warn("company: %s/%s: new release unhealthy, rolling back to %s", owner, repo, previous)
 
 	s.mu.Lock()
-	s.stopLocked()
+	stopErr = s.stopLocked()
 	s.mu.Unlock()
+	if stopErr != nil {
+		return fail(ReasonStopFailed, failure+", and it could not be stopped: "+AdminError(stopErr))
+	}
 	if err := swapSymlink(p.current, previous); err != nil {
-		failDeploy(owner, repo, ReasonHealthTimeout, "rolling back failed: "+err.Error())
-		return err
+		return fail(ReasonHealthTimeout, failure+", and rolling back failed: "+err.Error())
 	}
 	// `previous` was set to this same directory a moment ago, when the new
 	// release went in. Leaving it there would make the next rollback restart
 	// the version already running and look like it did nothing.
 	_ = os.Remove(p.previous)
-	if err := s.Start(); err != nil {
-		failDeploy(owner, repo, ReasonRolledBack, "the previous version could not be restarted either")
-		return err
+	restored := errors.New(failure + ", so the previous version was restored")
+	// The attempt itself, under its own commit. Without it the history went
+	// from "queued" straight to the previous version running, and read as
+	// though nothing had gone wrong.
+	failedAttempt := AppHistoryEntry{Status: AppStateFailed, SHA: sha, Reason: ReasonHealthTimeout}
+	pid, err := s.startProcess(true)
+	if errors.Is(err, errStartSuperseded) {
+		// Stopped meanwhile; the previous version is in place for whoever starts it.
+		_ = MutateAppState(owner, repo, func(st *AppState) bool {
+			st.AppendHistory(failedAttempt)
+			return true
+		})
+		return restored
+	}
+	if err != nil {
+		return fail(ReasonRolledBack, failure+", and the previous version could not be restarted either: "+AdminError(err))
 	}
 	if err := waitHealthy(p.socket, settings); err != nil {
 		// "rolled back" and "currently down" are different things and an admin
 		// has to be able to tell them apart.
-		failDeploy(owner, repo, ReasonHealthTimeout, "the app is down: the previous version did not respond either")
-		return err
+		return fail(ReasonHealthTimeout, failure+", and the previous version did not respond either, so the app is down: "+AdminError(err))
 	}
-	return MutateAppState(owner, repo, func(st *AppState) bool {
+	_ = MutateAppState(owner, repo, func(st *AppState) bool {
+		st.AppendHistory(failedAttempt)
+		if st.Desired == AppStateStopped {
+			return true
+		}
 		st.Actual = AppStateRunning
 		st.Desired = AppStateRunning
+		st.PID = pid
+		st.StartedAt = time.Now().Unix()
 		st.HasRelease = true
+		st.FailedAt = time.Now().Unix()
 		st.Reason = ReasonRolledBack
-		st.Message = "the new version did not respond after starting, so the previous version was restored"
+		st.Message = restored.Error()
 		st.Health = AppHealth{State: "up", CheckedAt: time.Now().Unix()}
 		// The restored release, not the one that just failed: every later
 		// restart and redeploy reads this field.
@@ -713,6 +776,8 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 		st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, SHA: st.SHA, Reason: ReasonRolledBack})
 		return true
 	})
+	// Serving, but not what was deployed: a failure, whatever the badge says.
+	return restored
 }
 
 // swapSymlink points link at target atomically. A plain remove-then-create
