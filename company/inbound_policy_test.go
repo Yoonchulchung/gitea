@@ -74,3 +74,12 @@ func TestUnbanClearsBanAndStrikes(t *testing.T) {
 	assert.Equal(t, 0, v.strikes)
 	assert.False(t, UnbanVisitor("t:unban", "admin"), "already lifted")
 }
+
+// Only bubblewrap gives the app its own network namespace. Under Landlock the
+// app's /proc/<pid>/net/tcp is the host's table, and trusting it stopped apps
+// for ports like 22, 53 and 3000 that the host itself was listening on.
+func TestListenerWatchOnlyUnderNetworkNamespace(t *testing.T) {
+	assert.True(t, listenerWatchTrusted(SandboxBubblewrap))
+	assert.False(t, listenerWatchTrusted(SandboxLandlock), "landlock has no network namespace")
+	assert.False(t, listenerWatchTrusted(SandboxNone))
+}

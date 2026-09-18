@@ -86,13 +86,20 @@ type InboundPolicy struct {
 }
 
 func CurrentInboundPolicy() InboundPolicy {
-	sandboxed, _ := SandboxStatus()
+	mode, _ := sandboxMode()
 	return InboundPolicy{
 		OpenAllowed:   NetworkOpenAllowed(),
 		MaxAccess:     MaxAppAccess(),
-		ListenerWatch: sandboxed && listenerWatchSupported(),
+		ListenerWatch: listenerWatchTrusted(mode) && listenerWatchSupported(),
 	}
 }
+
+// listenerWatchTrusted reports whether a sandbox mode gives the app a network
+// namespace of its own. Only bubblewrap does. Landlock is still a sandbox,
+// but it has no namespaces: the app's socket table is the host's, and the
+// watchdog would stop every app for the host's sshd, DNS resolver and
+// monitoring agents.
+func listenerWatchTrusted(mode SandboxMode) bool { return mode == SandboxBubblewrap }
 
 // checkListeners is the watchdog: an app that opened a port of its own is
 // stopped and told why.
