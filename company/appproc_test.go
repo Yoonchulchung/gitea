@@ -5,6 +5,7 @@ package company
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os/exec"
 	"strings"
@@ -178,4 +179,22 @@ func TestOrphanCommandLine(t *testing.T) {
 	p := appPathsFor("PO", "app")
 	assert.True(t, orphanCommandLine(p, "python "+p.releases+"/abc/.venv/bin/uvicorn main:app --uds "+p.socket))
 	assert.False(t, orphanCommandLine(p, "tail -f "+p.logs+"/app.log"), "an administrator reading the log is not the app")
+}
+
+// Nothing recorded how an app was started, so on a host where Landlock
+// isolated every app the dashboard still flagged each one "running without a
+// sandbox" and listed it as needing attention.
+func TestStartRecordsItsIsolation(t *testing.T) {
+	withTempAppData(t)
+	prevBwrap, prevLandlock := sandboxProbe, landlockProbe
+	t.Cleanup(func() { sandboxProbe, landlockProbe = prevBwrap, prevLandlock })
+	sandboxProbe = func() (string, error) { return "", errors.New("no bubblewrap") }
+	landlockProbe = func() (int, error) { return 4, nil }
+
+	s := &appSupervisor{owner: "PO", repo: "isolated"}
+	require.NoError(t, claimRunning("PO", "isolated"))
+	require.NoError(t, s.recordStarted(1))
+	st := LoadAppState("PO", "isolated")
+	assert.True(t, st.Sandboxed)
+	assert.False(t, needsAttention(st))
 }

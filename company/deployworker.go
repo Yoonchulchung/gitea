@@ -695,6 +695,7 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 				}
 				st.Actual = AppStateRunning
 				st.Desired = AppStateRunning
+				st.Sandboxed, _ = SandboxStatus()
 				st.PID = pid
 				st.StartedAt = time.Now().Unix()
 				st.Reason, st.Message, st.UserMessage = "", "", ""
@@ -763,6 +764,7 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 		}
 		st.Actual = AppStateRunning
 		st.Desired = AppStateRunning
+		st.Sandboxed, _ = SandboxStatus()
 		st.PID = pid
 		st.StartedAt = time.Now().Unix()
 		st.HasRelease = true

@@ -566,6 +566,7 @@ func (s *appSupervisor) recordStarted(pid int) error {
 		st.Actual = AppStateRunning
 		// Also heals a state file written before this field existed.
 		st.HasRelease = true
+		st.Sandboxed, _ = SandboxStatus()
 		st.PID = pid
 		st.StartedAt = time.Now().Unix()
 		st.EnvVersionRunning = envVer

@@ -327,8 +327,6 @@ func MutateAppState(owner, repo string, mutate func(*AppState) bool) error {
 	return nil
 }
 
-// AppendHistory records one event, newest first, capped at appHistoryLimit.
-// Call from inside a MutateAppState callback.
 // LastOutcomeOf is how the newest attempt to run sha ended — running or
 // failed — or "" when the history no longer reaches it.
 func (st *AppState) LastOutcomeOf(sha string) string {
@@ -340,6 +338,8 @@ func (st *AppState) LastOutcomeOf(sha string) string {
 	return ""
 }
 
+// AppendHistory records one event, newest first, capped at appHistoryLimit.
+// Call from inside a MutateAppState callback.
 func (st *AppState) AppendHistory(entry AppHistoryEntry) {
 	if entry.At == 0 {
 		entry.At = time.Now().Unix()
