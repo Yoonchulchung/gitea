@@ -288,6 +288,9 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	if _, statErr := os.Stat(cmd.Path); statErr != nil {
 		return audienceKeyError("company.err.venv_broken", "company.err.venv_broken.admin", cmd.Path)
 	}
+	if err := installPlatformShim(filepath.Join(target, ".venv")); err != nil {
+		return err
+	}
 	brokerOn := settings.Network.Mode == NetworkBroker || settings.Network.Mode == NetworkOpen
 	if brokerOn {
 		// Before the app, so its first request cannot race the listener. A
@@ -300,6 +303,7 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	}
 	cmd.Env = buildEnv(s.paths, rootPath, dataDir, appEnv, brokerOn)
 	cmd.Dir = filepath.Join(target, "app")
+	cmd.Env = append(cmd.Env, platformShimEnv+"="+appCodeDirForProcess(cmd.Dir))
 	// Its own process group so a stop reaches everything the app spawned,
 	// not just the process we launched. (Inside a sandbox with a PID
 	// namespace this is belt-and-braces — killing the namespace's PID 1
@@ -694,7 +698,7 @@ func isReservedEnvName(name string) bool {
 		return true
 	}
 	switch upper {
-	case "PATH", "HOME", "LANG", "SOCKET", "ROOT_PATH", "IFS", "SHELL", "TMPDIR", "DATA_DIR", "DB_PATH":
+	case "PATH", "HOME", "LANG", "SOCKET", "ROOT_PATH", "IFS", "SHELL", "TMPDIR", "DATA_DIR", "DB_PATH", platformShimEnv:
 		return true
 	}
 	return false

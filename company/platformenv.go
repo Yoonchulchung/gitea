@@ -129,8 +129,8 @@ func (e PlatformEnvironment) AIContext() string {
 		// against a read-only release tree — in every app it generates.
 		fmt.Fprintf(&b, "- The app has persistent storage: **one SQLite database**, opened at the path in "+
 			"the DB_PATH environment variable. Always `sqlite3.connect(os.environ[\"DB_PATH\"], timeout=10)`; "+
-			"never a relative path or a literal, because the release directory is read-only and a relative "+
-			"path fails with \"unable to open database file\". Journal mode on this host is %s and the "+
+			"the platform redirects other paths there, but only for sqlite3, so name DB_PATH rather than "+
+			"relying on it. Journal mode on this host is %s and the "+
 			"platform sets it — do not set PRAGMA journal_mode yourself.\n", e.DataJournalMode)
 		b.WriteString("- Do NOT create or alter tables from app code — no CREATE TABLE at import time, no " +
 			"init_db(). Schema lives in numbered files the platform applies before the app starts: " +

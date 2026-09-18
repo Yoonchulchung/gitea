@@ -130,6 +130,31 @@ conn = sqlite3.connect(os.environ["DB_PATH"], timeout=10)
 `DB_PATH`는 언제나 `${DATA_DIR}/app.db`다. 파일명을 플랫폼이 고정하는 이유는
 마이그레이션 러너가 어느 파일을 열지 알아야 하기 때문이다.
 
+### 계약을 모르는 앱도 동작한다 — `sqlite3.connect` 리다이렉트
+
+배포하는 사람이 이 계약을 알아야 한다면 플랫폼을 이해해야 배포할 수 있다는 뜻이다. 그래서
+플랫폼이 앱을 시작할 때마다 venv의 site-packages에 `_company_platform.pth`와 모듈을
+넣고(`company/appshim.go`), 모듈이 `sqlite3.connect`를 감싼다. 앱이 연 경로가
+
+- 코드 디렉터리(`COMPANY_APP_DIR`) 안이거나 — 상대 경로, `Path(__file__).parent / "x.db"`
+- 상위 디렉터리가 없거나 쓸 수 없으면
+
+`DB_PATH`로 바꿔 열고, 로그에 `[platform] SQLite database ... is stored at ...`을 한 번
+남긴다. `:memory:`, `mode=memory` URI, 이미 `DATA_DIR` 안인 경로, 코드 밖의 쓸 수 있는
+경로(`/tmp` 등)는 그대로 둔다. SQLAlchemy·aiosqlite도 결국 이 함수를 부르므로 함께 덮인다.
+
+- **파일명이 여러 개여도 전부 `app.db` 하나로 간다.** 앱마다 DB 하나라는 위 원칙을
+  그대로 따른다. 서로 다른 파일에 같은 이름의 테이블을 두던 앱은 충돌한다.
+- `sitecustomize.py`가 아니라 `.pth`인 이유: Debian 계열은 stdlib 디렉터리에 자체
+  `sitecustomize.py`를 두고, 그쪽이 sys.path에서 먼저 잡힌다.
+- 빌드가 아니라 시작 때 설치한다. venv는 요구사항 단위로 캐시되므로, 이전에 만든 venv도
+  재시작만으로 받는다. 내용이 같으면 다시 쓰지 않는다.
+- `COMPANY_APP_DIR`는 앱 프로세스에만 준다. 마이그레이션·데이터 러너도 같은 venv를 쓰는데,
+  bubblewrap 밖에서는 cwd가 Gitea의 것이라 데이터 디렉터리를 포함할 수 있고, 그러면 스냅샷
+  경로까지 `app.db`로 꺾인다. 러너는 요청한 경로를 그대로 열어야 한다.
+- `DB_PATH`가 없으면(`APP_DATA_ENABLED` 꺼짐) 아무것도 하지 않는다. 보낼 영구 위치가 없다.
+- SQLite가 아닌 파일 쓰기(`open("uploads/x", "w")`)는 다루지 않는다.
+
 ### 해석 실패는 조용히 넘어가지 않는다
 
 `AppDataDir(ctx, owner, repo)`는 `repo_model.GetRepositoryByOwnerAndName`으로 ID를
