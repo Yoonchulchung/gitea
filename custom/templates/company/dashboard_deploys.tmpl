@@ -2,7 +2,10 @@
      deploy what, and how it went. Set by company.SetDashboardDeploys
      (company/dashboard_deploys.go); rendered only when there is something
      to show, like the apps panel. */}}
-{{if or .DashboardDeploys (gt .DashboardDeployPage 1)}}
+{{/* DashboardDeployPage is set for administrators only; a comparison
+     against nothing is a template error, and that was a 500 on every
+     department dashboard. */}}
+{{if and .DashboardDeployPage (or .DashboardDeploys (gt .DashboardDeployPage 1))}}
 	<div class="ui segments company-dashboard-deploys">
 		<div class="ui segment company-dashboard-apps-head">
 			<strong>{{ctx.Locale.Tr "company.dashboard.deploys"}}</strong>
