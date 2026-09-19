@@ -117,7 +117,7 @@ const htmlRewriteLimit = 8 << 20
 // Returns without touching anything it is not sure about, because passing the
 // body through unchanged leaves one broken link, while getting this wrong
 // breaks the page.
-func rewriteHTMLBody(prefix string, resp *http.Response, shim bool) {
+func rewriteHTMLBody(prefix string, resp *http.Response, shim, downloadsBlocked bool) {
 	sameHost := ""
 	if resp.Request != nil {
 		sameHost = resp.Request.Host
@@ -153,7 +153,7 @@ func rewriteHTMLBody(prefix string, resp *http.Response, shim bool) {
 	// text/html only: in XHTML a script is parsed as markup, and the shim's
 	// own text would end the page in a parse error.
 	if shim && strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
-		rewritten = injectAppPathShim(prefix, rewritten)
+		rewritten = injectAppPathShim(prefix, rewritten, downloadsBlocked)
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(rewritten))
 	resp.ContentLength = int64(len(rewritten))
@@ -169,6 +169,20 @@ const appPathShimJS = `(function () {
   if (window.__appPathShim) return;
   window.__appPathShim = true;
   var prefix = PREFIX, origin = location.origin;
+  if (DOWNLOADS_BLOCKED) {
+    // A file the page builds for itself never passes the proxy, so the
+    // download policy is applied where it happens: the click that saves it.
+    var deny = function () { window.alert(DOWNLOAD_MESSAGE); };
+    var click = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      if (this.hasAttribute("download")) { deny(); return; }
+      return click.apply(this, arguments);
+    };
+    document.addEventListener("click", function (e) {
+      var a = e.target && e.target.closest ? e.target.closest("a[download]") : null;
+      if (a) { e.preventDefault(); e.stopImmediatePropagation(); deny(); }
+    }, true);
+  }
   function mounted(p) {
     return p === prefix || [prefix + "/", prefix + "?", prefix + "#"].some(function (s) { return p.indexOf(s) === 0; });
   }
@@ -225,7 +239,7 @@ const appPathShimJS = `(function () {
 // injectAppPathShim puts appPathShimJS first in the document, before any of
 // the app's own scripts run. Only into a whole document: a fragment fetched
 // to be swapped into a page has to arrive exactly as the app sent it.
-func injectAppPathShim(prefix string, body []byte) []byte {
+func injectAppPathShim(prefix string, body []byte, downloadsBlocked bool) []byte {
 	tokenizer := html.NewTokenizer(bytes.NewReader(body))
 	offset, at := 0, -1
 	for tt := tokenizer.Next(); tt != html.ErrorToken; tt = tokenizer.Next() {
@@ -246,7 +260,10 @@ func injectAppPathShim(prefix string, body []byte) []byte {
 	if at < 0 {
 		return body
 	}
-	script := "<script>" + strings.Replace(appPathShimJS, "PREFIX", strconv.Quote(prefix), 1) + "</script>"
+	js := strings.Replace(appPathShimJS, "PREFIX", strconv.Quote(prefix), 1)
+	js = strings.Replace(js, "DOWNLOADS_BLOCKED", strconv.FormatBool(downloadsBlocked), 1)
+	js = strings.Replace(js, "DOWNLOAD_MESSAGE", strconv.Quote(platformLocale().TrString("company.appgate.downloads_blocked")), 1)
+	script := "<script>" + js + "</script>"
 	out := make([]byte, 0, len(body)+len(script))
 	out = append(out, body[:at]...)
 	out = append(out, script...)

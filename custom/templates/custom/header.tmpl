@@ -367,6 +367,13 @@
 .company-ai-chat-message-assistant {
 	align-self: stretch;
 }
+/* A rendered reply: Markdown's own spacing, sized for a narrow panel. */
+.company-ai-chat-message.rendered { white-space: normal; }
+.company-ai-chat-message.rendered :is(h1, h2, h3, h4) { font-size: 1em; margin: .8em 0 .3em; }
+.company-ai-chat-message.rendered :is(ul, ol) { padding-left: 1.3em; margin: .3em 0; }
+.company-ai-chat-message.rendered p { margin: .4em 0; }
+.company-ai-chat-message.rendered hr { margin: .6em 0; }
+.company-ai-chat-message.rendered pre { font-size: .85em; }
 .company-ai-chat-message-status {
 	align-self: flex-start;
 	font-size: .85rem;

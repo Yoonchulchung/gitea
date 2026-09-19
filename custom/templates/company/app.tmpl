@@ -58,6 +58,14 @@
 				{{if .CanControl}}<a class="ui basic button" href="{{.AppLink}}/data">{{svg "octicon-database" 14}} {{ctx.Locale.Tr "company.data.title"}}</a>{{end}}
 				<div class="tw-flex-1"></div>
 				{{if .CanControl}}
+					{{/* Leaving the platform is a request like arriving was; the
+					     repository cannot be deleted before it is approved. See
+					     company/appremoval.go. */}}
+					{{if or .App.HasRelease .OnCentral}}
+						<form method="post" action="{{.AppLink}}/remove-request" data-company-confirm="{{ctx.Locale.Tr "company.app.remove_request_confirm"}}">
+							{{.CsrfTokenHtml}}<button class="ui basic red button">{{ctx.Locale.Tr "company.app.remove_request"}}</button>
+						</form>
+					{{end}}
 					{{if eq .App.Actual "suspended"}}
 						{{/* Deliberately no start button: an app an administrator stopped
 						     stays stopped, or protecting the platform would mean nothing.

@@ -85,6 +85,7 @@ func AppPage(ctx *context.Context) {
 	// st.Reason — and that is cleared as soon as another deploy is queued,
 	// taking the only explanation of why nothing installs with it.
 	ctx.Data["MissingPackages"] = st.MissingPackages
+	ctx.Data["OnCentral"] = appOnCentral(ctx, owner, name)
 	if usage, ok := AppDataUsageFor(ctx, owner, name); ok {
 		ctx.Data["DataUsage"] = usage
 	}
@@ -127,6 +128,11 @@ func AppControl(ctx *context.Context) {
 		err = RollbackApp(owner, name, actor)
 	case "redeploy":
 		err = RedeployApp(owner, name, actor, isAdmin)
+	case "remove-request":
+		err = RequestRemoval(ctx) // see company/appremoval.go
+		if err == nil {
+			ctx.Flash.Success(ctx.Locale.TrString("company.app.remove_requested"))
+		}
 	default:
 		ctx.HTTPError(http.StatusBadRequest, "unknown action")
 		return

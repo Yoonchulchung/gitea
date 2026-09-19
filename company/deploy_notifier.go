@@ -114,6 +114,12 @@ func queueDeployOnMerge(ctx context.Context, doer *user_model.User, pr *issues_m
 	if doer != nil {
 		actor = doer.Name
 	}
+	// A removal request (company/appremoval.go): approving it takes the app
+	// down rather than building it.
+	if isRemovalRequest(pr) {
+		removeOnMerge(ctx, doer, owner, repo)
+		return
+	}
 	// An approved request is a request to be running.
 	prior := markQueued(owner, repo, pr.MergedCommitID, pr.ID, true, AppHistoryEntry{Actor: actor})
 	// The permissions this request asked for take effect before the deploy

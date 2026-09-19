@@ -6,7 +6,7 @@
      company.SetDeployRequestPageData (company/deploy_review.go). */}}
 <div class="issue-content-right company-deploy-review" data-global-init="initCompanyDeployReviewPackages" data-i18n-ai-author="{{ctx.Locale.Tr "company.review.ai_author"}}" data-i18n-platform-author="{{ctx.Locale.Tr "company.review.platform_author"}}" data-central-owner-link="{{.DeployCentralOwnerLink}}">
 	<div class="ui segment company-deploy-review-panel">
-		<h4 class="tw-mb-3">{{svg "octicon-rocket" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.title"}}</h4>
+		<h4 class="tw-mb-3">{{if .DeployRemoval}}{{svg "octicon-trash" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.title_removal"}}{{else}}{{svg "octicon-rocket" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.title"}}{{end}}</h4>
 		<div class="company-deploy-review-facts">
 			<span class="text-grey">{{ctx.Locale.Tr "company.review.department"}}</span>
 			<a href="{{.DeployDeptLink}}">{{.DeployDeptOwner}}/{{.DeployDeptName}}</a>
@@ -21,7 +21,7 @@
 			</div>
 		{{end}}
 		{{if not .Issue.IsClosed}}
-			<p class="text-grey tw-text-12 tw-mt-3 tw-mb-0">{{ctx.Locale.Tr "company.review.decide"}}</p>
+			<p class="text-grey tw-text-12 tw-mt-3 tw-mb-0">{{if .DeployRemoval}}{{ctx.Locale.Tr "company.review.decide_removal"}}{{else}}{{ctx.Locale.Tr "company.review.decide"}}{{end}}</p>
 		{{end}}
 		{{/* Main moved on since the request was made and git cannot apply it.
 		     The files are known, so the way through is one press: the same
@@ -36,6 +36,13 @@
 			</div>
 		{{end}}
 	</div>
+
+	{{if .DeployRemoval}}
+		<div class="ui negative message company-deploy-review-panel">
+			<div class="header">{{svg "octicon-trash" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.removal_header"}}</div>
+			<p class="tw-text-13 tw-mt-1 tw-mb-0">{{ctx.Locale.Tr "company.review.removal_explain"}}</p>
+		</div>
+	{{end}}
 
 	{{/* Merging is the approval — the items are applied with it
 	     (company/permissions_commit.go), and there is no second button. */}}
@@ -60,7 +67,7 @@
 	{{/* The requested version, run on its own for a look before deciding —
 	     its own process and a copy of today's data, never the live app.
 	     See company/apppreview.go. */}}
-	{{if not .Issue.IsClosed}}
+	{{if and (not .Issue.IsClosed) (not .DeployRemoval)}}
 		{{with .DeployPreview}}
 			<div class="ui segment company-deploy-review-panel company-deploy-preview" data-global-init="initCompanyDeployPreview" data-state="{{.State}}" data-status-url="{{$.DeployPreviewURL}}/status">
 				<h4 class="tw-mb-2">{{svg "octicon-eye" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.preview.title"}}</h4>
@@ -88,6 +95,7 @@
 
 	{{/* Every package the snapshot installs, not only the new ones: what
 	     is already allowed is part of the picture too. */}}
+	{{if not .DeployRemoval}}
 	<div class="ui segment company-deploy-review-panel">
 		<h4 class="tw-mb-2">{{svg "octicon-package" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.packages" (len .DeployPackages)}}</h4>
 		{{/* Ticked packages travel with "Approve deploy" — company-deploy-review.ts
@@ -123,6 +131,7 @@
 			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.review.allow_hint"}}</p>
 		{{end}}
 	</div>
+	{{end}}
 
 	{{if .CompanyAIOffered}}
 		<div class="company-deploy-review-chat" data-global-init="initCompanyDeployReview" data-ai-ready="{{.AIEnabled}}"

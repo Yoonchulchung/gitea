@@ -304,7 +304,7 @@ func TestHTMLRewriteScopeAndContentLength(t *testing.T) {
 	resp := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}
 	resp.Header.Set("Content-Type", "text/html; charset=utf-8")
 	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
-	rewriteHTMLBody(prefix, resp, false)
+	rewriteHTMLBody(prefix, resp, false, false)
 
 	out, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -315,7 +315,7 @@ func TestHTMLRewriteScopeAndContentLength(t *testing.T) {
 	// JSON is not rewritten: "/docs" in a payload is data, not a link.
 	jsonResp := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"u":"/docs"}`))}
 	jsonResp.Header.Set("Content-Type", "application/json")
-	rewriteHTMLBody(prefix, jsonResp, false)
+	rewriteHTMLBody(prefix, jsonResp, false, false)
 	out, err = io.ReadAll(jsonResp.Body)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"u":"/docs"}`, string(out))
@@ -325,7 +325,7 @@ func TestHTMLRewriteScopeAndContentLength(t *testing.T) {
 	gz := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}
 	gz.Header.Set("Content-Type", "text/html")
 	gz.Header.Set("Content-Encoding", "gzip")
-	rewriteHTMLBody(prefix, gz, false)
+	rewriteHTMLBody(prefix, gz, false, false)
 	out, err = io.ReadAll(gz.Body)
 	require.NoError(t, err)
 	assert.Equal(t, body, string(out))
@@ -381,17 +381,17 @@ func TestPolicyHeadersWinAndCanRemoveADefault(t *testing.T) {
 // app's own, and never into a fragment meant to be swapped into a page.
 func TestInjectAppPathShim(t *testing.T) {
 	const prefix = "/apps/PO/app"
-	doc := string(injectAppPathShim(prefix, []byte(`<!DOCTYPE html><html><head><script src="script.js"></script></head><body></body></html>`)))
+	doc := string(injectAppPathShim(prefix, []byte(`<!DOCTYPE html><html><head><script src="script.js"></script></head><body></body></html>`), true))
 	shim := strings.Index(doc, "window.__appPathShim")
 	require.Positive(t, shim)
 	assert.Less(t, shim, strings.Index(doc, `src="script.js"`), "the shim runs before the app's scripts")
 	assert.Contains(t, doc, `var prefix = "/apps/PO/app"`)
 
-	headless := string(injectAppPathShim(prefix, []byte(`<html><body><p>hi</p></body></html>`)))
+	headless := string(injectAppPathShim(prefix, []byte(`<html><body><p>hi</p></body></html>`), false))
 	assert.True(t, strings.HasPrefix(headless, "<html><script>"), "right after <html> when there is no <head>")
 
 	for _, fragment := range []string{`<tr><td>1</td></tr>`, `<div id="list"></div>`, ``} {
-		assert.Equal(t, fragment, string(injectAppPathShim(prefix, []byte(fragment))))
+		assert.Equal(t, fragment, string(injectAppPathShim(prefix, []byte(fragment), true)))
 	}
 }
 

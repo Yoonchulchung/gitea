@@ -1,0 +1,90 @@
+{{/* The app panel of the repository sidebar — what the app is doing and
+     what it is allowed, for everyone who opens the repository: a department
+     and an administrator alike. Data from company.SetAppPermissionData. */}}
+{{with .CompanyApp}}
+	{{if not .Deployed}}
+		{{/* Never deployed. The settings behind [앱 관리] — access mode,
+		     environment variables, the permission request — all work before a
+		     first deploy and are most useful then; without this row the only
+		     way to find that screen was to already know its URL. One quiet
+		     row, so a repository that never becomes an app is not shouting
+		     about one. */}}
+		<div class="flex-relaxed-list company-app-panel">
+			<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
+				<span>{{ctx.Locale.Tr "company.sidebar.app"}}</span>
+				<span class="text-grey tw-text-12 tw-font-normal">{{ctx.Locale.Tr "company.sidebar.not_deployed"}}</span>
+			</div>
+			{{if .CanControl}}
+				<div class="tw-flex tw-gap-2 tw-flex-wrap">
+					<a class="ui compact tiny basic button" href="{{.AppLink}}">{{ctx.Locale.Tr "company.app.title"}}</a>
+					<a class="ui compact tiny basic button" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_deploy"}}</a>
+				</div>
+			{{end}}
+		</div>
+	{{else}}
+	<div class="flex-relaxed-list company-app-panel">
+		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
+			<span>{{ctx.Locale.Tr "company.sidebar.app"}}</span>
+			<span class="tw-flex tw-items-center tw-gap-2">
+				{{/* Beside the state rather than inside the message: "it broke" and
+				     "it broke four minutes ago" are both about the state, and this
+				     way the time is visible without reading the whole panel. */}}
+				{{with .Cause}}{{if .At}}
+					<span class="text-grey tw-text-12 tw-font-normal" data-tooltip-content="{{DateUtils.FullTime .At}}">{{DateUtils.TimeSince .At}}</span>
+				{{end}}{{end}}
+				{{/* Not when running, for the same reason as the header. */}}
+				{{if $.CompanyApp.ShowState}}
+					<span class="company-app-state {{$.CompanyApp.Status}}">{{ctx.Locale.Tr $.CompanyApp.StatusLabel}}</span>
+				{{end}}
+				<a class="flex-text-inline muted tw-font-normal" href="{{AppSubUrl}}{{.AppURL}}" target="_blank" rel="noopener">
+					{{svg "octicon-link-external"}} {{ctx.Locale.Tr "company.sidebar.open_app"}}
+				</a>
+			</span>
+		</div>
+
+		{{with .Cause}}
+			{{/* Only rendered when something is actually wrong. */}}
+			<div class="company-app-cause">
+				{{/* Summary and Detail are locale keys; DetailText is verbatim
+				     data (an admin's words, a pip line) and is never translated. */}}
+				<div class="tw-font-semibold">{{ctx.Locale.Tr .Summary}}</div>
+				{{if .Detail}}<div class="tw-mt-1 company-app-cause-line">{{if .DetailArg}}{{ctx.Locale.Tr .Detail .DetailArg}}{{else}}{{ctx.Locale.Tr .Detail}}{{end}}</div>{{end}}
+				{{range StringUtils.Split .DetailText "\n"}}<div class="tw-mt-1 company-app-cause-line">{{.}}</div>{{end}}
+				{{if .ActionLabel}}
+					<a class="ui compact tiny primary button tw-mt-2" href="{{if eq .Action "deploy"}}{{$.CompanyApp.DeployLink}}{{else}}{{$.CompanyApp.AppLink}}{{end}}">{{ctx.Locale.Tr .ActionLabel}}</a>
+				{{end}}
+			</div>
+		{{end}}
+
+
+		<div class="repo-home-sidebar-header flex-text-block"><span>{{ctx.Locale.Tr "company.sidebar.perms"}}</span></div>
+		{{range .Rows}}
+			<div class="company-perm-row {{.State}}">
+				<span class="company-perm-label">{{ctx.Locale.Tr .Label}}</span>
+				<span class="company-perm-value">{{if .Value}}{{ctx.Locale.Tr .Value}}{{end}}{{.ValueText}}</span>
+				{{/* The reason is the point of showing a denial at all: without it
+				     the person still has to go and ask an administrator. */}}
+				{{if or .Reason .ReasonText}}<span class="company-perm-reason">{{if .Reason}}{{ctx.Locale.Tr .Reason}}{{end}} {{.ReasonText}}</span>{{end}}
+			</div>
+		{{end}}
+
+		{{if .MemoryLimit}}
+			{{/* Usage next to the limit, not the limit alone — otherwise nobody
+			     has grounds to judge whether to ask for more. */}}
+			<div class="company-perm-row allowed">
+				<span class="company-perm-label">{{ctx.Locale.Tr "company.sidebar.memory"}}</span>
+				{{/* A dash, not a zero, where nothing measured it. */}}
+				<span class="company-perm-value">{{if .MemoryMeasured}}{{ctx.Locale.Tr "company.sidebar.memory_used" .MemoryUsed .MemoryLimit}}{{else}}{{ctx.Locale.Tr "company.sidebar.memory_limit" .MemoryLimit}}{{end}}</span>
+			</div>
+		{{end}}
+
+		<div class="tw-flex tw-gap-2 tw-mt-2 tw-flex-wrap">
+			<a class="ui tiny basic button" href="{{.AppLink}}">{{ctx.Locale.Tr "company.app.title"}}</a>
+			{{/* Straight to the logs from the panel that just said something is
+			     wrong — the next question after "why" is always "show me". */}}
+			{{if .CanControl}}<a class="ui tiny basic button" href="{{.AppLink}}/logs">{{ctx.Locale.Tr "company.app.logs"}}</a>{{end}}
+			<a class="ui tiny basic button" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_permission"}}</a>
+		</div>
+	</div>
+	{{end}}
+	{{end}}

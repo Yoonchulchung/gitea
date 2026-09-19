@@ -1704,7 +1704,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 			m.Get("", repo.SetEditorconfigIfExists, repo.SetWhitespaceBehavior, repo.GetPullDiffStats, company.SetDeployRequestPageData, repo.ViewIssue) // see docs/company/mount-points.md
 			m.Get(".diff", repo.DownloadPullDiff)
 			m.Get(".patch", repo.DownloadPullPatch)
-			m.Get("/merge_box", repo.ViewPullMergeBox)
+			m.Get("/merge_box", company.SetDeployRequestPageData, repo.ViewPullMergeBox) // the box reloads itself; the label goes with it (docs/company/patches.md)
 			m.Group("/commits", func() {
 				m.Get("", repo.SetWhitespaceBehavior, repo.GetPullDiffStats, repo.ViewPullCommits)
 				m.Get("/list", repo.GetPullCommits)

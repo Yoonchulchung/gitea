@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"gitea.dev/company"
 	audit_model "gitea.dev/models/audit"
 	"gitea.dev/models/db"
 	"gitea.dev/models/organization"
@@ -958,6 +959,11 @@ func handleSettingsPostCancelTransfer(ctx *context.Context) {
 
 func handleSettingsPostDelete(ctx *context.Context) {
 	if !canManageRepoDangerZone(ctx) {
+		return
+	}
+	// company: an app still on the platform keeps its repository (see docs/company/patches.md)
+	if reason := company.RepoDeleteBlocked(ctx, ctx.Locale, ctx.Repo.Repository); reason != "" {
+		ctx.JSONError(reason)
 		return
 	}
 

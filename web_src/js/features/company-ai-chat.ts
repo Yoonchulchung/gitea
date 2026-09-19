@@ -188,6 +188,29 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
 
   if (opts.emptyStateText) showEmptyState(opts.emptyStateText);
 
+  // A reply is Markdown — the model writes headings, lists and bold — and
+  // shown as text it reads as a wall of asterisks. Once a segment is
+  // complete it is rendered by Gitea's own markup endpoint, which
+  // sanitises what comes back; while it streams it stays text.
+  async function renderMarkdown(el: HTMLElement, text: string): Promise<void> {
+    if (!text.trim()) {
+      el.remove(); // a tool call that came before any words
+      return;
+    }
+    try {
+      const form = new FormData(); // the endpoint reads a form, not JSON
+      form.append('text', text);
+      form.append('mode', 'markdown');
+      const resp = await POST(`${window.config.appSubUrl}/-/markup`, {data: form});
+      if (!resp.ok) return;
+      const html = await resp.text();
+      el.innerHTML = html;
+      el.classList.add('render-content', 'markup', 'rendered');
+    } catch {
+      // the text is already on screen; unrendered beats missing
+    }
+  }
+
   // addMessage returns the element new text should be appended to —
   // everything appends directly to the bubble it returns.
   function addMessage(role: 'user' | 'assistant' | 'status' | 'error', text: string): HTMLElement {
@@ -306,6 +329,7 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
         handleToolEvent(event);
         // Whatever text comes next belongs after this tool call, not
         // appended into the bubble that came before it.
+        if (replyTarget) renderMarkdown(replyTarget, segmentText);
         replyTarget = null;
       };
       for (;;) {
@@ -319,6 +343,7 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
         }
       }
       if (buffer.trim()) onEvent(buffer);
+      if (replyTarget) renderMarkdown(replyTarget, segmentText);
 
       if (replyText) history.push({role: 'assistant', content: replyText});
     } catch (err) {

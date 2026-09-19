@@ -334,7 +334,7 @@ func appProxyWith(key string, ref AppRef, socket, prefix string, segments int) *
 			rewriteMountedPaths(prefix, resp)
 			// Not under a Content-Security-Policy: an inline script would need
 			// an exception written into a policy someone chose on purpose.
-			rewriteHTMLBody(prefix, resp, !cspInForce(settings, resp))
+			rewriteHTMLBody(prefix, resp, !cspInForce(settings, resp), settings.Download.Policy != "allow")
 			applySecurityHeaders(settings, resp)
 			return applyDownloadPolicy(ref, settings, resp)
 		},

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"gitea.dev/company"
 	activities_model "gitea.dev/models/activities"
 	audit_model "gitea.dev/models/audit"
 	"gitea.dev/models/db"
@@ -1164,6 +1165,11 @@ func Delete(ctx *context.APIContext) {
 		ctx.Repo.GitRepo.Close()
 	}
 
+	// company: an app still on the platform keeps its repository (see docs/company/patches.md)
+	if reason := company.RepoDeleteBlocked(ctx, ctx.Locale, repo); reason != "" {
+		ctx.APIError(http.StatusUnprocessableEntity, reason)
+		return
+	}
 	if err := repo_service.DeleteRepository(ctx, ctx.Doer, repo, true); err != nil {
 		ctx.APIErrorInternal(err)
 		return

@@ -40,56 +40,17 @@
 		     invalid, so the browser drops the inner one and its required field
 		     becomes part of the outer form — which then refuses to submit with
 		     no visible reason. */}}
+		{{/* The cancel form itself, outside the deploy form — a form inside a
+		     form is invalid, so the browser drops it. Its fields sit in the
+		     column below and name it by id. */}}
 		{{with .OpenRequest}}
-			{{/* An unanswered request looked like no request, and the only way
-			     to find out was to submit another — which supersedes the first
-			     and starts the wait over. */}}
-			<div class="ui warning message">
-				<div class="header">{{ctx.Locale.Tr "company.deploy.open_request_header"}}</div>
-				<div class="tw-mt-1">{{.Issue.Title}}</div>
-				{{with $.OpenRequestItems}}
-					<div class="tw-text-13 tw-mt-1">
-						{{ctx.Locale.Tr "company.deploy.open_request_items"}}
-						{{range $i, $item := .}}{{if $i}}, {{end}}{{$item.Label}} ({{$item.Detail}}){{end}}
-					</div>
-				{{end}}
-				<div class="tw-text-13 tw-mt-2">
-						{{ctx.Locale.Tr "company.deploy.open_request_note"}}
-				</div>
-				<form method="post" action="{{AppSubUrl}}/company/deploy-request/{{.ID}}/cancel" class="tw-mt-2 tw-flex tw-gap-2 tw-flex-wrap tw-items-center"
-					data-company-confirm="{{ctx.Locale.Tr "company.deploy.cancel_confirm"}}">
-					{{$.CsrfTokenHtml}}
-					<input type="hidden" name="org" value="{{$.Repository.OwnerName}}">
-					{{/* Required by the handler, and worth requiring: the admin
-					     watching this request disappear should be told why. */}}
-					<input type="text" name="reason" class="tw-flex-1" required autocomplete="off"
-						placeholder="{{ctx.Locale.Tr "company.deploy.cancel_reason_placeholder"}}">
-					<button class="ui basic red button">{{ctx.Locale.Tr "company.deploy.cancel_request"}}</button>
-				</form>
-			</div>
+			<form id="cancel-request-form" method="post" action="{{AppSubUrl}}/company/deploy-request/{{.ID}}/cancel"
+				data-company-confirm="{{ctx.Locale.Tr "company.deploy.cancel_confirm"}}">
+				{{$.CsrfTokenHtml}}
+				<input type="hidden" name="org" value="{{$.Repository.OwnerName}}">
+			</form>
 		{{end}}
 
-		{{/* Not a gate: the request can still be sent, since the checks are
-		     about syntax and a department may be asking for something else.
-		     But a file that does not parse is said here, at the line, before
-		     the deploy says it in a log. See company/deploycheck.go. */}}
-		{{with .DeployChecks}}
-			{{if or .Problems .Checked}}
-				<div class="ui {{if .Problems}}warning{{else}}positive{{end}} message company-deploy-checks">
-					<div class="header">{{svg "octicon-checklist" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.check.header"}}</div>
-					{{if .Problems}}
-						<p class="tw-mt-1">{{ctx.Locale.Tr "company.check.problems" (len .Findings)}}</p>
-						<ul class="tw-mt-1 tw-mb-0">
-							{{range .Findings}}<li><span class="tw-font-mono">{{.Path}}:{{.Line}}</span> — {{.Message}}</li>{{end}}
-						</ul>
-					{{else}}
-						<p class="tw-mt-1 tw-mb-0">{{ctx.Locale.Tr "company.check.ok" .Python .HTML .JS}}</p>
-					{{end}}
-					{{if .PythonUnavailable}}<p class="tw-text-12 tw-mt-1 tw-mb-0">{{ctx.Locale.Tr "company.check.python_unavailable"}}</p>{{end}}
-					{{if .Truncated}}<p class="tw-text-12 tw-mt-1 tw-mb-0">{{ctx.Locale.Tr "company.check.truncated"}}</p>{{end}}
-				</div>
-			{{end}}
-		{{end}}
 		<form class="ui form company-deploy-form" id="deploy-form" method="post">
 			{{/* Two columns: what is being deployed on the left, what is being
 			     asked for on the right. They are separate questions — one is a
@@ -140,6 +101,56 @@
 				</div>
 			{{end}}
 
+			{{/* What is already pending and what the check found, in the column
+			     and above the submit button: the two things to read before
+			     pressing it. */}}
+			{{with .OpenRequest}}
+				{{/* An unanswered request looked like no request, and the only way
+				     to find out was to submit another — which supersedes the first
+				     and starts the wait over. */}}
+				<div class="ui warning message">
+					<div class="header">{{ctx.Locale.Tr "company.deploy.open_request_header"}}</div>
+					<div class="tw-mt-1">{{.Issue.Title}}</div>
+					{{with $.OpenRequestItems}}
+						<div class="tw-text-13 tw-mt-1">
+							{{ctx.Locale.Tr "company.deploy.open_request_items"}}
+							{{range $i, $item := .}}{{if $i}}, {{end}}{{$item.Label}} ({{$item.Detail}}){{end}}
+						</div>
+					{{end}}
+					<div class="tw-text-13 tw-mt-2">
+							{{ctx.Locale.Tr "company.deploy.open_request_note"}}
+					</div>
+					<div class="tw-mt-2 tw-flex tw-gap-2 tw-flex-wrap tw-items-center">
+						{{/* Required by the handler, and worth requiring: the admin
+						     watching this request disappear should be told why. */}}
+						<input type="text" name="reason" form="cancel-request-form" class="tw-flex-1" required autocomplete="off"
+							placeholder="{{ctx.Locale.Tr "company.deploy.cancel_reason_placeholder"}}">
+						<button type="submit" form="cancel-request-form" class="ui basic red button">{{ctx.Locale.Tr "company.deploy.cancel_request"}}</button>
+					</div>
+				</div>
+			{{end}}
+
+			{{/* Not a gate: the request can still be sent, since the checks are
+			     about syntax and a department may be asking for something else.
+			     But a file that does not parse is said here, at the line, before
+			     the deploy says it in a log. See company/deploycheck.go. */}}
+			{{with .DeployChecks}}
+				{{if or .Problems .Checked}}
+					<div class="ui {{if .Problems}}warning{{else}}positive{{end}} message company-deploy-checks">
+						<div class="header">{{svg "octicon-checklist" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.check.header"}}</div>
+						{{if .Problems}}
+							<p class="tw-mt-1">{{ctx.Locale.Tr "company.check.problems" (len .Findings)}}</p>
+							<ul class="tw-mt-1 tw-mb-0">
+								{{range .Findings}}<li><span class="tw-font-mono">{{.Path}}:{{.Line}}</span> — {{.Message}}</li>{{end}}
+							</ul>
+						{{else}}
+							<p class="tw-mt-1 tw-mb-0">{{ctx.Locale.Tr "company.check.ok" .Python .HTML .JS}}</p>
+						{{end}}
+						{{if .PythonUnavailable}}<p class="tw-text-12 tw-mt-1 tw-mb-0">{{ctx.Locale.Tr "company.check.python_unavailable"}}</p>{{end}}
+						{{if .Truncated}}<p class="tw-text-12 tw-mt-1 tw-mb-0">{{ctx.Locale.Tr "company.check.truncated"}}</p>{{end}}
+					</div>
+				{{end}}
+			{{end}}
 			</div>{{/* .company-deploy-col — left */}}
 
 			<div class="company-deploy-col">
