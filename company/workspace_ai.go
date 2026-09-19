@@ -35,6 +35,14 @@ write_file/delete_file/rename_file all only stage a proposal — none of them sa
 
 When you're done, reply with a short, plain-language summary of what you changed and why — no jargon, as if explaining to a colleague who has never used git. Reply in whatever language the employee's own message was written in (Korean, English, German, whatever) — match them, don't default to Korean.`
 
+// appToolsPrompt tells the model what it can see of the app and the one
+// rule of the tool that runs code (company/workspace_ai_app.go).
+const appToolsPrompt = `
+
+You can also look at the app itself: app_status (state, why the platform stopped it, the last exception, limits and policy), app_logs (its output and tracebacks), deploy_checks (what the request form would report for the committed branch) and run_startup_check. Use them before guessing why something fails — "the app is down" is answered by app_status and app_logs, not by reading code alone.
+
+run_startup_check builds and starts the COMMITTED branch in the platform's sandbox, never your unsaved proposals. So the loop is: propose the fix with write_file, ask the employee to save, then run_startup_check and read the result with deploy_checks. If it refuses (no sandbox on this server), ask the employee to open the deploy request page instead, where the platform runs the same check. Do not try to get code executed any other way.`
+
 // activeFileContextTemplate is appended to the system prompt whenever the
 // request names an ActivePath — the tab open in the editor at the moment
 // the person sent their message (company-workspace.ts). Its content is
@@ -177,12 +185,13 @@ func WorkspaceAI(ctx *context.Context) {
 	// The platform's rules, the parts this request touches (company/appdocs.go):
 	// for a deployed app and for one on its way there — a repository with a
 	// main.py is an app whether or not it has been approved yet.
-	if deployed || readRepoFile(ctx, ctx.Repo.Repository, "main.py") != "" {
+	isApp := deployed || readRepoFile(ctx, ctx.Repo.Repository, "main.py") != ""
+	if isApp {
 		query := req.Instruction + " " + req.ActivePath
 		if n := len(req.History); n > 0 {
 			query += " " + req.History[n-1].Content
 		}
-		systemPrompt += AppDocsContext(query)
+		systemPrompt += AppDocsContext(query) + appToolsPrompt
 	}
 
 	if activeContent, ok := openFiles[req.ActivePath]; req.ActivePath != "" && ok {
@@ -204,6 +213,9 @@ func WorkspaceAI(ctx *context.Context) {
 	renames := map[string]string{}         // from path -> to path
 
 	mcpServer := newWorkspaceMCPServer(gitRepo, branch, edits, deletes, renames, openFiles)
+	if isApp {
+		addAppInsightTools(mcpServer, ctx, ctx.Repo.Repository) // company/workspace_ai_app.go
+	}
 	mcpSession, err := connectMCPSession(ctx, mcpServer)
 	if err != nil {
 		writeStreamEvent(ctx.Resp, map[string]any{"type": "error", "message": err.Error()})
