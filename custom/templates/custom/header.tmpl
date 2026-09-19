@@ -261,6 +261,8 @@
    a field on the same line, with a tick and a cross beside it
    (web_src/js/features/company-app-charts.ts). */
 .company-kpi-edit { margin: 0; }
+.company-kpi-edit b { white-space: nowrap; } /* the field and its tick and cross stay on the figure's line */
+.company-kpi-limit-actions { display: inline-flex; align-items: center; }
 .company-kpi-pencil, .company-kpi-ok, .company-kpi-cancel {
 	border: 0;
 	background: none;
@@ -273,7 +275,7 @@
 .company-kpi-pencil:hover, .company-kpi-cancel:hover { opacity: 1; color: var(--color-primary); }
 .company-kpi-ok { color: var(--color-green); opacity: 1; }
 .company-kpi-limit-input {
-	width: 4.5em;
+	width: 4em;
 	font: inherit;
 	color: var(--color-text);
 	text-align: right;
