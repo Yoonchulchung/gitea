@@ -110,6 +110,7 @@ func RegisterAdminRoutes(m *web.Router) {
 		m.Post("/revoke-package", AdminRevokePackage)
 		m.Post("/deploy-version", AdminDeployVersion)
 		m.Post("/network", AdminSetNetwork)
+		m.Post("/purge", AdminPurgeGoneApp) // an app whose repository is gone — company/apppurge.go
 		// Before the {verb} catch-all, which would otherwise swallow it.
 		m.Post("/limits", AdminSetLimits)
 		m.Get("/metrics", AdminAppMetrics)

@@ -66,7 +66,10 @@
 								</td>
 								<td>
 									{{template "company/admin_deploys_status" .State}}
-									{{if not .Repo}}<span class="text-red tw-ml-2">{{ctx.Locale.Tr "company.admin.repo_gone"}}</span>{{end}}
+									{{if not .Repo}}
+										<span class="text-red tw-ml-2">{{ctx.Locale.Tr "company.admin.repo_gone"}}</span>
+										<form method="post" action="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .State.Owner}}/{{PathEscape .State.Repo}}/purge" class="tw-inline-block tw-ml-2" data-company-confirm="{{ctx.Locale.Tr "company.admin.purge_confirm"}}">{{$.CsrfTokenHtml}}<button type="submit" class="ui tiny basic red button" title="{{ctx.Locale.Tr "company.admin.purge_hint"}}">{{ctx.Locale.Tr "company.admin.purge"}}</button></form>
+									{{end}}
 									{{if and (eq .State.Actual "running") (not .State.Sandboxed)}}<span class="text-red tw-ml-2">{{ctx.Locale.Tr "company.admin.unsandboxed"}}</span>{{end}}
 									{{if .NetworkOpen}}<span class="text-red tw-ml-2">{{ctx.Locale.Tr "company.admin.network_open"}}</span>{{end}}
 									{{if .State.Reason}}<span class="text-grey tw-ml-2">{{.State.Reason}}</span>{{end}}

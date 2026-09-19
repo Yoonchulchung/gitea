@@ -15,7 +15,8 @@
 			<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
 				<a class="ui tiny basic button" href="{{.AppURL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} {{ctx.Locale.Tr "company.adminapp.open"}}</a>
 				<a class="ui tiny basic button" href="{{.AdminAppLink}}/logs">{{svg "octicon-log" 14}} {{ctx.Locale.Tr "company.logs.title"}}</a>
-				{{if .AppRepo}}<a class="ui tiny basic button" href="{{.AppRepo.Link}}">{{svg "octicon-repo" 14}} {{ctx.Locale.Tr "company.adminapp.repo"}}</a>{{end}}
+				{{if .AppRepo}}<a class="ui tiny basic button" href="{{.AppRepo.Link}}">{{svg "octicon-repo" 14}} {{ctx.Locale.Tr "company.adminapp.repo"}}</a>
+				{{else}}<form method="post" action="{{.AdminAppLink}}/purge" data-company-confirm="{{ctx.Locale.Tr "company.admin.purge_confirm"}}">{{.CsrfTokenHtml}}<button type="submit" class="ui tiny basic red button" title="{{ctx.Locale.Tr "company.admin.purge_hint"}}">{{ctx.Locale.Tr "company.admin.purge"}}</button></form>{{end}}
 				<a class="ui tiny basic button" href="{{.AdminAppLink}}/history">{{svg "octicon-history" 14}} {{ctx.Locale.Tr "company.history.title"}}</a>
 				{{/* Not conditional on there being data: a missing button and a
 				     switched-off feature look identical from here, and the page
