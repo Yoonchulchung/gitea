@@ -1523,6 +1523,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 				// Which sidebar folders this person left expanded — same
 				// sibling pattern again, branch-independent (see
 				// company/workspace_folders.go).
+				m.Post("/{editor_action:_edits_upload}/*", canWriteToBranch, company.WorkspaceUpload) // a file the editor cannot hold — company/workspace.go
 				m.Get("/{editor_action:_edits_folders}/*", company.WorkspaceExpandedFolders)
 				m.Post("/{editor_action:_edits_folders}/*", canWriteToBranch, company.WorkspaceExpandedFoldersSave)
 				// The right icon for a file that doesn't exist yet — same

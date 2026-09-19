@@ -258,6 +258,8 @@ export function initCompanyWorkspace() {
     const aiUrl = el.getAttribute('data-ai-url')!;
     const tmpUrl = el.getAttribute('data-tmp-url')!;
     const foldersUrl = el.getAttribute('data-folders-url')!;
+    const uploadUrl = el.getAttribute('data-upload-url')!;
+    const uploadMaxMB = Number(el.getAttribute('data-upload-max-mb'));
     const iconUrl = el.getAttribute('data-icon-url')!;
 
     // Every user-facing string below comes from here, not a hardcoded
@@ -274,7 +276,11 @@ export function initCompanyWorkspace() {
       errorLoadFile: attr(el, 'data-i18n-error-load-file'),
       statusRecovering: attr(el, 'data-i18n-status-recovering'),
       errorFileExists: attr(el, 'data-i18n-error-file-exists'),
-      errorBinaryFile: attr(el, 'data-i18n-error-binary-file'),
+      confirmUploadBinary: attr(el, 'data-i18n-confirm-upload-binary'),
+      statusUploaded: attr(el, 'data-i18n-status-uploaded'),
+      errorUpload: attr(el, 'data-i18n-error-upload'),
+      uploadTooLarge: attr(el, 'data-i18n-upload-too-large'),
+      uploadRefused: attr(el, 'data-i18n-upload-refused'),
       statusMoved: attr(el, 'data-i18n-status-moved'),
       newFilePlaceholder: attr(el, 'data-i18n-new-file-placeholder'),
       newFolderPlaceholder: attr(el, 'data-i18n-new-folder-placeholder'),
@@ -928,17 +934,102 @@ export function initCompanyWorkspace() {
     }
 
     // Binary files (PDFs, images, archives, ...) aren't something this
-    // plain-text editor can hold — file.text() below would silently mangle
-    // one (and, for anything but a small file, blow the localStorage quota
-    // in writePendingLocal with an unhandled rejection instead of a clear
-    // error). Same heuristic git itself uses to decide "is this diffable as
-    // text": a NUL byte anywhere in the first few KB reliably marks binary
-    // content — real text, in any encoding this editor supports, never
-    // contains one this early.
+    // plain-text editor can hold, so they are uploaded as they are instead
+    // (uploadBinary). Same heuristic git itself uses to decide "is this
+    // diffable as text": a NUL byte in the first few KB marks binary content
+    // — except UTF-16, which Excel writes as "Unicode text" and which is
+    // full of NULs; its byte-order mark gives it away and readTextFile
+    // decodes it.
     const BINARY_SNIFF_BYTES = 8000;
     async function isLikelyBinary(file: File): Promise<boolean> {
-      const head = await file.slice(0, BINARY_SNIFF_BYTES).arrayBuffer();
-      return new Uint8Array(head).includes(0);
+      const head = new Uint8Array(await file.slice(0, BINARY_SNIFF_BYTES).arrayBuffer());
+      if (head.length >= 2 && ((head[0] === 0xff && head[1] === 0xfe) || (head[0] === 0xfe && head[1] === 0xff))) return false;
+      return head.includes(0);
+    }
+
+    // The file's text in the encoding it is actually in. A CSV saved by
+    // Korean Excel is EUC-KR (CP949), not UTF-8, and file.text() turned
+    // every Korean character into "�" — the file then saved that way. The
+    // repository holds UTF-8, so the text is converted on the way in.
+    async function readTextFile(file: File): Promise<string> {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+      if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+      try {
+        return new TextDecoder('utf-8', {fatal: true, ignoreBOM: false}).decode(bytes);
+      } catch {
+        return new TextDecoder('euc-kr').decode(bytes);
+      }
+    }
+
+    // A binary file goes to the repository as it is: there is nothing in
+    // it a person could review in a text box before saving, so the drop
+    // (confirmed once per batch) is the save.
+    async function uploadBinary(path: string, file: File): Promise<boolean> {
+      // Refused here, with the size and the limit, rather than after the
+      // whole file has travelled to the server to be refused there.
+      if (file.size > uploadMaxMB * 1024 * 1024) {
+        showErrorToast(i18n.uploadTooLarge.replace('%s', path).replace('%s', String(Math.ceil(file.size / 1024 / 1024))));
+        return false;
+      }
+      const form = new FormData();
+      form.append('path', path);
+      form.append('file', file, file.name);
+      try {
+        const resp = await POST(uploadUrl, {data: form});
+        if (!resp.ok) {
+          // The platform's own refusal says why; a refusal from a web server
+          // in front of it (413 with no JSON) has no reason to give.
+          let reason = '';
+          try {
+            reason = ((await resp.json()) as {error?: string}).error ?? '';
+          } catch {
+            // not the platform answering
+          }
+          showErrorToast(reason || (resp.status === 413 ? i18n.uploadRefused.replace('%s', path) : i18n.errorUpload.replace('%s', path)));
+          return false;
+        }
+        insertFilePathSorted(treeRoot, path);
+        renderTree();
+        fetchFileIcon(path);
+        setStatus(i18n.statusUploaded.replace('%s', path));
+        return true;
+      } catch {
+        showErrorToast(i18n.errorUpload.replace('%s', path));
+        return false;
+      }
+    }
+
+    // Every way files come in from outside — a drop, the upload button —
+    // ends here: text opens as a tab that still needs Save, anything else
+    // is uploaded as it is.
+    async function takeInFiles(collected: {path: string, file: File}[], targetFolder: string): Promise<void> {
+      const binaries: {path: string, file: File}[] = [];
+      for (const {path: relPath, file} of collected) {
+        const path = targetFolder ? `${targetFolder}/${relPath}` : relPath;
+        if (openTabs.has(path)) {
+          showErrorToast(i18n.errorFileExists.replace('%s', path));
+          continue;
+        }
+        if (await isLikelyBinary(file)) {
+          binaries.push({path, file});
+          continue;
+        }
+        let content: string;
+        try {
+          content = await readTextFile(file);
+        } catch {
+          showErrorToast(i18n.errorLoadFile.replace('%s', path));
+          continue;
+        }
+        insertFilePath(treeRoot, path, true);
+        renderTree();
+        writePendingLocal(path, content, Date.now()); // see the same call in commitNewItem for why this can't wait for openFile
+        openFileAndStage(path, content);
+      }
+      if (!binaries.length) return;
+      if (!window.confirm(i18n.confirmUploadBinary.replace('%s', binaries.map((b) => b.path).join(', ')))) return;
+      for (const {path, file} of binaries) await uploadBinary(path, file);
     }
 
     // Reads every dropped file's (or folder's, recursively) content and
@@ -972,30 +1063,18 @@ export function initCompanyWorkspace() {
       }
       for (const entry of entries) await collectFilesFromEntry(entry, '', collected);
       for (const file of plainFiles) collected.push({path: file.name, file});
-
-      for (const {path: relPath, file} of collected) {
-        const path = targetFolder ? `${targetFolder}/${relPath}` : relPath;
-        if (openTabs.has(path)) {
-          showErrorToast(i18n.errorFileExists.replace('%s', path));
-          continue;
-        }
-        if (await isLikelyBinary(file)) {
-          showErrorToast(i18n.errorBinaryFile.replace('%s', path));
-          continue;
-        }
-        let content: string;
-        try {
-          content = await file.text();
-        } catch {
-          showErrorToast(i18n.errorLoadFile.replace('%s', path));
-          continue;
-        }
-        insertFilePath(treeRoot, path, true);
-        renderTree();
-        writePendingLocal(path, content, Date.now()); // see the same call in commitNewItem for why this can't wait for openFile
-        openFileAndStage(path, content);
-      }
+      await takeInFiles(collected, targetFolder);
     }
+
+    // The upload button: the same path as a drop, into the root folder.
+    const uploadButton = el.querySelector<HTMLButtonElement>('.company-workspace-upload')!;
+    const uploadInput = el.querySelector<HTMLInputElement>('.company-workspace-upload-input')!;
+    uploadButton.addEventListener('click', () => uploadInput.click());
+    uploadInput.addEventListener('change', async () => {
+      const files = Array.from(uploadInput.files ?? []);
+      uploadInput.value = '';
+      await takeInFiles(files.map((file) => ({path: file.name, file})), '');
+    });
 
     function wireDropTarget(el: HTMLElement, targetFolder: string): void {
       el.addEventListener('dragover', (e) => {

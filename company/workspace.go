@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -100,6 +101,8 @@ func Workspace(ctx *context.Context) {
 		ctx.Data["AIModel"] = cfg.modelID
 		ctx.Data["AIProvider"] = cfg.provider
 	}
+	ctx.Data["UploadMaxMB"] = workspaceUploadMaxBytes >> 20
+	ctx.Data["SourceMaxMB"] = maxSourceBytes >> 20
 	ctx.HTML(http.StatusOK, tplWorkspace)
 }
 
@@ -405,4 +408,50 @@ func hasParentSegment(p string) bool {
 		}
 	}
 	return false
+}
+
+// workspaceUploadMaxBytes caps one uploaded file: the deploy refuses an
+// app over 64 MB in total, and a single file near that is not something an
+// app should carry.
+const workspaceUploadMaxBytes = 32 << 20
+
+// WorkspaceUpload commits one file the editor cannot hold — a PDF, an image,
+// a spreadsheet — straight to the branch, as it is. There is nothing in it
+// to review before saving, so unlike a text file it does not wait in a tab.
+// POST /{owner}/{repo}/_edits_upload/{branch}, multipart: path, file.
+func WorkspaceUpload(ctx *context.Context) {
+	if !requireWorkspaceWrite(ctx) {
+		return
+	}
+	if err := ctx.Req.ParseMultipartForm(workspaceUploadMaxBytes); err != nil {
+		ctx.JSON(http.StatusBadRequest, map[string]any{"error": ctx.Locale.TrString("company.workspace.upload_malformed")})
+		return
+	}
+	treePath := strings.TrimPrefix(strings.TrimSpace(ctx.Req.FormValue("path")), "/")
+	if treePath == "" || hasParentSegment(treePath) || strings.HasSuffix(treePath, "/") {
+		ctx.JSON(http.StatusBadRequest, map[string]any{"error": "bad path: " + treePath})
+		return
+	}
+	file, header, err := ctx.Req.FormFile("file")
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, map[string]any{"error": "no file"})
+		return
+	}
+	defer func() { _ = file.Close() }()
+	if header.Size > workspaceUploadMaxBytes {
+		ctx.JSON(http.StatusRequestEntityTooLarge, map[string]any{"error": ctx.Locale.TrString("company.workspace.upload_too_large", header.Filename, strconv.FormatInt(header.Size>>20, 10), workspaceUploadMaxBytes>>20, maxSourceBytes>>20)})
+		return
+	}
+	repo, branch := ctx.Repo.Repository, ctx.Repo.BranchName
+	_, err = files_service.ChangeRepoFiles(ctx, repo, ctx.Doer, &files_service.ChangeRepoFilesOptions{
+		OldBranch: branch,
+		NewBranch: branch,
+		Message:   treePath + " uploaded",
+		Files:     []*files_service.ChangeRepoFile{{Operation: "upload", TreePath: treePath, ContentReader: file}},
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, map[string]any{"error": DepartmentSafeErrorL(ctx.Locale, "workspace upload", err)})
+		return
+	}
+	ctx.JSON(http.StatusOK, map[string]any{"path": treePath, "size": header.Size})
 }

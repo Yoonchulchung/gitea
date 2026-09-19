@@ -4812,5 +4812,12 @@
   "company.logs.diagnose": "에러 설명 듣기",
   "company.logs.diagnose_note": "위 에러 줄을 본인 AI 계정으로 보내 쉬운 말로 설명합니다.",
   "company.logs.diagnose_off": "AI 가 켜져 있고 본인 API 키를 입력한 뒤에 쓸 수 있습니다.",
-  "company.logs.diagnose_nothing": "이 로그에는 에러로 보이는 내용이 없습니다."
+  "company.logs.diagnose_nothing": "이 로그에는 에러로 보이는 내용이 없습니다.",
+  "company.workspace.upload": "파일 올리기",
+  "company.workspace.confirm_upload_binary": "%s은(는) 여기서 편집할 수 없는 파일이라 저장소에 바로 저장됩니다. 계속할까요?",
+  "company.workspace.status_uploaded": "%s 올림",
+  "company.workspace.error_upload": "%s을(를) 올리지 못했습니다",
+  "company.workspace.upload_too_large": "%s은(는) 너무 큽니다 (%s MB). 파일 하나는 최대 %d MB, 앱 전체는 최대 %d MB까지입니다 — 플랫폼은 저장소 전체를 배포합니다.",
+  "company.workspace.upload_refused": "플랫폼이 받기 전에 서버가 %s을(를) 거부했습니다 — 보통 앞단 웹 서버의 크기 제한입니다. 관리자에게 문의해 주세요.",
+  "company.workspace.upload_malformed": "업로드를 읽을 수 없었습니다. 파일을 다시 시도해 보세요. 아주 큰 파일이면 한도를 넘었을 수 있습니다."
 }

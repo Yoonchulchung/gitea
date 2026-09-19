@@ -4005,6 +4005,13 @@
   "company.workspace.error_load_file": "Couldn't load file: %s",
   "company.workspace.status_recovering": "Recovering %s unsaved edit(s)…",
   "company.workspace.error_file_exists": "'%s' already exists.",
+  "company.workspace.upload": "Upload files",
+  "company.workspace.confirm_upload_binary": "%s cannot be edited here, so it will be saved to the repository right away. Continue?",
+  "company.workspace.status_uploaded": "Uploaded %s",
+  "company.workspace.error_upload": "Couldn't upload %s",
+  "company.workspace.upload_too_large": "%s is too large (%s MB). One file can be at most %d MB, and the whole app at most %d MB — the platform deploys the repository as a whole.",
+  "company.workspace.upload_refused": "The server refused %s before the platform saw it — usually a size limit on the web server in front. Ask an administrator.",
+  "company.workspace.upload_malformed": "The upload could not be read. Try the file again; if it is very large, it may be over the limit.",
   "company.workspace.error_binary_file": "Can't open '%s' — binary files aren't supported in this editor.",
   "company.workspace.status_moved": "Moved '%s' to '%s' — click Save to apply it.",
   "company.workspace.new_file_placeholder": "File name (e.g. notes.txt, sub/notes.txt)",
@@ -4820,7 +4827,6 @@
   "company.evidence.internal_bare": "This looks like an internal address (no domain)",
   "company.evidence.external": "This looks like an internet address — approving lets this app send data outside the company",
   "company.admin.kpi_apps": "Apps",
-  "company.admin.kpi_committed": "Memory promised (now / limit)",
   "company.admin.tab_all": "All",
   "company.admin.tab_undeployed": "Not deployed",
   "company.admin.filter_owner": "Owner",
@@ -5168,5 +5174,6 @@
   "company.logs.diagnose_note": "Sends the error lines above to your own AI account and answers in plain language.",
   "company.logs.diagnose_off": "Available once AI is switched on and you have entered your API key.",
   "company.logs.diagnose_policy_off": "Sending app output to the AI is switched off on this server ([company] AI_LOG_ACCESS = off).",
-  "company.logs.diagnose_nothing": "There is nothing that looks like an error in this log."
+  "company.logs.diagnose_nothing": "There is nothing that looks like an error in this log.",
+  "company.admin.kpi_committed": "Memory promised (now / limit)"
 }

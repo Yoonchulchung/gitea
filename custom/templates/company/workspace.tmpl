@@ -26,6 +26,10 @@
 		data-ai-url="{{.Repo.Link}}/_edits_ai/{{.Branch | PathEscapeSegments}}"
 		data-tmp-url="{{.Repo.Link}}/_edits_tmp/{{.Branch | PathEscapeSegments}}"
 		data-folders-url="{{.Repo.Link}}/_edits_folders/{{.Branch | PathEscapeSegments}}"
+		data-upload-url="{{.Repo.Link}}/_edits_upload/{{.Branch | PathEscapeSegments}}"
+		data-upload-max-mb="{{.UploadMaxMB}}"
+		data-i18n-upload-too-large="{{ctx.Locale.Tr "company.workspace.upload_too_large" "%s" "%s" .UploadMaxMB .SourceMaxMB}}"
+		data-i18n-upload-refused="{{ctx.Locale.Tr "company.workspace.upload_refused" "%s"}}"
 		data-icon-url="{{.Repo.Link}}/_edits_icon/{{.Branch | PathEscapeSegments}}"
 		data-i18n-confirm-discard-tab="{{ctx.Locale.Tr "company.workspace.confirm_discard_tab" "%s"}}"
 		data-i18n-confirm-delete-file="{{ctx.Locale.Tr "company.workspace.confirm_delete_file" "%s"}}"
@@ -38,6 +42,9 @@
 		data-i18n-error-binary-file="{{ctx.Locale.Tr "company.workspace.error_binary_file" "%s"}}"
 		data-i18n-status-moved="{{ctx.Locale.Tr "company.workspace.status_moved" "%s" "%s"}}"
 		data-i18n-new-file-placeholder="{{ctx.Locale.Tr "company.workspace.new_file_placeholder"}}"
+		data-i18n-confirm-upload-binary="{{ctx.Locale.Tr "company.workspace.confirm_upload_binary" "%s"}}"
+		data-i18n-status-uploaded="{{ctx.Locale.Tr "company.workspace.status_uploaded" "%s"}}"
+		data-i18n-error-upload="{{ctx.Locale.Tr "company.workspace.error_upload" "%s"}}"
 		data-i18n-new-folder-placeholder="{{ctx.Locale.Tr "company.workspace.new_folder_placeholder"}}"
 		data-i18n-status-no-changes="{{ctx.Locale.Tr "company.workspace.status_no_changes"}}"
 		data-i18n-status-saving="{{ctx.Locale.Tr "company.workspace.status_saving"}}"
@@ -68,6 +75,10 @@
 				<button type="button" class="ui basic tiny icon button company-workspace-new-folder" data-tooltip-content="{{ctx.Locale.Tr "company.workspace.new_folder"}}">
 					{{svg "octicon-file-directory" 14}}
 				</button>
+				<button type="button" class="ui basic tiny icon button company-workspace-upload" data-tooltip-content="{{ctx.Locale.Tr "company.workspace.upload"}}">
+					{{svg "octicon-upload" 14}}
+				</button>
+				<input type="file" multiple class="company-workspace-upload-input tw-hidden">
 			</div>
 			<div class="company-workspace-tree"></div>
 		</div>
