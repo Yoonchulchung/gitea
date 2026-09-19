@@ -9,12 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	issues_model "gitea.dev/models/issues"
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/git"
 	"gitea.dev/modules/json"
+	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
 	gitea_context "gitea.dev/services/context"
 
@@ -34,20 +36,30 @@ type reviewPackage struct {
 	Name    string
 	Version string
 	Allowed bool // already on this app's allow list or the base set
+	// Requested is a package the deploy form put on the request itself
+	// (DetectPermissionRequests): approving the deploy allows it, so the page
+	// has nothing to ask.
+	Requested bool
 }
 
 // reviewPackages classifies what the snapshot's requirements.txt asks for
-// against what the app may already install. The denied ones are what
-// merging this request would approve.
-func reviewPackages(requirements string, settings AppSettings) []reviewPackage {
+// against what the app may already install and what the request already
+// carries. What is left — neither — is what the sidebar's checkboxes offer.
+func reviewPackages(requirements string, settings AppSettings, requests []PermissionRequest) []reviewPackage {
 	reqs, _ := ParseRequirements(requirements)
 	denied := map[string]bool{}
 	for _, d := range DeniedPackages(reqs, settings.AllowedPackages()) {
 		denied[d.Name] = true
 	}
+	requested := map[string]bool{}
+	for _, r := range requests {
+		if r.Kind == PermKindPackage {
+			requested[normalizePackageName(r.Value)] = true
+		}
+	}
 	out := make([]reviewPackage, 0, len(reqs))
 	for _, r := range reqs {
-		out = append(out, reviewPackage{Name: r.Name, Version: r.Version, Allowed: !denied[r.Name]})
+		out = append(out, reviewPackage{Name: r.Name, Version: r.Version, Allowed: !denied[r.Name], Requested: denied[r.Name] && requested[r.Name]})
 	}
 	return out
 }
@@ -79,6 +91,9 @@ func setDeployReviewData(ctx *gitea_context.Context, pr *issues_model.PullReques
 	ctx.Data["DeployDeptName"] = deptName
 	ctx.Data["DeployDeptLink"] = fmt.Sprintf("%s/%s/%s", setting.AppSubURL, deptOwner, deptName)
 	ctx.Data["DeployChatURL"] = fmt.Sprintf("%s/company/deploy-request/%d/chat", setting.AppSubURL, pr.ID)
+	ctx.Data["DeployRequestMessage"] = deployRequestMessage(pr.Issue.Content)
+	ctx.Data["DeployCentralOwnerLink"] = ctx.Repo.Repository.Owner.HomeLink()
+	ctx.Data["CompanyMergeLabel"] = ctx.Locale.Tr("company.review.approve_deploy")
 	if _, _, requesterID, ok := parseDeployBranchName(pr.HeadBranch); ok {
 		if requester, err := user_model.GetUserByID(ctx, requesterID); err == nil {
 			ctx.Data["DeployRequester"] = requester
@@ -89,17 +104,111 @@ func setDeployReviewData(ctx *gitea_context.Context, pr *issues_model.PullReques
 	}
 	// Always a slice, even an empty one: the sidebar counts these, and `len`
 	// of an unset value stops the template half-way down the page.
-	ctx.Data["PermissionRequests"] = LoadPermissionRequests(deptOwner, deptName, pr.ID)
+	requests := LoadPermissionRequests(deptOwner, deptName, pr.ID)
+	ctx.Data["PermissionRequests"] = requests
 	ctx.Data["DeployPackages"] = []reviewPackage{}
 	if gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, ctx.Repo.Repository); err == nil {
 		requirements := deployRequestFile(ctx, gitRepo, pr.HeadBranch, deployPathPrefix(deptOwner, deptName), "requirements.txt")
-		ctx.Data["DeployPackages"] = reviewPackages(requirements, SettingsFor(deptOwner, deptName))
+		packages := reviewPackages(requirements, SettingsFor(deptOwner, deptName), requests)
+		ctx.Data["DeployPackages"] = packages
+		ctx.Data["DeployPackagesPending"] = len(pendingPackages(packages))
 	}
 	ctx.Data["CompanyAIOffered"] = AIOfferedTo(ctx)
 	ctx.Data["AIEnabled"] = AIConfiguredFor(ctx, ctx.Doer.ID)
 	if cfg, err := loadAIUserConfig(ctx, ctx.Doer.ID); err == nil {
 		ctx.Data["AIModel"] = cfg.modelID
 		ctx.Data["AIProvider"] = cfg.provider
+	}
+}
+
+// deployRequestMessage is what the department wrote, without the
+// "Requested by @x (dept/repo)." line DeployPost puts first: the page
+// shows the requester as the author, so saying it again is noise.
+func deployRequestMessage(content string) string {
+	if strings.HasPrefix(content, "Requested by @") {
+		_, body, _ := strings.Cut(content, "\n")
+		return strings.TrimSpace(body)
+	}
+	return strings.TrimSpace(content)
+}
+
+func pendingPackages(packages []reviewPackage) []reviewPackage {
+	var out []reviewPackage
+	for _, p := range packages {
+		if !p.Allowed && !p.Requested {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// packagesToApprove keeps, of the names ticked on the page, the ones the
+// request actually needs and is not allowed yet. Anything else typed into
+// the form is dropped rather than approved on the strength of a POST.
+func packagesToApprove(names []string, packages []reviewPackage) []PermissionRequest {
+	var out []PermissionRequest
+	for _, p := range pendingPackages(packages) {
+		if !slices.ContainsFunc(names, func(n string) bool { return normalizePackageName(n) == p.Name }) {
+			continue
+		}
+		out = append(out, PermissionRequest{
+			Kind:     PermKindPackage,
+			Value:    p.Name,
+			Label:    "company.perm.kind.package",
+			Detail:   p.Name + " (" + p.Version + ")",
+			Evidence: "company.evidence.in_requirements",
+			Decision: "approve",
+		})
+	}
+	return out
+}
+
+// GuardDeployApproval runs ahead of Gitea's own merge handler on POST
+// /{owner}/{repo}/pulls/{index}/merge (routers/web/web.go). For anything
+// that is not a Deploy Request it does nothing.
+//
+// For one, merging is the approval that puts an app live and applies its
+// permissions, so it is checked again here, on the action itself rather
+// than only on the page that showed the button: the approver must be a
+// site administrator — write access to the central repository, which is
+// what Gitea's own merge check asks for, is not enough — and the approval
+// is logged with who gave it.
+//
+// It then records the packages ticked beside "Approve deploy" as part of
+// the request, so that ApplyPermissionsOnMerge writes them to apps.yml with
+// everything else the merge approves.
+func GuardDeployApproval(ctx *gitea_context.Context) {
+	pr, err := issues_model.GetPullRequestByIndex(ctx, ctx.Repo.Repository.ID, ctx.PathParamInt64("index"))
+	if err != nil {
+		return // Gitea's handler answers for a pull request that is not there
+	}
+	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, false)
+	if !ok {
+		return
+	}
+	if ctx.Doer == nil || !ctx.Doer.IsAdmin {
+		log.Warn("company: deploy request #%d for %s/%s: approval refused for non-administrator %q", pr.ID, deptOwner, deptName, ctx.Doer.Name)
+		ctx.HTTPError(http.StatusForbidden, "only an administrator can approve a deploy request")
+		return
+	}
+	log.Info("company: deploy request #%d for %s/%s approved by %s", pr.ID, deptOwner, deptName, ctx.Doer.Name)
+
+	names := ctx.Req.Form["company_package"] // parsed by the form binding just before
+	if len(names) == 0 {
+		return
+	}
+	gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, ctx.Repo.Repository)
+	if err != nil {
+		return
+	}
+	requests := LoadPermissionRequests(deptOwner, deptName, pr.ID)
+	requirements := deployRequestFile(ctx, gitRepo, pr.HeadBranch, deployPathPrefix(deptOwner, deptName), "requirements.txt")
+	approved := packagesToApprove(names, reviewPackages(requirements, SettingsFor(deptOwner, deptName), requests))
+	if len(approved) == 0 {
+		return
+	}
+	if err := SavePermissionRequests(deptOwner, deptName, pr.ID, append(requests, approved...)); err != nil {
+		log.Error("company: recording packages approved with deploy request #%d: %v", pr.ID, err)
 	}
 }
 
@@ -239,7 +348,7 @@ func DeployRequestChat(ctx *gitea_context.Context) {
 		ctx.NotFound(err)
 		return
 	}
-	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr)
+	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, true)
 	if !ok {
 		ctx.NotFound(nil)
 		return

@@ -54,7 +54,7 @@ import {initGlobalSelectorObserver} from './modules/observer.ts';
 import {initRepositorySearch} from './features/repo-search.ts';
 import {initColorPickers} from './features/colorpicker.ts';
 import {initCompanyWorkspace} from './features/company-workspace.ts';
-import {initCompanyDeployReview} from './features/company-deploy-review.ts';
+import {initCompanyDeployReview, initCompanyDeployReviewPackages} from './features/company-deploy-review.ts';
 import {initCompanyDeployStatus} from './features/company-deploy-status.ts';
 import {initCompanyAppCharts, initCompanyConfirmForms} from './features/company-app-charts.ts';
 import {initCompanyAppEnv} from './features/company-app-env.ts';
@@ -166,6 +166,7 @@ const initPerformanceTracer = callInitFunctions([
   initRepoDiffView,
   initColorPickers,
   initCompanyDeployReview, // the assistant on a Deploy Request PR's sidebar — see web_src/js/features/company-deploy-review.ts
+  initCompanyDeployReviewPackages, // the packages ticked beside "Approve deploy" on the same page
   initCompanyWorkspace, // company/'s multi-file editor needs Gitea's own bundled CodeMirror setup (modules/codeeditor), which only ships to the browser if something reachable from this entry point imports it — see web_src/js/features/company-workspace.ts
   initCompanyDeployStatus,
   initCompanyAppCharts,

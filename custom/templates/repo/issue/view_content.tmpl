@@ -3,7 +3,14 @@
 	<div class="issue-content-left">
 		<div class="comment-list">
 			<div id="{{.Issue.HashTag}}" class="timeline-item comment issue-content-comment">
-				{{if .Issue.OriginalAuthor}}
+				{{/* A Deploy Request is opened by the central repository's owner
+				     on the department's behalf (company/deploy.go); the person who
+				     asked is who the page names. */}}
+				{{if $.DeployRequester}}
+				<a class="timeline-avatar" href="{{$.DeployRequester.HomeLink}}">
+					{{ctx.AvatarUtils.Avatar $.DeployRequester 40}}
+				</a>
+				{{else if .Issue.OriginalAuthor}}
 				<span class="timeline-avatar">
 					{{ctx.AvatarUtils.Avatar nil 40}}
 				</span>
@@ -15,7 +22,15 @@
 				<div class="content comment-container">
 					<div class="comment-header avatar-content-left-arrow" role="heading" aria-level="3">
 						<div class="comment-header-left">
-							{{if .Issue.OriginalAuthor}}
+							{{if $.DeployRequester}}
+								<a class="inline-timeline-avatar" href="{{$.DeployRequester.HomeLink}}">
+									{{ctx.AvatarUtils.Avatar $.DeployRequester 24}}
+								</a>
+								<span class="tw-text-text-light muted-links">
+									{{template "shared/user/authorlink" $.DeployRequester}}
+									{{ctx.Locale.Tr "repo.issues.commented_at" .Issue.HashTag $createdStr}}
+								</span>
+							{{else if .Issue.OriginalAuthor}}
 								<span class="tw-text-text tw-font-semibold">
 									{{svg (MigrationIcon .Repository.GetOriginalURLHostname)}}
 									{{.Issue.OriginalAuthor}}
@@ -37,7 +52,7 @@
 							{{end}}
 						</div>
 						<div class="comment-header-right">
-							{{template "repo/issue/view_content/show_role" dict "ShowRole" .Issue.ShowRole "IgnorePoster" true}}
+							{{if not $.IsDeployRequest}}{{template "repo/issue/view_content/show_role" dict "ShowRole" .Issue.ShowRole "IgnorePoster" true}}{{end}}
 							{{if not $.Repository.IsArchived}}
 								{{template "repo/issue/view_content/add_reaction" dict "ActionURL" (printf "%s/issues/%d/reactions" $.RepoLink .Issue.Index)}}
 							{{end}}
@@ -46,7 +61,9 @@
 					</div>
 					<div class="ui attached segment comment-body" role="article">
 						<div class="render-content markup" {{if or $.Permission.IsAdmin $.HasIssuesOrPullsWritePermission $.IsIssuePoster}}data-can-edit="true"{{end}}>
-							{{if .Issue.RenderedContent}}
+							{{if $.IsDeployRequest}}
+								{{if $.DeployRequestMessage}}<p class="tw-whitespace-pre-wrap">{{$.DeployRequestMessage}}</p>{{else}}<span class="no-content">{{ctx.Locale.Tr "repo.issues.no_content"}}</span>{{end}}
+							{{else if .Issue.RenderedContent}}
 								{{.Issue.RenderedContent}}
 							{{else}}
 								<span class="no-content">{{ctx.Locale.Tr "repo.issues.no_content"}}</span>
@@ -169,6 +186,13 @@
 	     company/deploy_review.go. */}}
 	{{if .IsDeployRequest}}
 		{{template "company/deploy_review_sidebar" .}}
+	{{else if .Issue.IsPull}}
+		{{/* Any other pull request on this instance is read by the same
+		     people: labels are the one thing on Gitea's sidebar they use. */}}
+		<div class="issue-content-right ui segment" data-global-init="initRepoIssueSidebar">
+			{{template "repo/issue/sidebar/label_list" $.IssuePageMetaData}}
+			{{template "repo/issue/sidebar/reference_link" $}}
+		</div>
 	{{else}}
 		{{template "repo/issue/view_content/sidebar" .}}
 	{{end}}

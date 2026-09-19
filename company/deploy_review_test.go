@@ -15,12 +15,27 @@ import (
 // approves exactly the ones not allowed yet.
 func TestReviewPackagesMarkWhatMergingWouldApprove(t *testing.T) {
 	settings := AppSettings{Dependencies: AppDependencies{Allow: []string{"FastAPI"}}}
-	got := reviewPackages("fastapi==0.115.0\npandas==2.2.0\n# a comment\n", settings)
+	got := reviewPackages("fastapi==0.115.0\npandas==2.2.0\nnumpy==2.0.0\n# a comment\n", settings,
+		[]PermissionRequest{{Kind: PermKindPackage, Value: "NumPy"}})
 	assert.Equal(t, []reviewPackage{
 		{Name: "fastapi", Version: "0.115.0", Allowed: true},
-		{Name: "pandas", Version: "2.2.0", Allowed: false},
+		{Name: "pandas", Version: "2.2.0"},
+		{Name: "numpy", Version: "2.0.0", Requested: true},
 	}, got)
-	assert.Empty(t, reviewPackages("", settings))
+	assert.Empty(t, reviewPackages("", settings, nil))
+
+	// Only names the request needs, is refused, and does not already carry
+	// pass — however they are spelt.
+	approved := packagesToApprove([]string{"Pandas", "fastapi", "numpy", "requests"}, got)
+	assert.Len(t, approved, 1)
+	assert.Equal(t, "pandas", approved[0].Value)
+	assert.Equal(t, "approve", approved[0].Decision)
+}
+
+func TestDeployRequestMessageDropsTheBoilerplate(t *testing.T) {
+	assert.Equal(t, "Fix the report", deployRequestMessage("Requested by @kim (PO/app).\n\nFix the report"))
+	assert.Equal(t, "", deployRequestMessage("Requested by @kim (PO/app)."))
+	assert.Equal(t, "plain", deployRequestMessage("plain"))
 }
 
 // The assistant is told what was asked for; the diff is cut, not dropped,

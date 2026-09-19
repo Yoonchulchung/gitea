@@ -4,7 +4,7 @@
      the app wants to be allowed, which packages it installs, and an
      assistant that has read the change. Set up by
      company.SetDeployRequestPageData (company/deploy_review.go). */}}
-<div class="issue-content-right company-deploy-review">
+<div class="issue-content-right company-deploy-review" data-global-init="initCompanyDeployReviewPackages" data-i18n-ai-author="{{ctx.Locale.Tr "company.review.ai_author"}}" data-i18n-platform-author="{{ctx.Locale.Tr "company.review.platform_author"}}" data-central-owner-link="{{.DeployCentralOwnerLink}}">
 	<div class="ui segment company-deploy-review-panel">
 		<h4 class="tw-mb-3">{{svg "octicon-rocket" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.title"}}</h4>
 		<div class="company-deploy-review-facts">
@@ -49,17 +49,37 @@
 	     is already allowed is part of the picture too. */}}
 	<div class="ui segment company-deploy-review-panel">
 		<h4 class="tw-mb-2">{{svg "octicon-package" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.packages" (len .DeployPackages)}}</h4>
+		{{/* Ticked packages travel with "Approve deploy" — company-deploy-review.ts
+		     copies them into the merge form as it is submitted, and
+		     company.ApprovePackagesOnMerge records them for the approval. */}}
+		{{$canTick := and .DeployPackagesPending (not .Issue.IsClosed)}}
+		{{if $canTick}}
+			<label class="company-deploy-review-package company-deploy-review-allow-all">
+				<span class="tw-flex tw-items-center tw-gap-2"><input type="checkbox" class="company-deploy-review-allow-all-box"> {{ctx.Locale.Tr "company.review.allow_all" .DeployPackagesPending}}</span>
+			</label>
+		{{end}}
 		{{range .DeployPackages}}
-			<div class="company-deploy-review-package">
-				<span class="tw-font-mono tw-text-13">{{.Name}}{{if .Version}} <span class="text-grey">{{.Version}}</span>{{end}}</span>
+			{{$tick := and $canTick (not .Allowed) (not .Requested)}}
+			{{/* A label for every row, since a tag name cannot be chosen in a
+			     template; one without a box is just text. */}}
+			<label class="company-deploy-review-package">
+				<span class="tw-flex tw-items-center tw-gap-2">
+					{{if $tick}}<input type="checkbox" class="company-deploy-review-package-box" value="{{.Name}}">{{end}}
+					<span class="tw-font-mono tw-text-13">{{.Name}}{{if .Version}} <span class="text-grey">{{.Version}}</span>{{end}}</span>
+				</span>
 				{{if .Allowed}}
 					<span class="ui basic tiny label">{{ctx.Locale.Tr "company.review.pkg_allowed"}}</span>
+				{{else if .Requested}}
+					<span class="ui blue tiny label">{{ctx.Locale.Tr "company.review.pkg_requested"}}</span>
 				{{else}}
 					<span class="ui yellow tiny label">{{ctx.Locale.Tr "company.review.pkg_needs_approval"}}</span>
 				{{end}}
-			</div>
+			</label>
 		{{else}}
 			<p class="text-grey tw-text-13 tw-mb-0">{{if .Issue.IsClosed}}{{ctx.Locale.Tr "company.review.packages_unavailable"}}{{else}}{{ctx.Locale.Tr "company.review.packages_none"}}{{end}}</p>
+		{{end}}
+		{{if $canTick}}
+			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.review.allow_hint"}}</p>
 		{{end}}
 	</div>
 

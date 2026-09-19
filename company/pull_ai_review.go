@@ -22,7 +22,10 @@ import (
 // SetDeployRequestPageData (decides whether to show the button) and
 // TriggerDeployRequestAIReview (re-verifies before actually acting on a
 // click) so both apply exactly the same rule.
-func verifyDeployRequestPR(ctx *context.Context, pr *issues_model.PullRequest) (deptOwner, deptName string, ok bool) {
+// allowClosed is for the pages that still have something to say about a
+// closed request — its outcome, who asked — as opposed to the actions that
+// need its branch, which cleanup has deleted by then.
+func verifyDeployRequestPR(ctx *context.Context, pr *issues_model.PullRequest, allowClosed bool) (deptOwner, deptName string, ok bool) {
 	if pr.BaseRepoID != pr.HeadRepoID {
 		return "", "", false
 	}
@@ -33,7 +36,7 @@ func verifyDeployRequestPR(ctx *context.Context, pr *issues_model.PullRequest) (
 	if err := pr.LoadIssue(ctx); err != nil {
 		return "", "", false
 	}
-	if pr.Issue.IsClosed {
+	if pr.Issue.IsClosed && !allowClosed {
 		// closed means deployBranchCleanupNotifier (company/deploy_notifier.go)
 		// already deleted this branch — there's no diff left to review either way
 		return "", "", false
@@ -72,11 +75,14 @@ func SetDeployRequestPageData(ctx *context.Context) {
 	if err != nil {
 		return // not a PR, or doesn't exist — repo.ViewIssue itself will 404 as usual
 	}
-	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr)
+	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, true)
 	if !ok {
 		return
 	}
 	setDeployReviewData(ctx, pr, deptOwner, deptName) // the sidebar built for this decision — company/deploy_review.go
+	if pr.Issue.IsClosed {
+		return // nothing left to review
+	}
 	if !AIConfiguredFor(ctx, ctx.Doer.ID) {
 		ctx.Data["ShowDeployAIReviewSetup"] = true
 		ctx.Data["DeployAIReviewSetupURL"] = setting.AppSubURL + "/user/settings/ai"
@@ -108,7 +114,7 @@ func TriggerDeployRequestAIReview(ctx *context.Context) {
 		ctx.NotFound(err)
 		return
 	}
-	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr) // loads pr.Issue itself, see there
+	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, false) // loads pr.Issue itself, see there
 	if !ok {
 		ctx.NotFound(nil)
 		return

@@ -111,13 +111,20 @@ func (prInfo *pullRequestViewInfo) prepareMergeBoxFormProps(ctx *context.Context
 
 	// if this pr can be merged now, then hide the auto merge
 	generalHideAutoMerge := prInfo.MergeBoxData.canMergeNow && allOverridableChecksOk
+	// company: a Deploy Request is approved, not merged — the button says so,
+	// and the other merge styles are not offered (company/deploy_review.go)
+	textDoMerge := ctx.Locale.Tr("repo.pulls.merge_pull_request")
+	companyApproveLabel, isDeployRequest := ctx.Data["CompanyMergeLabel"].(template.HTML)
+	if isDeployRequest {
+		textDoMerge = companyApproveLabel
+	}
 	var mergeStyles []any
 	if pull.IsStatusMergeable() {
 		mergeStyles = []any{
 			map[string]any{
 				"name":                  "merge",
 				"allowed":               prConfig.AllowMerge,
-				"textDoMerge":           ctx.Locale.Tr("repo.pulls.merge_pull_request"),
+				"textDoMerge":           textDoMerge,
 				"mergeTitleFieldText":   defaultMergeTitle,
 				"mergeMessageFieldText": defaultMergeBody,
 				"hideAutoMerge":         generalHideAutoMerge,
@@ -173,6 +180,9 @@ func (prInfo *pullRequestViewInfo) prepareMergeBoxFormProps(ctx *context.Context
 		})
 	}
 
+	if isDeployRequest && len(mergeStyles) > 0 {
+		mergeStyles = mergeStyles[:1] // company: "merge" only
+	}
 	if len(mergeStyles) > 0 {
 		mergeFormProps["mergeStyles"] = mergeStyles
 		prInfo.MergeBoxData.MergeFormProps = mergeFormProps
