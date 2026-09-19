@@ -152,7 +152,9 @@ not permitted`로 실패했다. **비특권 user namespace가 막혀 있어 bubb
 | 프로세스 트리 정리 | PID 1 종료로 **전부 정리** | 프로세스 그룹에 의존 — 고아 가능성이 남는다 |
 | 외부 TCP | netns에 경로 없음 | Landlock이 connect/bind 거부 |
 | UDP·raw 소켓 | netns에 경로 없음 | **seccomp가 `socket()`을 주소 패밀리로 거부** |
-| Gitea에 시그널 | PID 네임스페이스로 불가 | seccomp가 `kill(-1)`·`kill(giteaPID)` 거부 |
+| Gitea에 시그널 | PID 네임스페이스로 불가 | seccomp가 `kill(-1)`·`kill(giteaPID)`·`tkill` 거부. **양수 pid로의 `kill`은 못 막는다** — 같은 계정의 다른 프로세스를 pid를 훑어 죽일 수 있다. Landlock ABI 6의 시그널 범위 지정이 있어야 닫힌다 |
+| 타 앱의 소켓 | 마운트되지 않음 | unix `connect()`는 Landlock 파일 규칙 밖. 소켓 이름을 예측 불가능한 토큰으로 지어 막는다 ([impl](app-platform-impl.md) §1) |
+| 프로세스 수 한도 | 앱별 | `RLIMIT_NPROC`은 **계정 단위**라 한 앱이 다 쓰면 다른 앱의 `fork`도 실패한다. 계정을 나눌 수 없어 한도를 낮게 두는 것 외에 답이 없다 |
 | `/tmp` | 앱별 tmpfs (크기 상한) | **호스트 공유이므로 아예 차단**, 앱별 `HOME`/`TMPDIR`로 대체 |
 
 **남는 실질 차이는 프로세스 트리 정리 하나다.** 나머지는 "없앰"과 "막음"의 차이라
@@ -200,7 +202,7 @@ seccomp는 **스칼라 인자만** 본다 — 포인터를 역참조하지 않�
 ## 송신 브로커 (2026-09-06 구현)
 
 앱은 네트워크가 없다. 외부 자료가 필요한 앱은 `network.mode: broker` 로 승인받고,
-플랫폼이 `run/broker.sock` 에 열어 주는 소켓을 통해서만 나간다. 부서 쪽 규약은 세 줄이다:
+플랫폼이 `run/` 아래에 열어 주는 소켓(`BROKER_SOCKET` 환경변수)을 통해서만 나간다. 부서 쪽 규약은 세 줄이다:
 
 ```python
 import httpx, os

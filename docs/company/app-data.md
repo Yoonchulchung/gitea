@@ -40,9 +40,15 @@ DB가 생기면 데이터 유실이다.
 <AppDataPath>/company-app-data/<repoID>/
   app.db                     # 이 앱의 전부
   app.db-wal, app.db-shm     # WAL일 때 SQLite가 만든다
-  .meta.json                 # 마지막으로 본 owner/repo, created_at, removed_at
-  .snapshots/<version>-<ts>.db
+<AppDataPath>/company-app-data/.meta/<repoID>.json   # 마지막으로 본 owner/repo, created_at, removed_at
+<AppDataPath>/company-app-snapshots/<repoID>/<version>-<ts>.db
 ```
+
+**기록 파일은 데이터 디렉터리 밖에 있다.** 처음에는 `<repoID>/.meta.json`이었는데, 그
+디렉터리는 앱이 쓸 수 있는 곳이다. 보관 기간 정리(`sweepAppData`)가 그 파일의 `repoID`를
+믿고 지웠으므로, 앱이 남의 ID를 적어 두면 **다른 부서의 데이터와 스냅샷이 지워졌다.**
+지금은 기록이 형제 디렉터리에 있고, 어떤 경우에도 삭제 대상은 디렉터리 이름의 ID다.
+예전 위치의 파일은 처음 읽을 때 옮겨진다.
 
 `company-apps/<hash>/`(릴리스·venv·run·logs)는 그대로 둔다. 전부 재생성 가능한
 것들이고, `RemoveAll` 대상으로 남아도 안전하다.
@@ -602,7 +608,7 @@ Gitea 백업 경로에 `company-app-data/`를 포함시키는 것이다. **그�
 
 **Phase 3 — 마이그레이션** (`company/appmigrate.go`)
 
-- [x] 러너(Python, `run/migrate.json` 페이로드) + `_schema_migrations`
+- [x] 러너(Python, `ctl/migrate.json` 페이로드) + `_schema_migrations`
 - [x] DDL 가드와 체크섬
 - [x] 스냅샷(`Connection.backup()`) 및 개수·기간 양쪽 보관 한도
 - [x] 스냅샷 자동 검증 (`integrity_check`)

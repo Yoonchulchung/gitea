@@ -13,8 +13,10 @@
   releases/<sha>/{app/, .venv/}             # 릴리스별 소스+venv (롤백이 의존성까지 되돌린다)
   current -> releases/<sha>                  # 원자적 전환점
   previous -> releases/<sha>
-  run/app.sock                               # bwrap에 바인드되는 유일한 rw 지점
-  logs/app.log                               # 회전: 10MB × 5
+  run/<토큰>.sock                            # 앱이 쓸 수 있는 유일한 곳 (소켓, HOME, TMPDIR)
+  run/b<토큰>.sock                           # 송신 브로커 소켓 (승인된 앱만)
+  ctl/                                       # 플랫폼이 러너에 주는 입력. 샌드박스에는 읽기 전용
+  logs/app.log                               # 실행 중에도 회전: 10MB × 5
 <AppDataPath>/company-app-state/<hash>.json  # 상태 (desired/actual/이력)
 <AppDataPath>/company-metrics/<hash>.json    # 5분 버킷 30일
 <AppDataPath>/company-env/<hash>.json        # 환경변수 (암호화)
@@ -142,10 +144,23 @@ bwrap --unshare-all --die-with-parent --new-session \
       --ro-bind <release>/app /app --ro-bind <release>/.venv /venv \
       --bind <apphome>/run /run \
       --chdir /app \
-      -- /venv/bin/uvicorn main:app --uds /run/app.sock --root-path /apps/<org>/<repo>
+      -- /venv/bin/uvicorn main:app --uds /run/<토큰>.sock --root-path /apps/<org>/<repo>
 ```
 
 - 환경은 전부 `cmd.Env`로 (5절)
+
+**앱이 쓸 수 있는 폴더에는 플랫폼이 아무것도 두지 않는다.** `run/`과 데이터 디렉터리는
+앱이 심링크를 만들 수 있는 곳이다. 거기에 플랫폼이 파일을 쓰면(러너 입력, 임시 파일)
+앱이 미리 심어 둔 심링크를 따라 `app.ini`·`gitea.db`를 덮어쓰게 된다. 그래서 러너 입력은
+`ctl/`(샌드박스에 읽기 전용), 내보내기 결과와 복원 임시본은 스냅샷 트리, 데이터 기록은
+`company-app-data/.meta/`에 둔다. 그 폴더에서 무언가를 읽어야 할 때는 `Lstat`으로
+일반 파일인지 먼저 확인한다 (`addFileToZip`, `dialAppSocket`, `ListSnapshots`).
+
+**소켓 이름은 토큰이다.** Landlock에는 마운트 네임스페이스가 없어 모든 앱의 소켓이 같은
+파일시스템, 같은 계정 아래 있고, unix 소켓 `connect()`는 파일 열기가 아니라 Landlock의
+파일 규칙에 걸리지 않는다. 이름을 `sha256(owner/repo)` 로 지으면 다른 앱이 계산해서 접속할
+수 있다. 그래서 `INTERNAL_TOKEN`으로 HMAC한 토큰을 쓴다 (`socketToken`) — 앱은 남의
+`run/`을 나열할 수 없으므로 알 수 없는 이름은 닿을 수 없는 소켓이다.
 - 기동 직전 자식에서 `rlimit` 설정: `RLIMIT_DATA`(메모리 — `RLIMIT_AS`는 numpy 가상 예약과 충돌 가능, 4단계에서 실측 비교), `RLIMIT_NPROC`, `RLIMIT_NOFILE`, `RLIMIT_FSIZE`
 - `nice` 상향(Gitea보다 낮은 우선순위), `oom_score_adj` 상향(OOM 시 앱 먼저)
 - `Setpgid` + bwrap이 PID 네임스페이스 PID 1이므로 **bwrap만 죽이면 전체 정리**
