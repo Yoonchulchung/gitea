@@ -46,6 +46,9 @@
 		data-i18n-folder-closed="{{ctx.Locale.Tr "company.workspace.folder_closed"}}"
 		data-i18n-folder-open="{{ctx.Locale.Tr "company.workspace.folder_open"}}"
 		data-i18n-delete-file="{{ctx.Locale.Tr "company.workspace.delete_file"}}"
+		data-i18n-rename="{{ctx.Locale.Tr "company.workspace.rename"}}"
+		data-i18n-status-renamed="{{ctx.Locale.Tr "company.workspace.status_renamed" "%s" "%s"}}"
+		data-i18n-error-bad-name="{{ctx.Locale.Tr "company.workspace.error_bad_name" "%s"}}"
 		data-i18n-confirm-leave-unsaved="{{ctx.Locale.Tr "company.workspace.confirm_leave_unsaved"}}"
 		data-i18n-conflict-yours="{{ctx.Locale.Tr "company.workspace.conflict_yours"}}"
 		data-i18n-conflict-theirs="{{ctx.Locale.Tr "company.workspace.conflict_theirs" "%s" "%s"}}"
@@ -217,7 +220,7 @@
 	flex: 1;
 	min-width: 0;
 }
-.company-workspace-tree-delete {
+.company-workspace-tree-action {
 	flex-shrink: 0;
 	display: flex;
 	align-items: center;
@@ -230,12 +233,16 @@
 	color: var(--color-text-light-2);
 	cursor: pointer;
 	opacity: 0;
-	/* Only the file rows get one — folders delete via their own contents,
-	   not as a unit, and the new-item/pending rows have nothing to delete
-	   yet. */
+	/* Rename on every row; delete only on files — a folder deletes via its
+	   own contents, not as a unit. */
 }
-.company-workspace-tree-item:hover .company-workspace-tree-delete {
+.company-workspace-tree-row:hover .company-workspace-tree-action,
+.company-workspace-tree-action:focus-visible {
 	opacity: 1;
+}
+.company-workspace-tree-action:hover {
+	background: var(--color-hover);
+	color: var(--color-text);
 }
 .company-workspace-tree-delete:hover {
 	background: var(--color-danger-hover, var(--color-hover));

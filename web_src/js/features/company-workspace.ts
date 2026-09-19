@@ -126,6 +126,33 @@ function collectFolderPaths(node: FolderNode, out: string[]): void {
   for (const folder of node.folders) collectFolderPaths(folder, out);
 }
 
+function removeFolderPath(root: FolderNode, path: string): void {
+  const parts = path.split('/').filter(Boolean);
+  let node = root;
+  for (const name of parts.slice(0, -1)) {
+    const next = node.folders.find((f) => f.name === name);
+    if (!next) return;
+    node = next;
+  }
+  const idx = node.folders.findIndex((f) => f.name === parts.at(-1));
+  if (idx !== -1) node.folders.splice(idx, 1);
+}
+
+function findFolder(root: FolderNode, path: string): FolderNode | null {
+  let node = root;
+  for (const name of path.split('/').filter(Boolean)) {
+    const next = node.folders.find((f) => f.name === name);
+    if (!next) return null;
+    node = next;
+  }
+  return node;
+}
+
+function collectFilePaths(node: FolderNode, out: string[]): void {
+  for (const file of node.files) out.push(node.path ? `${node.path}/${file}` : file);
+  for (const folder of node.folders) collectFilePaths(folder, out);
+}
+
 function removeFilePath(root: FolderNode, path: string): void {
   const parts = path.split('/').filter(Boolean);
   if (!parts.length) return;
@@ -259,6 +286,9 @@ export function initCompanyWorkspace() {
       folderClosed: attr(el, 'data-i18n-folder-closed'),
       folderOpen: attr(el, 'data-i18n-folder-open'),
       deleteFile: attr(el, 'data-i18n-delete-file'),
+      renameItem: attr(el, 'data-i18n-rename'),
+      statusRenamed: attr(el, 'data-i18n-status-renamed'),
+      errorBadName: attr(el, 'data-i18n-error-bad-name'),
       conflictYours: attr(el, 'data-i18n-conflict-yours'),
       conflictTheirs: attr(el, 'data-i18n-conflict-theirs'),
       conflictTheirsLatest: attr(el, 'data-i18n-conflict-theirs-latest'),
@@ -1108,6 +1138,140 @@ export function initCompanyWorkspace() {
       return row;
     }
 
+    // Set while a row's name is being edited in place (the pencil on hover,
+    // or F2 on the selected row) — same inline-input pattern as
+    // pendingNewItem. `value` outlives a re-render mid-typing: an icon
+    // fetch landing calls renderTree() and rebuilds the row.
+    let pendingRename: {path: string, kind: 'file' | 'folder', value: string, fresh: boolean} | null = null;
+
+    function startRename(path: string, kind: 'file' | 'folder'): void {
+      pendingNewItem = null;
+      pendingRename = {path, kind, value: path.split('/').pop()!, fresh: true};
+      renderTree();
+    }
+
+    function parentOf(path: string): string {
+      return path.slice(0, Math.max(path.lastIndexOf('/'), 0));
+    }
+
+    function pathTaken(path: string): boolean {
+      return openTabs.has(path) || findFolder(treeRoot, path) !== null ||
+        (findFolder(treeRoot, parentOf(path))?.files.includes(path.split('/').pop()!) ?? false);
+    }
+
+    async function commitRename(rawValue: string): Promise<void> {
+      if (!pendingRename) return;
+      const {path, kind} = pendingRename;
+      pendingRename = null;
+      const value = rawValue.trim();
+      const parent = parentOf(path);
+      const newPath = parent ? `${parent}/${value}` : value;
+      if (!value || newPath === path) {
+        renderTree();
+        return;
+      }
+      renderTree(); // the input row goes away whatever happens next
+      // A slash is allowed on purpose ("sub/a.txt" renames into a folder);
+      // an empty segment, "..", or a folder moving into itself is not.
+      if (value.split('/').some((seg) => !seg || seg === '..') || newPath.startsWith(`${path}/`)) {
+        showErrorToast(i18n.errorBadName.replace('%s', value));
+        return;
+      }
+      if (pathTaken(newPath)) {
+        showErrorToast(i18n.errorFileExists.replace('%s', newPath));
+        return;
+      }
+      if (kind === 'file') {
+        if (!(await applyPathRename(path, newPath))) return;
+        renderTree();
+        activateTab(newPath);
+      } else if (!(await renameFolder(path, newPath))) {
+        return;
+      }
+      setStatus(i18n.statusRenamed.replace('%s', path).replace('%s', newPath));
+    }
+
+    // Git has no folders, so renaming one is renaming every file in it —
+    // each opened and moved the same way a drop into another folder is.
+    // A failure part-way leaves the files already moved as they are: each
+    // is its own pending change, and the status line names the one that
+    // failed.
+    async function renameFolder(path: string, newPath: string): Promise<boolean> {
+      const node = findFolder(treeRoot, path);
+      if (!node) return false;
+      const files: string[] = [];
+      collectFilePaths(node, files);
+      const folders: string[] = [];
+      collectFolderPaths(node, folders);
+      const moved = (p: string) => newPath + p.slice(path.length);
+      for (const file of files) {
+        if (!(await applyPathRename(file, moved(file)))) return false;
+      }
+      for (const folder of folders) {
+        insertFolderPath(treeRoot, moved(folder));
+        const icon = iconCache.get(folder);
+        if (icon) iconCache.set(moved(folder), icon);
+        if (expandedFolders.delete(folder)) expandedFolders.add(moved(folder));
+      }
+      removeFolderPath(treeRoot, path);
+      selectedFolderPath = newPath;
+      saveExpandedFolders();
+      renderTree();
+      return true;
+    }
+
+    // Swaps a row's name for an input holding it. Enter commits, Escape
+    // cancels, clicking away commits (like the new-item row) — but a row
+    // rebuilt by renderTree() also loses focus, and that must not commit.
+    function mountRenameInput(row: HTMLElement): void {
+      const state = pendingRename!;
+      const input = createElementFromHTML<HTMLInputElement>('<input type="text" class="company-workspace-tree-new-input">');
+      input.value = state.value;
+      row.querySelector('.company-workspace-tree-name')!.replaceWith(input);
+      row.draggable = false; // otherwise selecting text in the input drags the row
+      input.addEventListener('input', () => { state.value = input.value });
+      let committed = false;
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          committed = true;
+          commitRename(input.value);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          committed = true;
+          pendingRename = null;
+          renderTree();
+        }
+      });
+      input.addEventListener('blur', () => {
+        if (committed || !input.isConnected) return;
+        committed = true;
+        commitRename(input.value);
+      });
+      input.focus();
+      if (state.fresh) {
+        // The usual convention: the name is selected without its extension,
+        // so typing replaces just that.
+        state.fresh = false;
+        const dot = state.kind === 'file' ? input.value.lastIndexOf('.') : -1;
+        input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
+      }
+    }
+
+    // F2 renames what is selected in the tree — the clicked folder, else
+    // the open file — unless the keystroke belongs to a text field.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'F2' || pendingRename || (e.target as HTMLElement).closest('input, textarea')) return;
+      if (selectedFolderPath) startRename(selectedFolderPath, 'folder');
+      else if (activePath) startRename(activePath, 'file');
+      else return;
+      e.preventDefault();
+    });
+
+    function renameButton(): string {
+      return `<button type="button" class="company-workspace-tree-action company-workspace-tree-rename" data-tooltip-content="${i18n.renameItem}" aria-label="${i18n.renameItem}">${svg('octicon-pencil', 12)}</button>`;
+    }
+
     // Fire-and-forget, debounced like stageTmpEdit — a click toggling a
     // folder shouldn't wait on a network round trip, and clicking several
     // in a row (opening a nested path) only needs the final state saved.
@@ -1145,11 +1309,16 @@ export function initCompanyWorkspace() {
         const row = createElementFromHTML<HTMLElement>(
           `<div class="company-workspace-tree-row company-workspace-tree-folder" style="padding-left:${depth * 16}px" data-tooltip-content="${collapsed ? i18n.folderClosed : i18n.folderOpen}">` +
           `<span class="company-workspace-tree-chevron">${chevronSvg}</span>${folderSvg}` +
-          `<span class="company-workspace-tree-name"></span></div>`,
+          `<span class="company-workspace-tree-name"></span>${renameButton()}</div>`,
         );
         row.querySelector('.company-workspace-tree-name')!.textContent = folder.name;
         row.classList.toggle('selected', folder.path === selectedFolderPath);
-        row.addEventListener('click', () => {
+        row.querySelector('.company-workspace-tree-rename')!.addEventListener('click', (e) => {
+          e.stopPropagation();
+          startRename(folder.path, 'folder');
+        });
+        row.addEventListener('click', (e) => {
+          if ((e.target as HTMLElement).closest('input')) return; // typing a new name, not toggling
           if (collapsed) expandedFolders.add(folder.path);
           else expandedFolders.delete(folder.path);
           selectedFolderPath = folder.path;
@@ -1158,6 +1327,7 @@ export function initCompanyWorkspace() {
         });
         wireDropTarget(row, folder.path);
         container.append(row);
+        if (pendingRename?.path === folder.path) mountRenameInput(row);
         if (!collapsed) {
           const childContainer = createElementFromHTML<HTMLElement>('<div class="company-workspace-tree-children"></div>');
           wireDropTarget(childContainer, folder.path); // dropping on empty space at this level = this folder too
@@ -1170,8 +1340,8 @@ export function initCompanyWorkspace() {
         const fileSvg = iconCache.get(fullPath)?.icon ?? svg('octicon-file', 14);
         const row = createElementFromHTML<HTMLElement>(
           `<div class="company-workspace-tree-row company-workspace-tree-item" style="padding-left:${depth * 16 + 18}px">` +
-          `${fileSvg}<span class="company-workspace-tree-name"></span>` +
-          `<button type="button" class="company-workspace-tree-delete" data-tooltip-content="${i18n.deleteFile}" aria-label="${i18n.deleteFile}">${svg('octicon-x', 12)}</button></div>`,
+          `${fileSvg}<span class="company-workspace-tree-name"></span>${renameButton()}` +
+          `<button type="button" class="company-workspace-tree-action company-workspace-tree-delete" data-tooltip-content="${i18n.deleteFile}" aria-label="${i18n.deleteFile}">${svg('octicon-x', 12)}</button></div>`,
         );
         row.querySelector('.company-workspace-tree-name')!.textContent = file;
         row.classList.toggle('selected', fullPath === activePath);
@@ -1180,9 +1350,14 @@ export function initCompanyWorkspace() {
         // already an open tab: an AI-proposed or "새 파일" tab has nothing
         // on the server yet, so that fetch 404s and the click silently
         // fails to bring the (already-open, already has content) tab back.
-        row.addEventListener('click', () => {
+        row.addEventListener('click', (e) => {
+          if ((e.target as HTMLElement).closest('input')) return; // typing a new name, not opening
           if (openTabs.has(fullPath)) activateTab(fullPath);
           else openExistingFile(fullPath);
+        });
+        row.querySelector('.company-workspace-tree-rename')!.addEventListener('click', (e) => {
+          e.stopPropagation();
+          startRename(fullPath, 'file');
         });
         row.querySelector('.company-workspace-tree-delete')!.addEventListener('click', (e) => {
           e.stopPropagation(); // don't also trigger the row's own open-file click above
@@ -1197,6 +1372,7 @@ export function initCompanyWorkspace() {
         row.addEventListener('dragend', () => { dragSourcePath = null });
         wireDropTarget(row, node.path); // dropping directly on a file = same folder as that file
         container.append(row);
+        if (pendingRename?.path === fullPath) mountRenameInput(row);
       }
     }
     wireDropTarget(treeEl, ''); // empty space below everything = root

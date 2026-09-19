@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -178,21 +179,27 @@ func WorkspaceSave(ctx *context.Context) {
 			})
 			continue
 		}
+		sha := f.BaseSHA
 		if f.FromPath != "" && f.FromPath != f.Path {
 			moved++
 			files = append(files, &files_service.ChangeRepoFile{
 				Operation:    "rename",
 				FromTreePath: strings.TrimPrefix(f.FromPath, "/"),
 				TreePath:     treePath,
-				SHA:          f.BaseSHA,
+				SHA:          sha,
 			})
+			// The rename carries the lock. The new path has no blob at the
+			// branch head to compare the SHA against, so on the upload it
+			// reads as a conflict — and the conflict page for a path that is
+			// not there yet was a 404 in front of the person saving.
+			sha = ""
 		}
 		edited++
 		files = append(files, &files_service.ChangeRepoFile{
 			Operation:     "upload",
 			TreePath:      treePath,
 			ContentReader: strings.NewReader(f.Content),
-			SHA:           f.BaseSHA,
+			SHA:           sha,
 		})
 	}
 
@@ -350,7 +357,7 @@ func commitMessageFor(files []*files_service.ChangeRepoFile, edited, deleted, mo
 		parts = append(parts, fmt.Sprintf("%d files edited", edited))
 	}
 	if moved == 1 {
-		parts = append(parts, firstTreePathFor(files, "rename")+" moved")
+		parts = append(parts, movedMessage(files))
 	} else if moved > 0 {
 		parts = append(parts, fmt.Sprintf("%d files moved", moved))
 	}
@@ -363,6 +370,21 @@ func commitMessageFor(files []*files_service.ChangeRepoFile, edited, deleted, mo
 		return "Edit"
 	}
 	return strings.Join(parts, ", ")
+}
+
+// A rename within its folder reads as a rename, not a move — history says
+// "report.md renamed to report-2026.md" rather than "report-2026.md moved".
+func movedMessage(files []*files_service.ChangeRepoFile) string {
+	for _, f := range files {
+		if f.Operation != "rename" {
+			continue
+		}
+		if path.Dir(f.FromTreePath) == path.Dir(f.TreePath) {
+			return f.FromTreePath + " renamed to " + path.Base(f.TreePath)
+		}
+		return f.FromTreePath + " moved to " + f.TreePath
+	}
+	return ""
 }
 
 func firstTreePathFor(files []*files_service.ChangeRepoFile, op string) string {
