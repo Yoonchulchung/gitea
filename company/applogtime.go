@@ -41,7 +41,17 @@ type timestampWriter struct {
 	buf  bytes.Buffer
 	now  func() time.Time
 	last time.Time
+	// size is what the file holds; past limit, reopen is asked for a fresh
+	// file. Rotation on open alone let a running app grow one file without
+	// bound — on the volume that holds gitea.db.
+	size, limit int64
+	reopen      func() (io.WriteCloser, int64, error)
 }
+
+// maxPendingLine bounds a line that has not ended. An app writing without
+// newlines grew this buffer — in Gitea's own heap, where no limit on the app
+// reaches — until the machine ran out.
+const maxPendingLine = 64 << 10
 
 func newTimestampWriter(w io.WriteCloser) *timestampWriter {
 	return &timestampWriter{w: w, now: time.Now}
@@ -63,13 +73,33 @@ func (t *timestampWriter) Write(p []byte) (int, error) {
 		if err != nil {
 			// Not a whole line yet — put it back and wait for the rest.
 			t.buf.Reset()
-			t.buf.WriteString(line)
-			return written, nil
+			if len(line) <= maxPendingLine {
+				t.buf.WriteString(line)
+				return written, nil
+			}
+			line += "\n" // broken here rather than held forever
 		}
-		if _, err := t.w.Write([]byte(t.last.Format(logTimeLayout) + " " + line)); err != nil {
+		if err := t.emit(t.last.Format(logTimeLayout) + " " + line); err != nil {
 			return written, err
 		}
+		if t.buf.Len() == 0 {
+			return written, nil
+		}
 	}
+}
+
+func (t *timestampWriter) emit(line string) error {
+	if t.limit > 0 && t.reopen != nil && t.size >= t.limit {
+		w, size, err := t.reopen()
+		if err != nil {
+			return err
+		}
+		_ = t.w.Close()
+		t.w, t.size = w, size
+	}
+	n, err := t.w.Write([]byte(line))
+	t.size += int64(n)
+	return err
 }
 
 // Close flushes a trailing partial line. An app killed mid-write usually has
@@ -77,7 +107,7 @@ func (t *timestampWriter) Write(p []byte) (int, error) {
 func (t *timestampWriter) Close() error {
 	t.mu.Lock()
 	if rest := strings.TrimRight(t.buf.String(), "\r\n"); rest != "" {
-		_, _ = t.w.Write([]byte(t.last.Format(logTimeLayout) + " " + rest + "\n"))
+		_ = t.emit(t.last.Format(logTimeLayout) + " " + rest + "\n")
 		t.buf.Reset()
 	}
 	t.mu.Unlock()

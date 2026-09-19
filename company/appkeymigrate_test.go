@@ -6,6 +6,7 @@ package company
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitea.dev/modules/setting"
@@ -124,4 +125,34 @@ func TestMigrateDiscardsStaleVenvs(t *testing.T) {
 		"a shebang cannot be repointed, so the environment is rebuilt rather than patched")
 	assert.DirExists(t, filepath.Join(newHome, "releases", "ff317fb6"),
 		"the code itself is kept — only the environment is rebuilt")
+}
+
+// A repository renamed in Gitea's own UI used to leave its app behind under
+// the old name, still serving, with nothing the department could reach.
+func TestAppFollowsItsRepositoryRename(t *testing.T) {
+	withTempAppData(t)
+	saved := deployQueue
+	deployQueue = make(chan deployJob, 1)
+	t.Cleanup(func() { deployQueue = saved })
+
+	require.NoError(t, MutateAppState("PO", "old", func(st *AppState) bool {
+		st.Desired, st.Actual, st.SHA, st.HasRelease = AppStateRunning, AppStateStopped, "abc123", true
+		return true
+	}))
+	old := appPathsFor("PO", "old")
+	release := filepath.Join(old.releases, "r1")
+	require.NoError(t, os.MkdirAll(filepath.Join(release, "app"), 0o700))
+	require.NoError(t, os.Symlink(release, old.current))
+
+	followRepoRename("PO", "old", "PO", "new")
+
+	_, ok := LookupApp("PO", "old")
+	assert.False(t, ok, "the old name no longer routes")
+	st := LoadAppState("PO", "new")
+	assert.Equal(t, "new", st.Repo)
+	assert.Equal(t, "abc123", st.SHA, "the record moved with it")
+	target, err := os.Readlink(appPathsFor("PO", "new").current)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(target, appPathsFor("PO", "new").home), "links point into the new home, not the old")
+	assert.Equal(t, "abc123", (<-deployQueue).SHA, "rebuilt under the new name, since the environment cannot move")
 }

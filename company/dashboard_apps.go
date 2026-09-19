@@ -74,7 +74,7 @@ func SetDashboardApps(ctx *context.Context) {
 			Status:      st.Actual,
 			StatusLabel: departmentStatusLabel(st),
 			Link:        setting.AppSubURL + "/" + st.Owner + "/" + st.Repo + "/_app",
-			AppURL:      setting.AppSubURL + appProxyPrefix + "/" + st.Owner + "/" + st.Repo,
+			AppURL:      setting.AppSubURL + appURL(st.Owner, st.Repo),
 			Running:     st.Actual == AppStateRunning,
 		})
 	}

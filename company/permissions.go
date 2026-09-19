@@ -4,6 +4,7 @@
 package company
 
 import (
+	"math"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -40,6 +41,7 @@ const (
 	PermKindNetwork  = "network"
 	PermKindAccess   = "access"
 	PermKindMemory   = "memory"
+	PermKindData     = "data"
 	PermKindDownload = "download"
 )
 
@@ -201,6 +203,13 @@ func LoadPermissionRequestSet(owner, repo string) *PermissionRequestSet {
 		log.Error("company: permission requests for %s/%s are unreadable: %v", owner, repo, err)
 		return nil
 	}
+	// JSON brings every number back as a float64, and "%d" prints one as
+	// "%!d(float64=4)" — which is what the admin reviewing the request saw.
+	for i, r := range set.Requests {
+		if f, ok := r.EvidenceArg.(float64); ok && f == math.Trunc(f) {
+			set.Requests[i].EvidenceArg = int(f)
+		}
+	}
 	return &set
 }
 
@@ -208,16 +217,8 @@ func LoadPermissionRequestSet(owner, repo string) *PermissionRequestSet {
 // nil if this PR has none. Keyed by PR id so a stale file from a previous,
 // abandoned request is never shown against a new one.
 func LoadPermissionRequests(owner, repo string, prID int64) []PermissionRequest {
-	body, err := readFileIfExists(permissionFile(owner, repo))
-	if err != nil || body == nil {
-		return nil
-	}
-	var set PermissionRequestSet
-	if err := json.Unmarshal(body, &set); err != nil {
-		log.Error("company: permission requests for %s/%s are unreadable: %v", owner, repo, err)
-		return nil
-	}
-	if set.PRID != prID {
+	set := LoadPermissionRequestSet(owner, repo)
+	if set == nil || set.PRID != prID {
 		return nil
 	}
 	return set.Requests
@@ -252,6 +253,10 @@ func ApplyApprovedPermissions(current AppSettings, requests []PermissionRequest)
 		case PermKindMemory:
 			if mb, err := strconv.Atoi(r.Value); err == nil && mb > 0 {
 				updated.Limits.MemoryMB = mb
+			}
+		case PermKindData:
+			if mb, err := strconv.Atoi(r.Value); err == nil && mb > 0 && mb <= maxDataQuotaMB {
+				updated.Limits.DataMB = mb
 			}
 		case PermKindDownload:
 			updated.Download.Policy = "allow"

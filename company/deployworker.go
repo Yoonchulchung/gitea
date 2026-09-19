@@ -12,13 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	repo_model "gitea.dev/models/repo"
 	"gitea.dev/modules/git"
 	"gitea.dev/modules/graceful"
-	"gitea.dev/modules/json"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/process"
 	"gitea.dev/modules/translation"
@@ -44,6 +44,8 @@ const (
 	maxSourceBytes = 64 << 20
 
 	installTimeout     = 15 * time.Minute
+	venvCompleteMarker = ".complete" // written last; an environment without it is rebuilt
+
 	healthCheckTries   = 30
 	healthCheckOK      = 3 // consecutive successes, so an app that answers once and dies fails
 	healthCheckSpacing = time.Second
@@ -59,6 +61,11 @@ type deployJob struct {
 	Owner, Repo string
 	SHA         string
 	PRID        int64
+	// Prior is what the app was doing when this deploy was queued. Read from
+	// the state file inside the worker it was always "queued" — the queueing
+	// had just written that — so every build failure marked a still-serving
+	// app as failed and took the department's stop button away.
+	Prior string
 }
 
 var deployQueue = make(chan deployJob, deployQueueCapacity)
@@ -86,32 +93,47 @@ func StartDeployWorkers() {
 // badge flips to "deploying" the moment an admin merges, and so a job that
 // is still `queued` minutes later is visibly stuck rather than invisible.
 func QueueDeploy(owner, repo, sha string, prID int64) {
+	prior := markQueued(owner, repo, sha, prID, false, AppHistoryEntry{})
+	enqueueDeploy(owner, repo, sha, prID, prior)
+}
+
+// markQueued records that a deploy is on its way and returns what the app was
+// doing before. wantRunning is whether this deploy is also a request to be
+// running — an approved request is, a redeploy is — which a suspension
+// outranks: an admin's stop is lifted by an admin, not by a merge.
+func markQueued(owner, repo, sha string, prID int64, wantRunning bool, entry AppHistoryEntry) (prior string) {
 	if err := MutateAppState(owner, repo, func(st *AppState) bool {
+		prior = st.Actual
 		st.Owner, st.Repo = owner, repo
+		if wantRunning && st.Actual != AppStateSuspended {
+			st.Desired = AppStateRunning
+		}
 		st.Actual = AppStateQueued
-		st.SHA, st.PRID = sha, prID
-		st.Reason, st.Message = "", ""
-		st.AppendHistory(AppHistoryEntry{Status: AppStateQueued, SHA: sha})
+		st.SHA = sha
+		if prID != 0 {
+			st.PRID = prID
+		}
+		if prior != AppStateSuspended {
+			st.Reason, st.Message, st.UserMessage = "", "", "" // a new attempt clears the previous failure
+		}
+		entry.Status, entry.SHA = AppStateQueued, sha
+		st.AppendHistory(entry)
 		return true
 	}); err != nil {
 		log.Error("company: %s/%s: recording queued state: %v", owner, repo, err)
 	}
-
-	enqueueDeploy(owner, repo, sha, prID)
+	return prior
 }
 
-// enqueueDeploy hands the job to a worker without touching state, for callers
-// that have already recorded `queued` themselves with more context than this
-// function has — company/deploy_notifier.go records who approved it.
-func enqueueDeploy(owner, repo, sha string, prID int64) {
+// enqueueDeploy hands the job to a worker; markQueued has recorded it.
+func enqueueDeploy(owner, repo, sha string, prID int64, prior string) {
 	select {
-	case deployQueue <- deployJob{Owner: owner, Repo: repo, SHA: sha, PRID: prID}:
+	case deployQueue <- deployJob{Owner: owner, Repo: repo, SHA: sha, PRID: prID, Prior: prior}:
 	default:
 		// Never block the caller: this runs inside a merge notification, and
 		// a full queue must not hold up the merge.
 		failBuild(owner, repo, ReasonDeployQueueFull,
-			"the deploy queue is full; the previously deployed version is still running",
-			LoadAppState(owner, repo).Actual)
+			"the deploy queue is full; the previously deployed version is still running", prior)
 	}
 }
 
@@ -149,9 +171,12 @@ func failBuild(owner, repo, reason, message, restore string, userMessage ...stri
 
 func recordDeployFailure(owner, repo, reason, message, actual string, userMessage ...string) {
 	log.Error("company: deploy %s/%s failed (%s): %s", owner, repo, reason, message)
+	// Bounded: the state file is re-read on every dashboard load, and a
+	// requirements.txt of a thousand lines had put all of them in it twice.
+	message = util.TruncateRunes(message, 4000)
 	safe := ""
 	if len(userMessage) > 0 {
-		safe = userMessage[0]
+		safe = util.TruncateRunes(userMessage[0], 2000)
 	}
 	if err := MutateAppState(owner, repo, func(st *AppState) bool {
 		st.Actual = actual
@@ -199,7 +224,7 @@ func runDeploy(ctx context.Context, job deployJob) {
 	settings := SettingsFor(owner, repo)
 	// What the app was doing before this attempt. Every failure below happens
 	// before the swap, so this is what it is still doing.
-	priorActual := LoadAppState(owner, repo).Actual
+	priorActual := job.Prior
 	if !settings.IsEnabled() {
 		failBuild(owner, repo, ReasonContractViolation, "this app is disabled by an administrator", priorActual)
 		return
@@ -233,8 +258,12 @@ func runDeploy(ctx context.Context, job deployJob) {
 	}
 
 	p := appPathsFor(owner, repo)
-	release := releaseDir(p, job.SHA)
-	if err := buildRelease(ctx, job, p, release, settings); err != nil {
+	// A directory of its own for every attempt: keyed by the commit alone, a
+	// redeploy of the running commit emptied the directory the app was
+	// serving from before it knew whether the rebuild would work.
+	release := releaseDir(p, job.SHA+"@"+strconv.FormatInt(time.Now().UnixNano(), 10))
+	buildNote, err := buildRelease(ctx, job, p, release, settings)
+	if err != nil {
 		appendBuildLog(p, job.SHA, "FAILED", AdminError(err))
 		if denied, ok := errors.AsType[*packagesDeniedError](err); ok {
 			// Written by us and naming the packages, so it is the one thing
@@ -269,12 +298,12 @@ func runDeploy(ctx context.Context, job deployJob) {
 	// One entry per attempt, written once its outcome is known. An entry at
 	// the end of the build said OK for a release that then failed to come up
 	// and was rolled back, and the history showed a success nobody got.
-	if err := activateRelease(owner, repo, p, release, job.SHA, settings); err != nil {
+	if err := activateRelease(owner, repo, p, release, job.SHA, settings, job.Prior); err != nil {
 		log.Error("company: %s/%s: activation failed: %v", owner, repo, err)
 		appendBuildLog(p, job.SHA, "FAILED", AdminError(err)) // the state already says why
 		return
 	}
-	appendBuildLog(p, job.SHA, "OK", strings.TrimSpace("deployed\n"+migrationNote))
+	appendBuildLog(p, job.SHA, "OK", strings.TrimSpace("deployed\n"+buildNote+"\n"+migrationNote))
 
 	// Only after a successful activation, and still under deployMu: a failed
 	// deploy leaves the previous release serving, and that is the worst
@@ -285,20 +314,21 @@ func runDeploy(ctx context.Context, job deployJob) {
 // buildRelease materializes the code and its dependencies. It writes only
 // inside the release directory and never touches `current`, so a failure at
 // any point here leaves the running app completely untouched.
-func buildRelease(ctx context.Context, job deployJob, p appPaths, release string, settings AppSettings) error {
+func buildRelease(ctx context.Context, job deployJob, p appPaths, release string, settings AppSettings) (note string, err error) {
 	appDir := filepath.Join(release, "app")
 	if err := os.RemoveAll(release); err != nil {
-		return err
+		return "", err
 	}
 	if err := os.MkdirAll(appDir, 0o700); err != nil {
-		return err
+		return "", err
 	}
 	if err := writeReleaseSHA(release, job.SHA); err != nil {
-		return err
+		return "", err
 	}
 
-	if err := extractAppSource(ctx, job, appDir); err != nil {
-		return err
+	note, err = extractAppSource(ctx, job, appDir)
+	if err != nil {
+		return "", err
 	}
 
 	reqPath := filepath.Join(appDir, "requirements.txt")
@@ -306,54 +336,62 @@ func buildRelease(ctx context.Context, job deployJob, p appPaths, release string
 	if errors.Is(err, os.ErrNotExist) {
 		// No requirements.txt is the normal case for an app that only uses
 		// what the platform provides.
-		return buildVenv(ctx, p, release, nil, settings)
+		return note, buildVenv(ctx, p, release, nil, settings)
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 	reqs, reqErrs := ParseRequirements(string(body))
 	if len(reqErrs) > 0 {
-		return &packagesDeniedError{message: formatRequirementErrors(platformLocale(), reqErrs, settings.BasePackages)}
+		return "", &packagesDeniedError{message: formatRequirementErrors(platformLocale(), reqErrs, settings.BasePackages)}
 	}
 	if denied := DeniedPackages(reqs, settings.AllowedPackages()); len(denied) > 0 {
-		return &packagesDeniedError{message: formatDeniedPackages(denied)}
+		return "", &packagesDeniedError{message: formatDeniedPackages(denied)}
 	}
-	return buildVenv(ctx, p, release, reqs, settings)
+	return note, buildVenv(ctx, p, release, reqs, settings)
 }
 
 // extractAppSource copies the department's files out of the central deploy
 // repo at this commit into the release tree.
-func extractAppSource(ctx context.Context, job deployJob, appDir string) error {
+func extractAppSource(ctx context.Context, job deployJob, appDir string) (note string, err error) {
 	centralOwner, centralName, err := centralDeployOwnerName()
 	if err != nil {
-		return err
+		return "", err
 	}
 	central, err := repo_model.GetRepositoryByOwnerAndName(ctx, centralOwner, centralName)
 	if err != nil {
-		return err
+		return "", err
 	}
 	gitRepo, err := git.OpenRepository(ctx, central)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer gitRepo.Close()
 
 	commit, err := gitRepo.GetCommit(ctx, job.SHA)
 	if err != nil {
-		return fmt.Errorf("the deployed commit %s could not be read: %w", job.SHA, err)
+		return "", fmt.Errorf("the deployed commit %s could not be read: %w", job.SHA, err)
 	}
 	tree, err := commit.SubTree(ctx, gitRepo, deployPathPrefix(job.Owner, job.Repo))
 	if err != nil {
-		return fmt.Errorf("no files were found for this app in the deploy repository: %w", err)
+		return "", fmt.Errorf("no files were found for this app in the deploy repository: %w", err)
 	}
 	entries, err := tree.ListEntriesRecursiveFast(ctx, gitRepo)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	var total int64
+	var links []string
 	for _, entry := range entries {
 		if entry.IsDir() || entry.IsSubModule() {
+			continue
+		}
+		if entry.IsLink() {
+			// Written out, a link would be a file holding its target's name,
+			// and the app would open that instead of what it meant. Left out,
+			// and said so in the build log, rather than silently changed.
+			links = append(links, entry.Name())
 			continue
 		}
 		dest, err := safeJoin(appDir, entry.Name())
@@ -361,32 +399,35 @@ func extractAppSource(ctx context.Context, job deployJob, appDir string) error {
 			// A tree entry is not user input in the usual sense, but it does
 			// reach here through data staff control, so the path is checked
 			// rather than trusted.
-			return err
+			return "", err
 		}
 		blob := entry.Blob(gitRepo)
 		total += blob.Size(ctx)
 		if total > maxSourceBytes {
-			return fmt.Errorf("the app's files exceed the %d MB limit", maxSourceBytes>>20)
+			return "", fmt.Errorf("the app's files exceed the %d MB limit", maxSourceBytes>>20)
 		}
 		// GetBlobBytes treats a non-positive limit as "read nothing".
 		content, err := blob.GetBlobBytes(ctx, blob.Size(ctx))
 		if err != nil {
-			return fmt.Errorf("read %s: %w", entry.Name(), err)
+			return "", fmt.Errorf("read %s: %w", entry.Name(), err)
 		}
 		if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-			return err
+			return "", err
 		}
 		// Never executable: the app is started by the platform, and a file
 		// the department can mark +x is a way to get something other than
 		// uvicorn running.
 		if err := os.WriteFile(dest, content, 0o600); err != nil {
-			return err
+			return "", err
 		}
 	}
 	if _, err := os.Stat(filepath.Join(appDir, "main.py")); err != nil {
-		return errors.New("main.py was not found — the app must have a main.py exposing `app` in its repository root")
+		return "", errors.New("main.py was not found — the app must have a main.py exposing `app` in its repository root")
 	}
-	return nil
+	if len(links) > 0 {
+		note = "symbolic links are not deployed; left out: " + strings.Join(links, ", ")
+	}
+	return note, nil
 }
 
 // safeJoin joins base and rel, refusing anything that escapes base.
@@ -416,7 +457,10 @@ func buildVenv(ctx context.Context, p appPaths, release string, reqs []Requireme
 	venv := filepath.Join(p.home, "venvs", key)
 	link := filepath.Join(release, ".venv")
 
-	if _, err := os.Stat(filepath.Join(venv, "bin", "python")); err != nil {
+	// The marker, not bin/python: python -m venv writes the interpreter
+	// before pip installs anything, and an install cut short by a kill left
+	// an environment every later deploy of the same requirements reused.
+	if _, err := os.Stat(filepath.Join(venv, venvCompleteMarker)); err != nil {
 		if err := os.RemoveAll(venv); err != nil {
 			return err
 		}
@@ -435,6 +479,19 @@ func buildVenv(ctx context.Context, p appPaths, release string, reqs []Requireme
 			// fail in a way that looks unrelated to this one.
 			_ = os.RemoveAll(venv)
 			return err
+		}
+		if err := os.WriteFile(filepath.Join(venv, venvCompleteMarker), nil, 0o600); err != nil {
+			return err
+		}
+	} else if extra, err := unapprovedInstalled(venv, settings, map[string]bool{}); err != nil {
+		return err
+	} else if len(extra) > 0 {
+		// A cached environment is checked against today's allowlist, not the
+		// one it was built under: a package an admin withdrew stayed
+		// importable in every release built from the cache.
+		return &packagesDeniedError{
+			message:  platformLocale().TrString("company.err.deps_unapproved", strings.Join(extra, ", ")),
+			packages: extra,
 		}
 	}
 
@@ -455,23 +512,15 @@ func buildVenv(ctx context.Context, p appPaths, release string, reqs []Requireme
 	// rebuilt, so the two drift and nothing on screen said which was which.
 	//
 	// Best-effort: a release that could not be described still deploys.
-	recordInstalledPackages(ctx, venv, release)
+	recordInstalledPackages(venv, release)
 	return nil
 }
 
 // recordInstalledPackages writes the venv's package list into the release.
-func recordInstalledPackages(ctx context.Context, venv, release string) {
-	out, err := runBuildCmd(ctx, filepath.Join(venv, "bin", "pip"), "list", "--format=json")
+func recordInstalledPackages(venv, release string) {
+	installed, err := distInfoPackages(venv)
 	if err != nil {
 		log.Warn("company: listing packages for %s: %v", release, err)
-		return
-	}
-	var installed []struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-	}
-	if err := json.Unmarshal([]byte(out), &installed); err != nil {
-		log.Warn("company: package list for %s was unreadable: %v", release, err)
 		return
 	}
 	names := make([]string, 0, len(installed))
@@ -503,7 +552,7 @@ func installIntoVenv(ctx context.Context, venv string, reqs []Requirement, setti
 			return audienceKeyError("company.err.base_install_failed", "company.err.base_install_failed.admin", err.Error())
 		}
 	}
-	baseline, err := installedPackages(ctx, venv)
+	baseline, err := installedPackages(venv)
 	if err != nil {
 		return err
 	}
@@ -525,7 +574,7 @@ func installIntoVenv(ctx context.Context, venv string, reqs []Requirement, setti
 	// to run — nothing executed, wheels only — and then the *result* is
 	// checked. Anything unapproved fails the deploy before it is ever
 	// imported.
-	extra, err := unapprovedInstalled(ctx, venv, settings, baseline)
+	extra, err := unapprovedInstalled(venv, settings, baseline)
 	if err != nil {
 		return err
 	}
@@ -558,16 +607,10 @@ func pipInstall(ctx context.Context, venv string, packages []string) error {
 }
 
 // installedPackages lists what is in the environment now, normalised.
-func installedPackages(ctx context.Context, venv string) (map[string]bool, error) {
-	out, err := runBuildCmd(ctx, filepath.Join(venv, "bin", "pip"), "list", "--format=json")
+func installedPackages(venv string) (map[string]bool, error) {
+	installed, err := distInfoPackages(venv)
 	if err != nil {
-		return nil, fmt.Errorf("listing installed packages failed: %w", err)
-	}
-	var installed []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal([]byte(out), &installed); err != nil {
-		return nil, fmt.Errorf("listing installed packages produced unreadable output: %w", err)
+		return nil, err
 	}
 	names := make(map[string]bool, len(installed))
 	for _, pkg := range installed {
@@ -576,19 +619,47 @@ func installedPackages(ctx context.Context, venv string) (map[string]bool, error
 	return names, nil
 }
 
+type installedPackage struct{ Name, Version string }
+
+// distInfoPackages reads what is installed from the metadata pip wrote,
+// without running anything. `pip list` ran the interpreter — and with it any
+// .pth file a freshly installed, not yet approved wheel had put in
+// site-packages — outside the sandbox, as Gitea.
+func distInfoPackages(venv string) ([]installedPackage, error) {
+	dirs, err := filepath.Glob(filepath.Join(venv, "lib", "python*", "site-packages", "*.dist-info"))
+	if err != nil {
+		return nil, err
+	}
+	var out []installedPackage
+	for _, dir := range dirs {
+		body, err := os.ReadFile(filepath.Join(dir, "METADATA"))
+		if err != nil {
+			continue // a directory pip is still writing, or has half removed
+		}
+		var pkg installedPackage
+		for line := range strings.SplitSeq(string(body), "\n") {
+			if pkg.Name == "" && strings.HasPrefix(line, "Name: ") {
+				pkg.Name = strings.TrimSpace(strings.TrimPrefix(line, "Name: "))
+			} else if pkg.Version == "" && strings.HasPrefix(line, "Version: ") {
+				pkg.Version = strings.TrimSpace(strings.TrimPrefix(line, "Version: "))
+			} else if line == "" {
+				break // the headers end at the first blank line
+			}
+		}
+		if pkg.Name != "" {
+			out = append(out, pkg)
+		}
+	}
+	return out, nil
+}
+
 // pipBaseline are the packages every venv has by construction.
 var pipBaseline = []string{"pip", "setuptools", "wheel", "pkg-resources"}
 
-func unapprovedInstalled(ctx context.Context, venv string, settings AppSettings, baseline map[string]bool) ([]string, error) {
-	out, err := runBuildCmd(ctx, filepath.Join(venv, "bin", "pip"), "list", "--format=json")
+func unapprovedInstalled(venv string, settings AppSettings, baseline map[string]bool) ([]string, error) {
+	installed, err := distInfoPackages(venv)
 	if err != nil {
 		return nil, fmt.Errorf("listing installed packages failed: %w", err)
-	}
-	var installed []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal([]byte(out), &installed); err != nil {
-		return nil, fmt.Errorf("listing installed packages produced unreadable output: %w", err)
 	}
 
 	allowed := map[string]bool{}
@@ -611,7 +682,7 @@ func unapprovedInstalled(ctx context.Context, venv string, settings AppSettings,
 
 // activateRelease swaps the app onto the new release and verifies it, rolling
 // back to the previous one if it does not come up.
-func activateRelease(owner, repo string, p appPaths, release, sha string, settings AppSettings) error {
+func activateRelease(owner, repo string, p appPaths, release, sha string, settings AppSettings, prior string) error {
 	s := supervisorFor(owner, repo)
 
 	previous, _ := os.Readlink(p.current)
@@ -622,8 +693,10 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 	})
 
 	// A stop pressed while this was building is a decision, not a race to
-	// lose: the new release is put in place but not started.
-	stayStopped := LoadAppState(owner, repo).Desired == AppStateStopped
+	// lose: the new release is put in place but not started. Nor is an
+	// admin's suspension lifted by a merge.
+	suspended := prior == AppStateSuspended
+	stayStopped := suspended || LoadAppState(owner, repo).Desired == AppStateStopped
 
 	// The same sentence in the app's state and in the deploy history, which
 	// otherwise got whatever error happened last — a socket refusing — for a
@@ -652,10 +725,14 @@ func activateRelease(owner, repo string, p appPaths, release, sha string, settin
 	deployedStopped := func() error {
 		return MutateAppState(owner, repo, func(st *AppState) bool {
 			st.Actual = AppStateStopped
+			if suspended {
+				st.Actual = AppStateSuspended // the reason and the admin's words are still there
+			} else {
+				st.Reason, st.Message, st.UserMessage = "", "", ""
+			}
 			st.HasRelease = true
 			st.SHA = sha
-			st.Reason, st.Message, st.UserMessage = "", "", ""
-			st.AppendHistory(AppHistoryEntry{Status: AppStateStopped, SHA: sha, Reason: "deployed while stopped"})
+			st.AppendHistory(AppHistoryEntry{Status: st.Actual, SHA: sha, Reason: "deployed while stopped"})
 			return true
 		})
 	}
@@ -879,6 +956,9 @@ func formatDeniedPackages(denied []Requirement) string {
 	names := make([]string, 0, len(denied))
 	for _, r := range denied {
 		names = append(names, r.Name)
+	}
+	if len(names) > 20 {
+		names = append(names[:20], fmt.Sprintf("and %d more", len(names)-20))
 	}
 	return "these packages are not approved yet: " + strings.Join(names, ", ")
 }

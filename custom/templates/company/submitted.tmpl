@@ -1,20 +1,22 @@
 {{template "base/head" .}}
 <div role="main" class="page-content">
 	<div class="ui container tw-max-w-2xl">
-		<h1 class="tw-mb-2">{{svg "octicon-check-circle" 22 "tw-mr-2"}}Submitted</h1>
-		<p class="tw-mb-4">Your deploy request for <strong>{{.Repo.Name}}</strong> was registered and is waiting for admin review.</p>
+		<h1 class="tw-mb-2">{{svg "octicon-check-circle" 22 "tw-mr-2"}}{{ctx.Locale.Tr "company.submitted.heading"}}</h1>
+		<p class="tw-mb-4">{{ctx.Locale.Tr "company.submitted.registered" .Repo.Name}}</p>
 
 		<div class="ui segment">
-			Status:
+			{{ctx.Locale.Tr "company.submitted.status"}}
 			{{if .Issue.IsClosed}}
-				<div class="ui basic label">Closed</div>
+				<div class="ui basic label">{{ctx.Locale.Tr "company.submitted.closed"}}</div>
 			{{else}}
-				<div class="ui basic label">Pending review</div>
+				<div class="ui basic label">{{ctx.Locale.Tr "company.submitted.pending"}}</div>
 			{{end}}
 		</div>
 
-		<div class="tw-mt-4">
-			<a href="{{.Repo.Link}}" class="muted">&larr; {{.Repo.Name}}</a>
+		<div class="tw-mt-4 tw-flex tw-gap-3 tw-flex-wrap">
+			<a href="{{.Repo.Link}}/_app" class="ui basic button">{{ctx.Locale.Tr "company.app.title"}}</a>
+			<a href="{{.Repo.Link}}/deploy" class="ui basic button">{{ctx.Locale.Tr "company.submitted.view_request"}}</a>
+			<a href="{{.Repo.Link}}" class="muted tw-self-center">&larr; {{.Repo.Name}}</a>
 		</div>
 	</div>
 </div>

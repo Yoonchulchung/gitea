@@ -69,6 +69,10 @@ func ApplyPermissionsOnMerge(ctx context.Context, doer *user_model.User, owner, 
 	}
 	log.Error("company: applying approved permissions for %s/%s after %d attempts: %v",
 		owner, repo, commitRetries, lastErr)
+	// The admin merged and believes the approval took; the build that follows
+	// will refuse the very packages they approved. The banner is the one
+	// place that can say the two are different.
+	SetAppsConfigError(fmt.Errorf("the permissions approved with deploy request #%d for %s/%s could not be written to apps.yml: %w", prID, owner, repo, lastErr))
 }
 
 // commitPermissionUpdate reads apps.yml, applies the approved items, and
@@ -205,11 +209,17 @@ func LoadAppsConfigFromRepo(ctx context.Context) {
 	}
 	central, err := repo_model.GetRepositoryByOwnerAndName(ctx, centralOwner, centralName)
 	if err != nil {
-		log.Warn("company: central deploy repo %s/%s not found; using built-in app defaults", centralOwner, centralName)
+		// Renamed, transferred or deleted in Gitea's own UI. Falling back to
+		// the built-in defaults would quietly reopen every app an admin had
+		// closed; the policy last read stays in force, and the admin page
+		// says why.
+		restoreLastGoodAppsConfig()
+		SetAppsConfigError(fmt.Errorf("the central deploy repository %s/%s was not found ([company] CENTRAL_DEPLOY_REPO); the policy last read is still in force", centralOwner, centralName))
 		return
 	}
 	cfg, _, err := readAppsConfigFile(ctx, central)
 	if err != nil {
+		restoreLastGoodAppsConfig()
 		SetAppsConfigError(err)
 		return
 	}

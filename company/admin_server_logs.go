@@ -25,6 +25,7 @@ func AdminServerLogs(ctx *context.Context) {
 		Regexp:   ctx.FormBool("regexp"),
 		File:     ctx.FormString("file"),
 		MinLevel: ctx.FormString("level"),
+		Requests: ctx.FormBool("requests"),
 	}
 	// An unknown level means no level filter rather than an empty page: a
 	// hand-edited query string should not look like an instance with no logs.
@@ -39,6 +40,7 @@ func AdminServerLogs(ctx *context.Context) {
 	ctx.Data["Truncated"] = truncated
 	ctx.Data["Query"] = query.Text
 	ctx.Data["UseRegexp"] = query.Regexp
+	ctx.Data["ShowRequests"] = query.Requests
 	ctx.Data["Files"] = ServerLogFiles()
 	ctx.Data["File"] = query.File
 	ctx.Data["Levels"] = serverLogLevels

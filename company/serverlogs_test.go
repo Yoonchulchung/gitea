@@ -86,6 +86,29 @@ func TestReadServerLogs(t *testing.T) {
 	assert.Error(t, err, "a bad regexp is reported, not ignored")
 }
 
+// The page polls for notifications every few seconds, and the router's line
+// for each poll was three quarters of the log.
+func TestReadServerLogsLeavesOutRoutineRequests(t *testing.T) {
+	dir := serverLogDir(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "gitea.log"), []byte(
+		"2026/09/19 00:17:13 HTTPRequest [I] router: completed GET /notifications/new for [::1]:56807, 200 OK in 4.4ms @ user/notification.go:434(user.NewAvailable)\n"+
+			"2026/09/19 00:17:14 HTTPRequest [I] router: completed POST /upload for [::1]:56808, 500 Internal Server Error in 9ms @ repo/upload.go:1(repo.Upload)\n"+
+			"2026/09/19 00:17:15 mailer [E] send failed\n"), 0o600))
+
+	lines, _, err := ReadServerLogs(ServerLogQuery{})
+	require.NoError(t, err)
+	require.Len(t, lines, 2, "the server error stays; the routine request goes")
+	assert.Contains(t, lines[0].Text, "500 Internal Server Error")
+
+	lines, _, err = ReadServerLogs(ServerLogQuery{Requests: true})
+	require.NoError(t, err)
+	assert.Len(t, lines, 3)
+
+	lines, _, err = ReadServerLogs(ServerLogQuery{Text: "notifications"})
+	require.NoError(t, err)
+	assert.Len(t, lines, 1, "a search still finds them")
+}
+
 // A file name arrives from a query string, so it must never become a path.
 func TestReadServerLogsRejectsPathEscape(t *testing.T) {
 	dir := serverLogDir(t)

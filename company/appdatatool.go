@@ -43,7 +43,7 @@ func ListSnapshots(dataDir string) []Snapshot {
 	}
 	var out []Snapshot
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".db") {
+		if !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".db") {
 			continue
 		}
 		info, err := entry.Info()
@@ -153,8 +153,8 @@ func runDataTool(ctx context.Context, owner, repo string, payload map[string]any
 	if err != nil {
 		return nil, err
 	}
-	payloadFile := filepath.Join(p.run, "datatool.json")
-	if err := os.WriteFile(payloadFile, body, 0o600); err != nil {
+	payloadFile, err := writeRunnerPayload(p, "datatool.json", body)
+	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = os.Remove(payloadFile) }()
@@ -168,7 +168,7 @@ func runDataTool(ctx context.Context, owner, repo string, payload map[string]any
 		return nil, err
 	}
 	cmd, err := buildSandboxCommand(release, p, settings, dataDir, snapshotDir,
-		[]string{"python3", "-", filepath.Join(appRunForProcess(p), "datatool.json")})
+		[]string{"python3", "-", filepath.Join(appCtlForProcess(p), "datatool.json")})
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +226,10 @@ func RestoreSnapshot(ctx context.Context, owner, repo, name, actor string) error
 		return err
 	}
 	db := filepath.Join(dataDir, appDataDBName)
-	tmp := db + ".restoring"
+	// Staged in the snapshot tree, which the app cannot reach, and renamed in:
+	// a temporary name inside the data directory could be planted as a
+	// symlink, and the copy would land wherever it pointed.
+	tmp := filepath.Join(appSnapshotDirForApp(dataDir), ".restoring")
 	// The copy comes first, before anything else touches the directory. Taking
 	// the before-restore snapshot first would run pruneSnapshots, and if the
 	// admin picked the oldest snapshot — which is exactly why ten are kept —
@@ -259,7 +262,7 @@ func RestoreSnapshot(ctx context.Context, owner, repo, name, actor string) error
 	}
 	log.Info("company: %s/%s: data restored from %s by %s", owner, repo, name, actor)
 	return MutateAppState(owner, repo, func(st *AppState) bool {
-		st.AppendHistory(AppHistoryEntry{Status: st.Actual, Actor: actor, Reason: "data restored from " + name})
+		st.AppendHistory(AppHistoryEntry{Status: st.Actual, Actor: actor, Reason: ReasonRestored})
 		return true
 	})
 }
@@ -401,8 +404,11 @@ func WriteExportBundle(ctx context.Context, owner, repo string, w io.Writer) err
 	if err != nil {
 		return err
 	}
-	p := appPathsFor(owner, repo)
-	outDir := filepath.Join(p.run, "export")
+	// In the snapshot tree, which the helper may write and the app cannot
+	// reach: written into the run directory, the app could replace what the
+	// helper produced with symlinks to the server's own files, and the walk
+	// below would zip those up for the administrator to download.
+	outDir := filepath.Join(appSnapshotDirForApp(dataDir), ".export")
 	_ = os.RemoveAll(outDir)
 	if err := os.MkdirAll(outDir, 0o700); err != nil {
 		return err
@@ -415,7 +421,7 @@ func WriteExportBundle(ctx context.Context, owner, repo string, w io.Writer) err
 	// earlier — a bundle that contradicts its own manifest.
 	result, err := runDataTool(ctx, owner, repo, map[string]any{
 		"mode": "export",
-		"out":  filepath.Join(appRunForProcess(p), "export"),
+		"out":  sandboxSnapshotPath + "/.export",
 		"db":   sandboxSnapshotPath + "/" + snapshot,
 	})
 	if err != nil {
@@ -448,7 +454,7 @@ func WriteExportBundle(ctx context.Context, owner, repo string, w io.Writer) err
 	})
 	// The migrations as they were applied, so the schema's history travels
 	// with the rows rather than only its end state.
-	if release, err := os.Readlink(p.current); err == nil {
+	if release, err := os.Readlink(appPathsFor(owner, repo).current); err == nil {
 		if files, err := loadMigrations(filepath.Join(release, "app")); err == nil {
 			for _, m := range files {
 				name := fmt.Sprintf("migrations/%03d_%s.sql", m.Version, m.Name)
@@ -476,6 +482,11 @@ func WriteExportBundle(ctx context.Context, owner, repo string, w io.Writer) err
 }
 
 func addFileToZip(zw *zip.Writer, name, path string) error {
+	// Never through a symlink: the bundle leaves the server, and a link to
+	// app.ini would leave with it.
+	if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", name)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -676,7 +687,9 @@ def run(out):
                 writer = csv.writer(fh)
                 writer.writerow([d[0] for d in rows.description])
                 for row in rows:
-                    writer.writerow(row)
+                    # A cell starting with = + - @ is a formula to a spreadsheet,
+                    # and these files are opened in one by an administrator.
+                    writer.writerow([("'" + v) if isinstance(v, str) and v[:1] in "=+-@\t\r" else v for v in row])
                     counts[name] += 1
         out["rows"] = counts
         out["files"] = files

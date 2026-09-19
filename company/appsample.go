@@ -4,6 +4,7 @@
 package company
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -125,6 +126,7 @@ func sampleApp(owner, repo string) {
 
 	checkMemoryLimit(owner, repo, usage.rssBytes, settings)
 	checkDataLimit(owner, repo, settings)
+	checkTmpLimit(owner, repo, settings)
 	checkListeners(owner, repo, pid)
 }
 
@@ -154,6 +156,12 @@ func checkMemoryLimit(owner, repo string, rssBytes int64, settings AppSettings) 
 		return
 	}
 	memBreaches[key]++
+	if rssBytes > 2*limit {
+		// Twice the headroomed limit is not a spike to wait out: shared
+		// mappings are outside RLIMIT_DATA, and fifteen seconds of them on a
+		// shared box is gigabytes.
+		memBreaches[key] = memoryBreachesBeforeStop
+	}
 	breaches := memBreaches[key]
 	if breaches < memoryBreachesBeforeStop {
 		sampleStateMu.Unlock()
@@ -186,6 +194,57 @@ func checkMemoryLimit(owner, repo string, rssBytes int64, settings AppSettings) 
 		// Desired stays "running": the department did not switch this off, the
 		// platform did, and they should be able to start it again after
 		// fixing the cause or getting the limit raised.
+		st.Desired = AppStateRunning
+		return true
+	})
+}
+
+// tmpChecked is when each app's run directory was last measured; it is walked
+// at most every tmpSampleInterval.
+var (
+	tmpUsageMu sync.Mutex
+	tmpChecked = map[string]time.Time{}
+)
+
+const tmpSampleInterval = time.Minute
+
+// checkTmpLimit stops an app that has filled its temporary space.
+//
+// Under bubblewrap /tmp is a tmpfs of limits.tmpMB and the kernel refuses
+// the write; everywhere else HOME and TMPDIR are the run directory on the
+// volume that holds gitea.db, and nothing refused anything. The space is
+// cleared when the app next starts, so the department's own start button is
+// the remedy.
+func checkTmpLimit(owner, repo string, settings AppSettings) {
+	if settings.Limits.TmpMB <= 0 {
+		return
+	}
+	key := appKey(owner, repo)
+	tmpUsageMu.Lock()
+	last := tmpChecked[key]
+	if time.Since(last) < tmpSampleInterval {
+		tmpUsageMu.Unlock()
+		return
+	}
+	tmpChecked[key] = time.Now()
+	tmpUsageMu.Unlock()
+
+	used := appDataBytes(appPathsFor(owner, repo).run)
+	if used <= int64(settings.Limits.TmpMB)<<20 {
+		return
+	}
+	log.Warn("company: %s/%s has %d MB in its temporary space (limit %d MB); stopping it",
+		owner, repo, used>>20, settings.Limits.TmpMB)
+	if err := supervisorFor(owner, repo).Stop("platform", AppStateFailed, ReasonTmpFull); err != nil {
+		log.Error("company: stopping %s/%s after it filled its temporary space: %v", owner, repo, err)
+	}
+	_ = MutateAppState(owner, repo, func(st *AppState) bool {
+		st.FailedAt = time.Now().Unix()
+		st.Message = fmt.Sprintf("the app was stopped for holding %d MB of temporary files, over its %d MB limit; the space is cleared when it starts",
+			used>>20, settings.Limits.TmpMB)
+		st.UserMessage = ""
+		st.UserMessageKey = "company.sample.tmp_stopped"
+		st.UserMessageArg = settings.Limits.TmpMB
 		st.Desired = AppStateRunning
 		return true
 	})

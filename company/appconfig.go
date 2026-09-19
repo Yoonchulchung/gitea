@@ -5,11 +5,14 @@ package company
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"gitea.dev/modules/json"
 	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
 
 	"go.yaml.in/yaml/v4"
 )
@@ -351,10 +354,46 @@ var appsConfigCache = struct {
 // SetAppsConfig installs a freshly parsed configuration.
 func SetAppsConfig(cfg *AppsConfig) {
 	appsConfigCache.mu.Lock()
-	defer appsConfigCache.mu.Unlock()
 	appsConfigCache.cfg = cfg
 	appsConfigCache.loadedAt = time.Now()
 	appsConfigCache.err = nil
+	appsConfigCache.mu.Unlock()
+	// Kept on disk so a restart that cannot read the repository still
+	// applies the policy that was in force, not the built-in defaults.
+	if body, err := json.Marshal(cfg); err == nil {
+		if err := writeFileAtomic(lastGoodAppsConfigFile(), body); err != nil {
+			log.Warn("company: could not keep a copy of the policy: %v", err)
+		}
+	}
+}
+
+func lastGoodAppsConfigFile() string {
+	return filepath.Join(setting.AppDataPath, "company-apps-policy.json")
+}
+
+// restoreLastGoodAppsConfig puts the last policy this instance applied into
+// force, when nothing has been loaded yet this run.
+func restoreLastGoodAppsConfig() {
+	appsConfigCache.mu.RLock()
+	loaded := !appsConfigCache.loadedAt.IsZero()
+	appsConfigCache.mu.RUnlock()
+	if loaded {
+		return
+	}
+	body, err := readFileIfExists(lastGoodAppsConfigFile())
+	if err != nil || body == nil {
+		return
+	}
+	var cfg AppsConfig
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		log.Warn("company: the kept copy of the policy is unreadable: %v", err)
+		return
+	}
+	appsConfigCache.mu.Lock()
+	appsConfigCache.cfg = &cfg
+	appsConfigCache.loadedAt = time.Now()
+	appsConfigCache.mu.Unlock()
+	log.Warn("company: apps.yml could not be read; the policy last applied is in force")
 }
 
 // SetAppsConfigError records a load failure without disturbing the config

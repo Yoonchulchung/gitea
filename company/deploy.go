@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -229,9 +230,17 @@ func renderDeployForm(ctx *context.Context) {
 	}
 	ctx.Data["DownloadAllowed"] = deploySettings.Download.Policy == "allow"
 	ctx.Data["OutboundAllowed"] = allowedOutboundHosts(ctx, deploySettings)
-	ctx.Data["PermissionRequests"] = DetectPermissionRequests(
+	detected := DetectPermissionRequests(
 		ctx.Repo.Repository.OwnerName, ctx.Repo.Repository.Name,
 		readRepoFile(ctx, ctx.Repo.Repository, "requirements.txt"), ctx.FormString("access"))
+	ctx.Data["PermissionRequests"] = detected
+	// Limits sit beside what is in use now, or asking for more is a guess.
+	ctx.Data["Limits"] = limitsOnOfferFor(ctx, ctx.Repo.Repository.OwnerName, ctx.Repo.Repository.Name)
+	// Already proposed above, with its evidence; a second field for the same
+	// thing would be two answers to one question.
+	ctx.Data["MemoryProposed"] = slices.ContainsFunc(detected, func(r PermissionRequest) bool { return r.Kind == PermKindMemory })
+	ctx.Data["SubmittedMemoryMB"] = ctx.FormString("perm_want_memory_mb")
+	ctx.Data["SubmittedDataMB"] = ctx.FormString("perm_want_data_mb")
 	// Both computed here rather than with a chain of {{eq .Status "..."}} in
 	// the template — deploy.tmpl uses DeployStatusIcon for both the header
 	// badge and the bigger status box's icon bubble, and the resubmit
@@ -661,7 +670,12 @@ func DeployPost(ctx *context.Context) {
 
 	title := strings.TrimSpace(ctx.Req.FormValue("title"))
 	if title == "" {
-		ctx.HTTPError(http.StatusBadRequest, "title required")
+		// Back to the form with what was typed, not a bare "400 title
+		// required" page: a title of spaces passes the browser's own check.
+		ctx.Flash.Error(ctx.Locale.TrString("company.deploy.title_required"), true)
+		ctx.Data["SubmittedMessage"] = strings.TrimSpace(ctx.Req.FormValue("message"))
+		ctx.Data["SubmittedReason"] = ctx.FormString("perm_reason")
+		renderDeployForm(ctx)
 		return
 	}
 	body := strings.TrimSpace(ctx.Req.FormValue("message")) // optional — see the form field's own label/placeholder for why it's still called "message"
@@ -699,6 +713,15 @@ func DeployPost(ctx *context.Context) {
 		return
 	}
 
+	if problem := limitRequestProblem(ctx, deptRepo); problem != "" {
+		ctx.Data["LimitRequestError"] = problem
+		ctx.Data["SubmittedTitle"] = title
+		ctx.Data["SubmittedMessage"] = body
+		ctx.Data["SubmittedReason"] = ctx.FormString("perm_reason")
+		renderDeployForm(ctx)
+		return
+	}
+
 	// Collected before the commit, not after it: the items go into the request
 	// log that gives this PR its diff, and an admin has to be able to read
 	// what is being asked in the change they are reviewing.
@@ -714,7 +737,11 @@ func DeployPost(ctx *context.Context) {
 	// change at all behind it: a build that stopped on an unapproved
 	// dependency needs approval, not code.
 	if len(files) == 0 && len(requests) == 0 {
-		ctx.HTTPError(http.StatusBadRequest, "nothing to deploy: the repository is empty and nothing is currently deployed")
+		ctx.Flash.Error(ctx.Locale.TrString("company.deploy.nothing_to_deploy"), true)
+		ctx.Data["SubmittedTitle"] = title
+		ctx.Data["SubmittedMessage"] = body
+		ctx.Data["SubmittedReason"] = ctx.FormString("perm_reason")
+		renderDeployForm(ctx)
 		return
 	}
 

@@ -130,7 +130,7 @@
 							<input type="checkbox" name="perm_{{.Kind}}_{{.Value}}" value="1" checked>
 							<span>
 								<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{if .DetailKey}}{{ctx.Locale.Tr .DetailKey}}{{else}}{{.Detail}}{{end}}
-								{{if .Evidence}}<span class="text-grey tw-text-12 tw-block">{{if ctx.Locale.HasKey .Evidence}}{{ctx.Locale.Tr .Evidence .EvidenceArg}}{{else}}{{.Evidence}}{{end}}</span>{{end}}
+								{{if .Evidence}}<span class="text-grey tw-text-12 tw-block">{{if not (ctx.Locale.HasKey .Evidence)}}{{.Evidence}}{{else if .EvidenceArg}}{{ctx.Locale.Tr .Evidence .EvidenceArg}}{{else}}{{ctx.Locale.Tr .Evidence}}{{end}}</span>{{end}}
 							</span>
 						</label>
 					{{end}}
@@ -151,6 +151,27 @@
 							</span>
 						</span>
 					</label>
+				{{end}}
+				{{with .LimitRequestError}}<div class="ui negative message tw-mt-2">{{.}}</div>{{end}}
+				{{if not .MemoryProposed}}
+					<div class="field tw-mt-2">
+						<label>{{ctx.Locale.Tr "company.deploy.want_memory"}}</label>
+						<div class="tw-flex tw-items-center tw-gap-2">
+							<input type="number" name="perm_want_memory_mb" min="1" step="1" value="{{.SubmittedMemoryMB}}" autocomplete="off"> MB
+						</div>
+						<span class="text-grey tw-text-12">
+							{{if .Limits.MemoryPeakMB}}{{ctx.Locale.Tr "company.deploy.memory_now_peak" .Limits.MemoryMB .Limits.MemoryPeakMB}}{{else}}{{ctx.Locale.Tr "company.deploy.memory_now" .Limits.MemoryMB}}{{end}}
+						</span>
+					</div>
+				{{end}}
+				{{if .Limits.DataQuotaMB}}
+					<div class="field tw-mt-2">
+						<label>{{ctx.Locale.Tr "company.deploy.want_data"}}</label>
+						<div class="tw-flex tw-items-center tw-gap-2">
+							<input type="number" name="perm_want_data_mb" min="1" step="1" value="{{.SubmittedDataMB}}" autocomplete="off"> MB
+						</div>
+						<span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.deploy.data_now" .Limits.DataQuotaMB (FormatByteSize .Limits.Data.Bytes) .Limits.Data.Percent}}</span>
+					</div>
 				{{end}}
 				<div class="field tw-mt-2">
 					<label>{{ctx.Locale.Tr "company.deploy.want_outbound"}} <span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.deploy.want_outbound_note"}}</span></label>

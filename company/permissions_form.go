@@ -4,8 +4,11 @@
 package company
 
 import (
+	"fmt"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	repo_model "gitea.dev/models/repo"
 	"gitea.dev/modules/git"
@@ -78,11 +81,44 @@ func collectPermissionRequests(ctx *context.Context, repo *repo_model.Repository
 // Nothing in an app says "this needs to reach erp.internal" or "this needs to
 // hand people a file" — those are intentions, and until they are asked for
 // there is nowhere to say them. A department that needs one had no route to a
-// request at all.
+// request at all. The same went for more memory before the limit had been hit
+// — a department that knows a bigger month-end report is coming had to wait
+// for it to fail first — and for storage, which only an admin could raise.
 func requestedByHand(ctx *context.Context, repo *repo_model.Repository) []PermissionRequest {
 	settings := SettingsFor(repo.OwnerName, repo.Name)
 	reason := ctx.FormString("perm_reason")
 	var out []PermissionRequest
+
+	// Invalid values were refused before this runs (limitRequestProblem).
+	offer := limitsOnOfferFor(ctx, repo.OwnerName, repo.Name)
+	if mb, _ := limitRequested(ctx, "perm_want_memory_mb", offer.MemoryMB, maxMemoryRequestMB); mb > 0 {
+		item := PermissionRequest{
+			Kind:   PermKindMemory,
+			Value:  strconv.Itoa(mb),
+			Label:  "company.perm.kind.memory",
+			Detail: fmt.Sprintf("%dMB → %dMB", offer.MemoryMB, mb),
+			Reason: reason,
+		}
+		// What was measured, or that nothing was, so the admin is never
+		// approving on assertion alone.
+		if offer.MemoryPeakMB > 0 {
+			item.Evidence, item.EvidenceArg = "company.evidence.memory_peak", offer.MemoryPeakMB
+		} else {
+			item.Evidence = "company.evidence.not_measured"
+		}
+		out = append(out, item)
+	}
+	if mb, _ := limitRequested(ctx, "perm_want_data_mb", offer.DataQuotaMB, maxDataQuotaMB); mb > 0 && offer.DataQuotaMB > 0 {
+		out = append(out, PermissionRequest{
+			Kind:        PermKindData,
+			Value:       strconv.Itoa(mb),
+			Label:       "company.perm.kind.data",
+			Detail:      fmt.Sprintf("%dMB → %dMB", offer.DataQuotaMB, mb),
+			Evidence:    "company.evidence.data_usage",
+			EvidenceArg: fmt.Sprintf("%dMB (%d%%)", offer.Data.Bytes>>20, offer.Data.Percent),
+			Reason:      reason,
+		})
+	}
 
 	if ctx.FormString("perm_want_download") != "" && settings.Download.Policy != "allow" {
 		out = append(out, PermissionRequest{
@@ -118,6 +154,80 @@ func requestedByHand(ctx *context.Context, repo *repo_model.Repository) []Permis
 		})
 	}
 	return out
+}
+
+// maxMemoryRequestMB bounds what the form accepts. Not a policy — the admin
+// decides — but a slipped digit should not be what lands in front of them.
+const maxMemoryRequestMB = 16 << 10
+
+// limitsOnOffer is what the request form can offer to raise, and where it
+// stands now.
+type limitsOnOffer struct {
+	MemoryMB     int
+	MemoryPeakMB int // over the last week; 0 when nothing measured it
+	DataQuotaMB  int // 0 when there is no quota to raise: data is off, or unlimited
+	Data         AppDataUsage
+}
+
+func limitsOnOfferFor(ctx *context.Context, owner, repo string) limitsOnOffer {
+	offer := limitsOnOffer{MemoryMB: SettingsFor(owner, repo).Limits.MemoryMB}
+	// The peak, not the average: the limit is what the worst moment runs into.
+	if s := SummarizeMetrics(LoadMetrics(owner, repo, time.Now().Add(-7*24*time.Hour))); s.ResourcesMeasured {
+		offer.MemoryPeakMB = s.MemMaxMB
+	}
+	if usage, ok := AppDataUsageFor(ctx, owner, repo); ok && usage.QuotaBytes > 0 {
+		offer.Data, offer.DataQuotaMB = usage, int(usage.QuotaBytes>>20)
+	}
+	return offer
+}
+
+// limitRequested reads one of the form's limit fields: the size asked for in
+// MB, 0 when it was left empty, or what is wrong with it, said for the person
+// who typed it.
+func limitRequested(ctx *context.Context, field string, current, maxMB int) (int, string) {
+	mb, problem := parseLimitRequest(ctx.FormString(field), current, maxMB)
+	switch problem {
+	case "":
+		return mb, ""
+	case "company.deploy.limit_not_higher":
+		return 0, ctx.Locale.TrString(problem, mb, current)
+	case "company.deploy.limit_too_high":
+		return 0, ctx.Locale.TrString(problem, mb, maxMB)
+	}
+	return 0, ctx.Locale.TrString(problem)
+}
+
+// parseLimitRequest is limitRequested without the form: the size read, and
+// the locale key for what is wrong with it, if anything.
+func parseLimitRequest(raw string, current, maxMB int) (int, string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, ""
+	}
+	mb, err := strconv.Atoi(raw)
+	switch {
+	case err != nil || mb <= 0:
+		return 0, "company.deploy.limit_not_number"
+	case mb <= current:
+		// Lowering needs nobody's approval, and a request that changes nothing
+		// is one an admin would only have to decline.
+		return mb, "company.deploy.limit_not_higher"
+	case mb > maxMB:
+		return mb, "company.deploy.limit_too_high"
+	}
+	return mb, ""
+}
+
+// limitRequestProblem is the first thing wrong with the limit fields, or "".
+// Checked before anything is submitted: an increase quietly dropped because
+// of a typo would leave someone waiting for an approval nobody was asked for.
+func limitRequestProblem(ctx *context.Context, repo *repo_model.Repository) string {
+	offer := limitsOnOfferFor(ctx, repo.OwnerName, repo.Name)
+	if _, problem := limitRequested(ctx, "perm_want_memory_mb", offer.MemoryMB, maxMemoryRequestMB); problem != "" {
+		return problem
+	}
+	_, problem := limitRequested(ctx, "perm_want_data_mb", offer.DataQuotaMB, maxDataQuotaMB)
+	return problem
 }
 
 // outboundEvidence says whether the destination looks internal.

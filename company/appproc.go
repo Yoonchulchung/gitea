@@ -5,6 +5,7 @@ package company
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -96,6 +97,7 @@ type appPaths struct {
 	current  string // symlink — the atomic switch point
 	previous string // symlink — the rollback target
 	run      string // the only writable dir bind-mounted into the sandbox
+	ctl      string // the platform's inputs to its runners; read-only in the sandbox
 	socket   string
 	logs     string
 }
@@ -108,6 +110,7 @@ func appPathsFor(owner, repo string) appPaths {
 		current:  filepath.Join(home, "current"),
 		previous: filepath.Join(home, "previous"),
 		run:      filepath.Join(home, "run"),
+		ctl:      filepath.Join(home, "ctl"),
 		socket:   filepath.Join(home, "run", "app.sock"),
 		logs:     filepath.Join(home, "logs"),
 	}
@@ -309,6 +312,13 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	// is alive, and refusing is the only safe move — an operator can see that
 	// and kill it, which is recoverable, while two live copies writing to one
 	// app's files is not.
+	// Whatever is at the socket's path that is not a socket — a link the app
+	// planted, pointing at another app's — is removed before it is probed,
+	// or the probe would answer through the link and refuse to start forever.
+	if fi, err := os.Lstat(s.paths.socket); err == nil && fi.Mode()&os.ModeSocket == 0 {
+		log.Warn("company: %s/%s: %s is not a socket; removing it", s.owner, s.repo, s.paths.socket)
+		_ = os.RemoveAll(s.paths.socket)
+	}
 	if socketInUse(s.paths.socket) {
 		return audienceKeyError("company.err.already_running", "company.err.already_running.admin", s.paths.socket)
 	}
@@ -363,6 +373,21 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	// Through a writer rather than straight to the file, so every line is
 	// stamped with when it arrived (company/applogtime.go).
 	stamped := newTimestampWriter(logFile)
+	if fi, err := logFile.Stat(); err == nil {
+		stamped.size = fi.Size()
+	}
+	stamped.limit = appLogMaxBytes
+	stamped.reopen = func() (io.WriteCloser, int64, error) {
+		f, err := openAppLog(s.paths.logs) // rotates, since the file is over the cap
+		if err != nil {
+			return nil, 0, err
+		}
+		size := int64(0)
+		if fi, err := f.Stat(); err == nil {
+			size = fi.Size()
+		}
+		return f, size, nil
+	}
 	setAppProcessAttrs(cmd, stamped)
 
 	if err := cmd.Start(); err != nil {
@@ -764,7 +789,17 @@ func SuspendApp(owner, repo, actor, reason string) error {
 		// reason is the only thing that tells them what to do next.
 		reason = "stopped by an administrator"
 	}
-	return supervisorFor(owner, repo).Stop(actor, AppStateSuspended, reason)
+	if err := supervisorFor(owner, repo).Stop(actor, AppStateSuspended, ReasonSuspended); err != nil {
+		return err
+	}
+	// The admin's words are the only thing that tells the department what to
+	// do next. As the code they went into the reason field, matched nothing,
+	// and the department read "the app is not running, contact an
+	// administrator".
+	return MutateAppState(owner, repo, func(st *AppState) bool {
+		st.Message, st.UserMessage = reason, reason
+		return true
+	})
 }
 
 func ResumeApp(owner, repo, actor string) error {
@@ -885,11 +920,13 @@ const (
 // openRotatingLog opens one of them, rotating first if it has grown past the
 // size cap. Rotation is by rename so an open handle in another process keeps
 // writing to the rotated file rather than failing.
+// appLogMaxBytes is the size at which a log file is rotated.
+const appLogMaxBytes = 10 << 20
+
 func openRotatingLog(dir, name string) (*os.File, error) {
-	const maxBytes = 10 << 20
 	const keep = 5
 	file := filepath.Join(dir, name)
-	if fi, err := os.Stat(file); err == nil && fi.Size() > maxBytes {
+	if fi, err := os.Stat(file); err == nil && fi.Size() >= appLogMaxBytes {
 		for i := keep - 1; i >= 1; i-- {
 			_ = os.Rename(fmt.Sprintf("%s.%d", file, i), fmt.Sprintf("%s.%d", file, i+1))
 		}
@@ -925,6 +962,19 @@ func socketInUse(socket string) bool {
 	}
 	_ = conn.Close()
 	return true
+}
+
+// errSocketReplaced is what dialing an app finds when the file at its socket
+// path is not the socket it bound — a link the app put there, to somewhere
+// the platform would otherwise connect on its behalf.
+var errSocketReplaced = errors.New("the app's socket has been replaced with something that is not its socket")
+
+// dialAppSocket connects to an app's socket, and only to a socket.
+func dialAppSocket(ctx context.Context, socket string) (net.Conn, error) {
+	if fi, err := os.Lstat(socket); err != nil || fi.Mode()&os.ModeSocket == 0 {
+		return nil, errSocketReplaced
+	}
+	return (&net.Dialer{}).DialContext(ctx, "unix", socket)
 }
 
 // socketProbeTimeout is short on purpose: this is on the start path, and a

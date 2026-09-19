@@ -1,0 +1,11 @@
+{{template "base/head" .}}
+<div role="main" class="page-content">
+	<div class="ui container tw-max-w-2xl">
+		<h1 class="tw-mb-2">{{svg "octicon-alert" 22 "tw-mr-2"}}{{ctx.Locale.Tr .Heading}}</h1>
+		{{if .Detail}}<p class="tw-mb-4">{{ctx.Locale.Tr .Detail .DetailArg}}</p>{{end}}
+		{{if .AppPageLink}}
+			<a href="{{.AppPageLink}}" class="ui basic button">{{ctx.Locale.Tr "company.app.title"}}</a>
+		{{end}}
+	</div>
+</div>
+{{template "base/footer" .}}

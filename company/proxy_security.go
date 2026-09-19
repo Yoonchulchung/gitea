@@ -53,6 +53,18 @@ var defaultSecurityHeaders = map[string]string{
 // but it stops the scan that decides which exploit to try.
 var strippedResponseHeaders = []string{"Server", "X-Powered-By", "X-AspNet-Version"}
 
+// cspInForce reports whether the response will carry a
+// Content-Security-Policy once applySecurityHeaders has run: the admin's
+// value when apps.yml sets one (an empty one removes it), the app's otherwise.
+func cspInForce(settings AppSettings, resp *http.Response) bool {
+	for name, value := range settings.Security.Headers {
+		if strings.EqualFold(name, "Content-Security-Policy") {
+			return value != ""
+		}
+	}
+	return resp.Header.Get("Content-Security-Policy") != ""
+}
+
 // applySecurityHeaders sets the platform's headers on one response.
 func applySecurityHeaders(settings AppSettings, resp *http.Response) {
 	for _, name := range strippedResponseHeaders {

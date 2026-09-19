@@ -34,7 +34,7 @@
 				<button class="ui primary button">{{ctx.Locale.Tr "company.logs.search"}}</button>
 			</form>
 			{{if .SearchError}}
-				<div class="ui negative message tw-mt-2">{{ctx.Locale.Tr "company.logs.bad_regexp"}} {{.SearchError}}</div>
+				<div class="ui negative message tw-mt-2">{{ctx.Locale.Tr "company.logs.bad_regexp"}} {{ctx.Locale.Tr "company.logs.check_pattern"}}</div>
 			{{end}}
 			{{if .Truncated}}
 				<div class="ui warning message tw-mt-2">{{ctx.Locale.Tr "company.logs.truncated"}}</div>

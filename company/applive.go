@@ -55,7 +55,7 @@ var healthProbeLine = regexp.MustCompile(`"GET [^" ]*[?&]` + healthProbeQuery + 
 func healthClient(socket string) *http.Client {
 	return &http.Client{Transport: &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "unix", socket)
+			return dialAppSocket(ctx, socket)
 		},
 	}}
 }

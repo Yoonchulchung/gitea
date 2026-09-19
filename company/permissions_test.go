@@ -90,6 +90,7 @@ func TestApplyApprovedPermissions(t *testing.T) {
 		{Kind: PermKindPackage, Value: "pandas", Decision: "reject"},
 		{Kind: PermKindAccess, Value: AccessLogin, Decision: "approve"},
 		{Kind: PermKindMemory, Value: "1024", Decision: "approve"},
+		{Kind: PermKindData, Value: "4096", Decision: "approve"},
 		{Kind: PermKindDownload, Decision: "approve"},
 		{Kind: PermKindNetwork, Value: "erp.internal GET,POST", Decision: "approve"},
 	})
@@ -100,6 +101,7 @@ func TestApplyApprovedPermissions(t *testing.T) {
 	assert.Empty(t, updated.Dependencies.Allow)
 	assert.Equal(t, AccessLogin, updated.Access)
 	assert.Equal(t, 1024, updated.Limits.MemoryMB)
+	assert.Equal(t, 4096, updated.Limits.DataMB)
 	assert.Equal(t, "allow", updated.Download.Policy)
 	assert.Equal(t, NetworkBroker, updated.Network.Mode)
 	require.Len(t, updated.Network.Allow, 1)
@@ -131,12 +133,18 @@ func TestApplyApprovedPermissions(t *testing.T) {
 
 func TestPermissionRequestsRoundTrip(t *testing.T) {
 	withTempAppData(t)
-	requests := []PermissionRequest{{Kind: PermKindPackage, Value: "openpyxl", Reason: "엑셀 보고서"}}
+	requests := []PermissionRequest{
+		{Kind: PermKindPackage, Value: "openpyxl", Reason: "엑셀 보고서"},
+		{Kind: PermKindMemory, Value: "384", Evidence: "company.evidence.limit_hits", EvidenceArg: 4},
+	}
 	require.NoError(t, SavePermissionRequests("PO", "app", 42, requests))
 
 	got := LoadPermissionRequests("PO", "app", 42)
-	require.Len(t, got, 1)
+	require.Len(t, got, 2)
 	assert.Equal(t, "엑셀 보고서", got[0].Reason)
+	// JSON reads a number back as a float64, and the admin reviewing this saw
+	// "Reached the limit %!d(float64=4) times".
+	assert.Equal(t, 4, got[1].EvidenceArg)
 
 	// Keyed by PR so an abandoned request never shows up against a new one.
 	assert.Empty(t, LoadPermissionRequests("PO", "app", 43))
@@ -409,4 +417,25 @@ func TestApprovedOutboundKeepsItsMethods(t *testing.T) {
 		Kind: PermKindNetwork, Value: "erp.internal", Decision: "approve",
 	}})
 	assert.Equal(t, []string{"GET"}, bare.Network.Allow[0].Methods)
+}
+
+// An increase quietly dropped over a typo would leave someone waiting on an
+// approval nobody was asked for, so every way of getting it wrong is named.
+func TestParseLimitRequest(t *testing.T) {
+	cases := []struct {
+		raw, problem string
+		mb           int
+	}{
+		{"", "", 0},
+		{" 512 ", "", 512},
+		{"lots", "company.deploy.limit_not_number", 0},
+		{"-5", "company.deploy.limit_not_number", 0},
+		{"192", "company.deploy.limit_not_higher", 192},
+		{"99999", "company.deploy.limit_too_high", 99999},
+	}
+	for _, c := range cases {
+		mb, problem := parseLimitRequest(c.raw, 192, 16384)
+		assert.Equal(t, c.problem, problem, c.raw)
+		assert.Equal(t, c.mb, mb, c.raw)
+	}
 }

@@ -58,6 +58,11 @@ type PermissionRow struct {
 
 // AppSidebarData is everything the panel renders.
 type AppSidebarData struct {
+	// ShowState is whether the header and panel show the app's own state.
+	// Hidden only while the deploy badge beside the file list already says
+	// "running": that badge reports the latest deploy request, and after a
+	// rejected one it says "rejected" over a perfectly healthy app.
+	ShowState   bool
 	Deployed    bool
 	StatusLabel string
 	Status      string // the raw state, for styling
@@ -89,10 +94,6 @@ type AppSidebarData struct {
 	// offering: something has to have been deployed, and nothing may be in
 	// flight already.
 	CanRedeploy bool
-	// StartedAt is when the running process came up. "Running" alone does not
-	// say whether it has been up for a week or restarted a minute ago, which
-	// is the first thing anyone wants to know when something looks wrong.
-	StartedAt int64
 }
 
 // SetAppPermissionData attaches the sidebar panel's data to the repo home
@@ -144,7 +145,7 @@ func SetAppPermissionData(ctx *context.Context) {
 		Suspended:      st.Actual == AppStateSuspended,
 		CanStart:       st.HasRelease && st.Actual != AppStateRunning && st.Actual != AppStateSuspended,
 		CanRedeploy:    st.SHA != "" && !st.IsBusy(),
-		StartedAt:      st.StartedAt,
+		ShowState:      st.Actual != AppStateRunning || !deployBadgeSaysRunning(ctx, st),
 		Deployed:       true,
 		StatusLabel:    departmentStatusLabel(st),
 		Status:         st.Actual,
@@ -153,7 +154,7 @@ func SetAppPermissionData(ctx *context.Context) {
 		MemoryLimit:    settings.Limits.MemoryMB,
 		MemoryUsed:     CurrentMemoryMB(owner, name),
 		MemoryMeasured: memoryMeasured,
-		AppURL:         appProxyPrefix + "/" + owner + "/" + name,
+		AppURL:         appURL(owner, name),
 		AppLink:        ctx.Repo.RepoLink + "/_app",
 		DeployLink:     ctx.Repo.RepoLink + "/deploy",
 	}
@@ -245,10 +246,21 @@ func accessLabel(access string) string {
 // PendingRequest is one item a department has submitted and an admin has not
 // decided yet.
 type PendingRequest struct {
+	Kind    string
 	Label   string
 	Detail  string
 	Reason  string
 	Waiting bool // still open, as opposed to decided
+}
+
+// deployBadgeSaysRunning reports whether the deploy-request badge on the
+// repository home will read "running" for this app (company/deploystatus.go).
+func deployBadgeSaysRunning(ctx *context.Context, st *AppState) bool {
+	pr, err := latestDeployRequest(ctx, st.Owner, st.Repo)
+	if err != nil || pr == nil || !pr.HasMerged {
+		return false
+	}
+	return st.PRID == pr.ID && st.LastOutcomeOf(pr.MergedCommitID) != AppStateFailed
 }
 
 // pendingPermissionRequests reports what this app has asked for and not yet
@@ -274,7 +286,7 @@ func pendingPermissionRequests(ctx *context.Context, owner, repo string) []Pendi
 
 	out := make([]PendingRequest, 0, len(set.Requests))
 	for _, r := range set.Requests {
-		out = append(out, PendingRequest{Label: r.Label, Detail: r.Detail, Reason: r.Reason, Waiting: true})
+		out = append(out, PendingRequest{Kind: r.Kind, Label: r.Label, Detail: r.Detail, Reason: r.Reason, Waiting: true})
 	}
 	return out
 }

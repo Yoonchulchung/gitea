@@ -152,7 +152,7 @@ func AdminDeploys(ctx *context.Context) {
 	ctx.Data["ConfigError"] = configErr
 
 	ctx.Data["DataEnabled"] = AppDataEnabled()
-	ctx.Data["Title"] = "App deployments"
+	ctx.Data["Title"] = ctx.Locale.TrString("company.admin.nav_deploys")
 	ctx.Data["Rows"] = rows
 	ctx.Data["Attention"] = attention
 	ctx.Data["CountTotal"] = len(rows)
@@ -163,6 +163,11 @@ func AdminDeploys(ctx *context.Context) {
 	ctx.HTML(http.StatusOK, tplAdminDeploys)
 }
 
+// staleDeployAfter is how long a deploy may sit in one busy state before it
+// counts as stuck. A build with a large dependency set takes minutes; nothing
+// takes this long without something having gone wrong.
+const staleDeployAfter = 30 * time.Minute
+
 // needsAttention reports whether an app is in a state a human has to do
 // something about. Deliberately narrow: the "조치 필요" section is only
 // useful if it is empty most of the time — if it always has rows in it,
@@ -170,6 +175,12 @@ func AdminDeploys(ctx *context.Context) {
 func needsAttention(st *AppState) bool {
 	switch st.Actual {
 	case AppStateFailed, AppStateSuspended:
+		return true
+	}
+	// A deploy that has been "on its way" for this long has stopped: the
+	// record of its failure could not be written — a full disk, usually —
+	// and every button is refused while it stands.
+	if st.IsBusy() && time.Since(time.Unix(st.UpdatedAt, 0)) > staleDeployAfter {
 		return true
 	}
 	// Running is a process, not an answer: one that stopped answering is on

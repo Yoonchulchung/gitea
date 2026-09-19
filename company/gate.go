@@ -28,10 +28,15 @@ const tplNoDepartment templates.TplName = "company/no_department"
 // existing redirect_to mechanism so they land back on it after signing in
 // — see docs/company/routing.md.
 func RequireSignIn(ctx *context.Context) {
-	if ctx.Doer != nil {
+	if ctx.Doer == nil {
+		ctx.Redirect(setting.AppSubURL + "/user/login?redirect_to=" + url.QueryEscape(ctx.Req.URL.RequestURI()))
 		return
 	}
-	ctx.Redirect(setting.AppSubURL + "/user/login?redirect_to=" + url.QueryEscape(ctx.Req.URL.RequestURI()))
+	// The same cross-site check Gitea's own forms get: without it a page on
+	// any other site could submit these with the visitor's session.
+	if err := appCrossOrigin.Check(ctx.Req); err != nil {
+		ctx.HTTPError(http.StatusForbidden, "this request came from another site")
+	}
 }
 
 // uiWhitelist is the set of native-Gitea path prefixes a signed-in,

@@ -87,8 +87,8 @@ func TestEnqueueDeployRejectsWhenFull(t *testing.T) {
 	deployQueue = make(chan deployJob, 1)
 	t.Cleanup(func() { deployQueue = saved })
 
-	enqueueDeploy("PO", "first", "sha1", 1)
-	enqueueDeploy("PO", "second", "sha2", 2)
+	enqueueDeploy("PO", "first", "sha1", 1, AppStateStopped)
+	enqueueDeploy("PO", "second", "sha2", 2, AppStateStopped)
 
 	assert.Len(t, deployQueue, 1)
 	st := LoadAppState("PO", "second")
@@ -97,6 +97,11 @@ func TestEnqueueDeployRejectsWhenFull(t *testing.T) {
 	// already running keeps running and keeps its controls. This one had
 	// never deployed, so there is nothing to preserve.
 	assert.Equal(t, AppStateFailed, st.Actual)
+
+	// And one that was serving stays serving: what the app was doing travels
+	// with the job, since the state file already says "queued" by now.
+	enqueueDeploy("PO", "third", "sha3", 3, AppStateRunning)
+	assert.Equal(t, AppStateRunning, LoadAppState("PO", "third").Actual)
 
 	// The accepted job carries no failure: enqueueDeploy only records the
 	// rejection, leaving the queued state its caller already wrote.

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	organization "gitea.dev/models/organization"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
 	gitea_context "gitea.dev/services/context"
 )
 
@@ -41,6 +43,13 @@ import (
 // in (docs/company/app-platform.md).
 const appProxyPrefix = "/apps"
 
+// appURL is where an app is opened, with the trailing slash. Without it a
+// browser resolves the app's relative links — href="style.css" — against
+// /apps/{owner}/, outside the app, and the page arrives unstyled.
+func appURL(owner, repo string) string {
+	return appProxyPrefix + "/" + owner + "/" + repo + "/"
+}
+
 // proxyIdleTimeout et al. bound a single app's ability to tie up Gitea's
 // own connections.
 const (
@@ -58,7 +67,7 @@ var downloadAllowedTypes = []string{
 	"text/html", "text/plain", "text/css", "text/csv",
 	"application/json", "application/javascript", "text/javascript",
 	"image/", "font/", "application/font", "application/manifest+json",
-	"application/xml", "text/xml",
+	"application/xml", "text/xml", "text/event-stream",
 }
 
 // forwardedHeadersToStrip are headers a client must never be able to set on
@@ -80,17 +89,25 @@ func AppProxy(ctx *gitea_context.Context) {
 	// never turned into a socket path directly (appregistry.go).
 	ref, known := LookupApp(owner, repo)
 	if !known {
-		ctx.PlainText(http.StatusNotFound, "This app does not exist.")
+		appUnavailable(ctx, http.StatusNotFound, AppRef{Owner: owner, Repo: repo}, "company.appgate.not_found", "", nil)
 		return
 	}
 
 	settings := SettingsFor(ref.Owner, ref.Repo)
 	if !settings.IsEnabled() {
-		ctx.PlainText(http.StatusNotFound, "This app does not exist.")
+		RecordAccess(ctx, ref, http.StatusNotFound, "app disabled")
+		appUnavailable(ctx, http.StatusNotFound, ref, "company.appgate.not_found", "", nil)
 		return
 	}
 	if !checkAppAccess(ctx, ref, settings) {
 		return // checkAppAccess has written the response
+	}
+	// After the access check, so the redirect says nothing about a private
+	// app to someone who may not see it.
+	if location, ok := appRootRedirect(requestPath(ctx.Req), ctx.Req.URL.RawQuery); ok {
+		ctx.Resp.Header().Set("Location", location)
+		ctx.Resp.WriteHeader(http.StatusPermanentRedirect) // 308, so a POST stays a POST
+		return
 	}
 	// After the access check, so a refusal here is never a hint about
 	// whether a private app exists; before the running check, so a flood
@@ -110,7 +127,7 @@ func AppProxy(ctx *gitea_context.Context) {
 	if !IsAppRunning(ref.Owner, ref.Repo) {
 		// Deliberately plain and specific: whoever hits this needs to know it
 		// is the app that is down, not the platform.
-		ctx.PlainText(http.StatusServiceUnavailable, "This app is not running at the moment.")
+		appUnavailable(ctx, http.StatusServiceUnavailable, ref, "company.appgate.not_running", "company.appgate.not_running.detail", nil)
 		return
 	}
 
@@ -119,6 +136,22 @@ func AppProxy(ctx *gitea_context.Context) {
 	appProxyFor(ref).ServeHTTP(rec, ctx.Req)
 	RecordRequest(ref.Owner, ref.Repo, rec.status, time.Since(started), visitorKey(ctx))
 	RecordAccess(ctx, ref, rec.status, "")
+}
+
+const tplAppUnavailable templates.TplName = "company/app_unavailable"
+
+// appUnavailable is the page an app's visitor gets instead of the app: in
+// their language, with somewhere to go. It was a bare English sentence, and
+// the employee reading it had no way to tell whose problem it was.
+func appUnavailable(ctx *gitea_context.Context, status int, ref AppRef, heading, detail string, arg any) {
+	ctx.Data["Title"] = ctx.Locale.TrString(heading)
+	ctx.Data["Heading"] = heading
+	ctx.Data["Detail"] = detail
+	ctx.Data["DetailArg"] = arg
+	if ref.Owner != "" && ctx.IsSigned {
+		ctx.Data["AppPageLink"] = setting.AppSubURL + "/" + url.PathEscape(ref.Owner) + "/" + url.PathEscape(ref.Repo) + "/_app"
+	}
+	ctx.HTML(status, tplAppUnavailable)
 }
 
 // visitorKey identifies a distinct user for the "how many people used this"
@@ -141,38 +174,53 @@ func checkAppAccess(ctx *gitea_context.Context, ref AppRef, settings AppSettings
 	// The instance ceiling wins over what is written for the app: a mode
 	// committed before the ceiling was lowered must not stay in force just
 	// because it is still in the file (company/inbound_policy.go).
-	switch clampAccess(settings.Access) {
-	case AccessLogin:
+	switch mode := clampAccess(settings.Access); mode {
+	case AccessLogin, AccessOrg:
 		if !ctx.IsSigned {
+			RecordAccess(ctx, ref, http.StatusSeeOther, "sign-in required")
 			redirectToLogin(ctx)
 			return false
 		}
-		return true
-	case AccessOrg:
-		if !ctx.IsSigned {
-			redirectToLogin(ctx)
+		if mode == AccessOrg && !ctx.Doer.IsAdmin {
+			member, err := isOrgMember(ctx, ref.Owner, ctx.Doer.ID)
+			if err != nil {
+				// fail-closed: this is an access decision, and "the database was
+				// briefly unavailable" must not read as "let them in".
+				log.Error("company: app access check for %s/%s: %v", ref.Owner, ref.Repo, err)
+				RecordAccess(ctx, ref, http.StatusServiceUnavailable, "membership could not be checked")
+				appUnavailable(ctx, http.StatusServiceUnavailable, ref, "company.appgate.verify_failed", "", nil)
+				return false
+			}
+			if !member {
+				RecordAccess(ctx, ref, http.StatusForbidden, "not a member of "+ref.Owner)
+				appUnavailable(ctx, http.StatusForbidden, ref, "company.appgate.members_only", "company.appgate.members_only.detail", ref.Owner)
+				return false
+			}
+		}
+		// For an app behind sign-in the platform is the authentication, and
+		// a form on another site would arrive with the visitor's session and a
+		// valid X-Gitea-User. Gitea's own check, applied to unsafe methods.
+		if err := appCrossOrigin.Check(ctx.Req); err != nil {
+			RecordAccess(ctx, ref, http.StatusForbidden, "cross-site request")
+			appUnavailable(ctx, http.StatusForbidden, ref, "company.appgate.cross_site", "", nil)
 			return false
 		}
-		if ctx.Doer.IsAdmin {
-			return true
-		}
-		member, err := isOrgMember(ctx, ref.Owner, ctx.Doer.ID)
-		if err != nil {
-			// fail-closed: this is an access decision, and "the database was
-			// briefly unavailable" must not read as "let them in".
-			log.Error("company: app access check for %s/%s: %v", ref.Owner, ref.Repo, err)
-			ctx.PlainText(http.StatusServiceUnavailable, "Access could not be verified. Please try again.")
-			return false
-		}
-		if !member {
-			ctx.PlainText(http.StatusForbidden, "This app is restricted to members of "+ref.Owner+".")
-			return false
-		}
 		return true
-	default: // AccessPublic
+	case AccessPublic, "":
 		return true
+	default:
+		// A mode nothing recognises is a corrupted record, and the one thing
+		// it must not mean is "everyone".
+		log.Error("company: %s/%s has an unknown access mode %q; refusing", ref.Owner, ref.Repo, mode)
+		RecordAccess(ctx, ref, http.StatusForbidden, "unknown access mode")
+		appUnavailable(ctx, http.StatusForbidden, ref, "company.appgate.bad_access", "company.appgate.tell_admin", nil)
+		return false
 	}
 }
+
+// appCrossOrigin is the same Sec-Fetch-Site based check Gitea applies to
+// its own forms (routers/web/web.go).
+var appCrossOrigin = http.NewCrossOriginProtection()
 
 func redirectToLogin(ctx *gitea_context.Context) {
 	ctx.Redirect(setting.AppSubURL + "/user/login?redirect_to=" + url.QueryEscape(ctx.Req.URL.RequestURI()))
@@ -229,7 +277,7 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 				// The address is ignored: every connection goes to this app's
 				// own socket, whose path comes from the registry rather than
 				// from anything in the request.
-				return (&net.Dialer{}).DialContext(ctx, "unix", socket)
+				return dialAppSocket(ctx, socket)
 			},
 			ResponseHeaderTimeout: proxyResponseHeaderTimeout,
 			IdleConnTimeout:       proxyIdleConnTimeout,
@@ -244,12 +292,23 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 			// --root-path tells the app what prefix to *build* URLs with; it
 			// does not remove that prefix from what arrives. Forwarding the
 			// mounted path unchanged makes every app answer its own 404.
-			r.Out.URL.Path = appRelativePath(r.In.URL.Path)
+			r.Out.URL.Path = appRelativePath(requestPath(r.In))
 			r.Out.URL.RawPath = ""
 			// Strip first, then set: whatever the client sent is a claim, and
 			// the app must only ever see what we assert.
 			for _, h := range forwardedHeadersToStrip {
 				r.Out.Header.Del(h)
+			}
+			// Gitea's own cookies are Path=/ and so arrive here too. Forwarded,
+			// the visitor's session — an administrator's, often — was handed to
+			// the department's code to replay as them. The app gets only the
+			// cookies it set itself. Authorization goes for the same reason.
+			r.Out.Header.Del("Authorization")
+			r.Out.Header.Del("Cookie")
+			for _, c := range r.In.Cookies() {
+				if !isGiteaCookie(c.Name) {
+					r.Out.AddCookie(c)
+				}
 			}
 			// The app is told where it is mounted so it can build absolute
 			// URLs that survive the prefix.
@@ -269,7 +328,9 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 		ModifyResponse: func(resp *http.Response) error {
 			settings := SettingsFor(ref.Owner, ref.Repo)
 			rewriteMountedPaths(prefix, resp)
-			rewriteHTMLBody(prefix, resp)
+			// Not under a Content-Security-Policy: an inline script would need
+			// an exception written into a policy someone chose on purpose.
+			rewriteHTMLBody(prefix, resp, !cspInForce(settings, resp))
 			applySecurityHeaders(settings, resp)
 			return applyDownloadPolicy(ref, settings, resp)
 		},
@@ -293,6 +354,33 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 		return cached
 	}
 	return proxy
+}
+
+// appRootRedirect sends the bare app root to its slashed form, as a web
+// server treats a directory (see appURL). Relative, so it holds under a
+// sub-path.
+func appRootRedirect(reqPath, rawQuery string) (string, bool) {
+	if strings.HasSuffix(reqPath, "/") || appRelativePath(reqPath) != "/" {
+		return "", false
+	}
+	location := path.Base(reqPath) + "/"
+	if rawQuery != "" {
+		location += "?" + rawQuery
+	}
+	return location, true
+}
+
+// requestPath is the request's path with the trailing slash the client sent.
+// The router drops it before any handler runs (modules/web/router.go), but to
+// an app "/items" and "/items/" are different routes: Starlette answers one
+// with a redirect to the other, which then arrived without its slash again.
+func requestPath(r *http.Request) string {
+	p := r.URL.Path
+	sent, _, _ := strings.Cut(r.RequestURI, "?")
+	if strings.HasSuffix(sent, "/") && !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	return p
 }
 
 // appRelativePath drops the "/apps/{owner}/{repo}" mount prefix.
@@ -339,16 +427,30 @@ func applyDownloadPolicy(ref AppRef, settings AppSettings, resp *http.Response) 
 	if settings.Download.Policy == "allow" {
 		return nil
 	}
+	// A protocol switch has no body to police: from here on the connection
+	// is the app's and the browser's, a stream the size cap would only
+	// break. What crosses it is not covered by this policy.
+	if resp.StatusCode == http.StatusSwitchingProtocols {
+		return nil
+	}
 
 	if cd := resp.Header.Get("Content-Disposition"); strings.Contains(strings.ToLower(cd), "attachment") {
 		return fmt.Errorf("%w: Content-Disposition attachment", errDownloadBlocked)
 	}
-	if ct := resp.Header.Get("Content-Type"); ct != "" && !isAllowedContentType(ct) {
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" && hasBody(resp) {
+		// With nosniff set, a body with no type is what a browser saves to
+		// disk — the one response an app would craft to get a file out.
+		// Named text, it is shown instead.
+		ct = "text/plain; charset=utf-8"
+		resp.Header.Set("Content-Type", ct)
+	}
+	if ct != "" && !isAllowedContentType(ct) {
 		return fmt.Errorf("%w: content type %s", errDownloadBlocked, ct)
 	}
 	maxBytes := settings.Download.MaxResponseBytes
-	if maxBytes <= 0 {
-		return nil
+	if maxBytes <= 0 || strings.HasPrefix(strings.ToLower(ct), "text/event-stream") {
+		return nil // an event stream is meant to run for hours
 	}
 	if resp.ContentLength > maxBytes {
 		return fmt.Errorf("%w: %d bytes", errDownloadBlocked, resp.ContentLength)
@@ -359,6 +461,15 @@ func applyDownloadPolicy(ref AppRef, settings AppSettings, resp *http.Response) 
 	// just less tidily.
 	resp.Body = &cappedBody{ReadCloser: resp.Body, remaining: maxBytes, ref: ref}
 	return nil
+}
+
+// hasBody reports whether a response can carry one at all.
+func hasBody(resp *http.Response) bool {
+	if resp.ContentLength == 0 || resp.StatusCode/100 == 1 || resp.StatusCode == http.StatusNoContent ||
+		resp.StatusCode == http.StatusNotModified || (resp.Request != nil && resp.Request.Method == http.MethodHead) {
+		return false
+	}
+	return true
 }
 
 func isAllowedContentType(contentType string) bool {
@@ -464,7 +575,9 @@ func rewriteMountedPaths(prefix string, resp *http.Response) {
 	}
 	rewritten := make([]string, 0, len(cookies))
 	for _, cookie := range cookies {
-		rewritten = append(rewritten, prefixCookiePath(prefix, cookie))
+		if scoped, ok := scopeCookie(prefix, cookie); ok {
+			rewritten = append(rewritten, scoped)
+		}
 	}
 	resp.Header.Del("Set-Cookie")
 	for _, cookie := range rewritten {
@@ -472,20 +585,36 @@ func rewriteMountedPaths(prefix string, resp *http.Response) {
 	}
 }
 
-// prefixCookiePath rewrites a Set-Cookie's Path attribute, adding one when the
-// cookie has none — the default would be the directory of whichever request
-// happened to set it, which is narrower than the app and changes per page.
-func prefixCookiePath(prefix, cookie string) string {
-	parts := strings.Split(cookie, ";")
-	for i, part := range parts {
-		name, value, found := strings.Cut(strings.TrimSpace(part), "=")
-		if !found || !strings.EqualFold(name, "path") {
-			continue
-		}
-		parts[i] = " Path=" + prefixDocumentURL(prefix, value)
-		return strings.Join(parts, ";")
+// scopeCookie confines a Set-Cookie to the app. Parsed and rebuilt rather
+// than patched: patching the first Path= left a second one — the one a
+// browser obeys — untouched, and "Path=/decoy; Path=/" reached Gitea's own
+// cookie jar. A cookie with no Path gets the app's, not the directory of
+// whichever page set it. Domain is dropped, which would widen it to other
+// hosts; a cookie named like one of Gitea's own is dropped entirely, since
+// setting it is replacing the visitor's session.
+func scopeCookie(prefix, header string) (string, bool) {
+	c, err := http.ParseSetCookie(header)
+	if err != nil || isGiteaCookie(c.Name) {
+		return "", false
 	}
-	return cookie + "; Path=" + prefix + "/"
+	c.Path = prefixDocumentURL(prefix, c.Path)
+	if c.Path == "" {
+		c.Path = prefix + "/"
+	}
+	c.Domain = ""
+	return c.String(), true
+}
+
+// isGiteaCookie names the cookies that are Gitea's rather than an app's: the
+// ones an app must never receive, and must never be allowed to set.
+func isGiteaCookie(name string) bool {
+	switch name {
+	case setting.SessionConfig.CookieName, setting.CookieRememberName, // as configured
+		"i_like_gitea", "gitea_incredible", // and as shipped, whatever the configuration says
+		"lang", "_csrf", "redirect_to", "gitea_flash", "macaron_flash", "sudo":
+		return true
+	}
+	return name == "" // ParseSetCookie refuses these; the Cookie header parser does not
 }
 
 // internalAppHost is the placeholder the transport is handed. Every connection

@@ -17,7 +17,7 @@
 	<tbody>
 		{{range .Rows}}
 			<tr>
-				<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
+				<td title="{{DateUtils.FullTime .At}}">{{DateUtils.TimeSince .At}}</td>
 				{{/* HasKey before Tr on any non-constant key: Tr returns an unknown
 				     key verbatim as template.HTML, which turns "render this code as
 				     itself" into "render this code as markup". */}}

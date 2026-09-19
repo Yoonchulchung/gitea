@@ -136,10 +136,16 @@ var (
 // costs a department their data the next time somebody deploys last month's
 // commit to get out of trouble.
 func guardMigration(filename string, file migrationFile) error {
+	body := stripSQLComments(file.SQL)
+	// Whether declared destructive or not: the runner may write the snapshot
+	// directory, and ATTACH or VACUUM INTO would let a migration reach it —
+	// and overwrite the very copies it would be restored from.
+	if reachesOutPattern.MatchString(body) {
+		return userKeyError("company.err.migration_reaches_out", filename)
+	}
 	if file.Destructive {
 		return nil // declared, and an admin approves it with the deploy request
 	}
-	body := stripSQLComments(file.SQL)
 
 	switch {
 	case dropTablePattern.MatchString(body):
@@ -224,6 +230,8 @@ func stripSQLComments(sql string) string {
 // Anchored to the start of a line, because a marker found anywhere would let
 // `SELECT '-- platform: destructive'` switch the guard off from inside a
 // string literal — the same hole as above, in the other direction.
+var reachesOutPattern = regexp.MustCompile(`(?i)\b(ATTACH|DETACH|VACUUM)\b`)
+
 func declaresDestructive(sql string) bool {
 	for line := range strings.SplitSeq(sql, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), destructiveMarker) {
@@ -288,10 +296,8 @@ func runMigrations(ctx context.Context, owner, repo, release, dataDir string, se
 	if err != nil {
 		return nil, err
 	}
-	// Through the run directory, which is scratch by design, rather than
-	// through the data directory this is about to change.
-	payloadFile := filepath.Join(p.run, "migrate.json")
-	if err := os.WriteFile(payloadFile, payload, 0o600); err != nil {
+	payloadFile, err := writeRunnerPayload(p, "migrate.json", payload)
+	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = os.Remove(payloadFile) }()
@@ -304,7 +310,7 @@ func runMigrations(ctx context.Context, owner, repo, release, dataDir string, se
 		return nil, err
 	}
 	cmd, err := buildSandboxCommand(release, p, settings, dataDir, snapshotDir,
-		[]string{"python3", "-", filepath.Join(appRunForProcess(p), "migrate.json")})
+		[]string{"python3", "-", filepath.Join(appCtlForProcess(p), "migrate.json")})
 	if err != nil {
 		return nil, err
 	}
@@ -545,6 +551,10 @@ def run(out):
         os.replace(tmp, path)
         out["snapshot"] = path
 
+    # The SQL below is the department's. Denied at the engine, on top of the
+    # check at load time: a migration must not open another file.
+    ATTACH, DETACH = getattr(sqlite3, "SQLITE_ATTACH", 24), getattr(sqlite3, "SQLITE_DETACH", 25)
+    conn.set_authorizer(lambda action, *_: 1 if action in (ATTACH, DETACH) else 0)
     for m in pending:
         try:
             # No COMMIT in the script: executescript only commits what was

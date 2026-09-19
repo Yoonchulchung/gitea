@@ -42,9 +42,9 @@ func TestProxyDeliversTheAppsOwnPathAndKeepsRedirectsInside(t *testing.T) {
 	const owner, repo = "PO", "Test_FastAPI"
 	prefix := appProxyPrefix + "/" + owner + "/" + repo
 
-	var gotPath, gotHost string
+	var gotPath, gotHost, gotCookies string
 	serveStubApp(t, owner, repo, func(w http.ResponseWriter, r *http.Request) {
-		gotPath, gotHost = r.URL.Path, r.Host
+		gotPath, gotHost, gotCookies = r.URL.Path, r.Host, r.Header.Get("Cookie")
 		// What Starlette does for a trailing slash: an absolute redirect built
 		// from the Host header it was given.
 		w.Header().Set("Location", "http://"+r.Host+prefix+"/docs")
@@ -53,12 +53,15 @@ func TestProxyDeliversTheAppsOwnPathAndKeepsRedirectsInside(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "http://localhost:3000"+prefix+"/docs/", nil)
+	req.Header.Set("Cookie", "i_like_gitea=secret; appsession=mine")
+	req.Header.Set("Authorization", "token abc")
 	rec := httptest.NewRecorder()
 	appProxyFor(AppRef{Owner: owner, Repo: repo}).ServeHTTP(rec, req)
 
 	// The app is mounted at the prefix but serves as though it owned the root.
 	assert.Equal(t, "/docs/", gotPath, "the mount prefix must be stripped on the way in")
 	assert.Equal(t, "localhost:3000", gotHost, "the app must see the real host, not the internal placeholder")
+	assert.Equal(t, "appsession=mine", gotCookies, "the visitor's Gitea session never reaches the department's code")
 
 	// And the redirect it produced has to stay inside the app. Reduced to a
 	// path: it named this same instance, and a path holds whichever host, port

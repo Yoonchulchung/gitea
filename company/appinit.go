@@ -60,7 +60,7 @@ func InitAppPlatform(ctx context.Context) {
 	backfillReleaseSHAs(ctx)
 	// And what those releases have installed: an administrator comparing
 	// package policy against reality cannot do it against "unknown".
-	backfillInstalledPackages(ctx)
+	backfillInstalledPackages()
 
 	StartDeployWorkers()
 	StartMetricsFlusher()

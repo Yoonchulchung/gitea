@@ -135,7 +135,7 @@ func adminPurgeArchive(ctx *context.Context) error {
 		return userKeyError("company.err.archive_unknown")
 	}
 	meta, err := loadAppDataMeta(appDataDirFor(repoID))
-	if err != nil || meta.RepoID != repoID || meta.RemovedAt == 0 {
+	if err != nil || meta.RemovedAt == 0 {
 		return userKeyError("company.err.archive_unknown")
 	}
 	// The same guard the scheduled sweep applies, and for the same reason: a

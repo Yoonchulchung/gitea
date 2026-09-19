@@ -24,6 +24,9 @@
 				<label class="tw-flex tw-items-center tw-gap-1 tw-text-13 tw-pb-2">
 					<input type="checkbox" name="regexp" value="1" {{if .UseRegexp}}checked{{end}}> {{ctx.Locale.Tr "company.logs.regexp"}}
 				</label>
+				<label class="tw-flex tw-items-center tw-gap-1 tw-text-13 tw-pb-2">
+					<input type="checkbox" name="requests" value="1" {{if .ShowRequests}}checked{{end}}> {{ctx.Locale.Tr "company.serverlogs.show_requests"}}
+				</label>
 				<button class="ui primary button">{{ctx.Locale.Tr "company.logs.search"}}</button>
 			</form>
 			{{if .SearchError}}

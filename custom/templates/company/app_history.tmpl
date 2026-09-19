@@ -28,12 +28,12 @@
 				<tbody>
 					{{range .Attempts}}
 						<tr{{if .InProgress}} class="company-attempt-live"{{end}}>
-							<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
+							<td title="{{DateUtils.FullTime .At}}">{{DateUtils.TimeSince .At}}</td>
 							<td>
 								{{/* A deploy that has not finished has no build-log entry yet,
 								     so without this row the page implies nothing is happening. */}}
 								{{if .InProgress}}
-									<span class="company-app-state building">{{.State}}</span>
+									<span class="company-app-state building">{{ctx.Locale.Tr .State}}</span>
 								{{else if .Failed}}
 									<span class="company-app-state failed">{{ctx.Locale.Tr "company.history.failed"}}</span>
 								{{else}}

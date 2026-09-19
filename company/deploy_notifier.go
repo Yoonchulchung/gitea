@@ -111,28 +111,15 @@ func queueDeployOnMerge(ctx context.Context, doer *user_model.User, pr *issues_m
 	if doer != nil {
 		actor = doer.Name
 	}
-	if err := MutateAppState(owner, repo, func(st *AppState) bool {
-		st.Desired = AppStateRunning // an approved request is a request to be running
-		st.Actual = AppStateQueued
-		st.PRID = pr.ID
-		st.SHA = pr.MergedCommitID
-		st.Reason, st.Message = "", "" // a new attempt clears the previous failure
-		st.AppendHistory(AppHistoryEntry{
-			SHA:    pr.MergedCommitID,
-			Status: AppStateQueued,
-			Actor:  actor,
-		})
-		return true
-	}); err != nil {
-		log.Error("company: queueDeployOnMerge: %s/%s: %v", owner, repo, err)
-	}
+	// An approved request is a request to be running.
+	prior := markQueued(owner, repo, pr.MergedCommitID, pr.ID, true, AppHistoryEntry{Actor: actor})
 	// The permissions this request asked for take effect before the deploy
 	// that needs them is built — a package approved in the same merge has to
 	// be installable by the worker that picks the job up next.
 	if doer != nil {
 		ApplyPermissionsOnMerge(ctx, doer, owner, repo, pr.ID)
 	}
-	enqueueDeploy(owner, repo, pr.MergedCommitID, pr.ID)
+	enqueueDeploy(owner, repo, pr.MergedCommitID, pr.ID, prior)
 }
 
 // cleanupDeployBranch deletes pr.HeadBranch on the central deploy repo,

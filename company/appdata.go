@@ -71,24 +71,58 @@ type appDataMeta struct {
 	RemovedAt int64  `json:"removedAt,omitempty"` // soft delete; 0 means live
 }
 
+// appDataMetaPath is where a directory's record lives: beside the data
+// directories, never inside one. The data directory is the app's to write,
+// and a record kept there was the app's to forge — its repo ID was what the
+// retention sweep deleted by.
+func appDataMetaPath(dir string) string {
+	return filepath.Join(appDataRoot(), ".meta", filepath.Base(dir)+".json")
+}
+
+// appDataDirID is the repository ID a data directory is named after — the
+// one thing about it nothing inside it can change.
+func appDataDirID(dir string) int64 {
+	id, _ := strconv.ParseInt(filepath.Base(dir), 10, 64)
+	return id
+}
+
 func loadAppDataMeta(dir string) (appDataMeta, error) {
 	var meta appDataMeta
-	body, err := readFileIfExists(filepath.Join(dir, appDataMetaFile))
-	if err != nil || body == nil {
+	body, err := readFileIfExists(appDataMetaPath(dir))
+	if err != nil {
 		return meta, err
+	}
+	if body == nil {
+		// Written by an earlier version inside the directory. Read once and
+		// moved out; the ID comes from the directory, not from the file.
+		body, err = readFileIfExists(filepath.Join(dir, appDataMetaFile))
+		if err != nil || body == nil {
+			return meta, err
+		}
+		if err := json.Unmarshal(body, &meta); err != nil {
+			return appDataMeta{}, err
+		}
+		meta.RepoID = appDataDirID(dir)
+		if err := saveAppDataMeta(dir, meta); err != nil {
+			return appDataMeta{}, err
+		}
+		_ = os.Remove(filepath.Join(dir, appDataMetaFile))
+		return meta, nil
 	}
 	if err := json.Unmarshal(body, &meta); err != nil {
 		return appDataMeta{}, err
 	}
+	meta.RepoID = appDataDirID(dir)
 	return meta, nil
 }
 
 func saveAppDataMeta(dir string, meta appDataMeta) error {
+	meta.RepoID = appDataDirID(dir)
 	body, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(filepath.Join(dir, appDataMetaFile), body)
+	return writeFileAtomic(appDataMetaPath(dir), body)
 }
 
 // resolveAppDataRepoID maps an app to the ID its data is filed under.
@@ -344,7 +378,7 @@ func sweepAppData(now time.Time, retention time.Duration, exists func(int64) (bo
 				meta.Owner, meta.Repo)
 			continue
 		}
-		if err := PurgeAppData(meta.RepoID); err != nil {
+		if err := PurgeAppData(appDataDirID(dir)); err != nil {
 			log.Error("company: deleting expired data for %s/%s: %v", meta.Owner, meta.Repo, err)
 			continue
 		}
@@ -826,11 +860,26 @@ func appSnapshotDirForApp(dataDir string) string {
 	return filepath.Join(setting.AppDataPath, appSnapshotDirName, filepath.Base(dataDir))
 }
 
-// appRunForProcess is the run directory as the app sees it — the same
-// two-names-for-one-directory split as the data directory above.
-func appRunForProcess(p appPaths) string {
+// appCtlForProcess is the control directory as a runner sees it.
+func appCtlForProcess(p appPaths) string {
 	if mode, _ := sandboxMode(); mode == SandboxBubblewrap {
-		return "/run"
+		return sandboxCtlPath
 	}
-	return p.run
+	return p.ctl
+}
+
+// writeRunnerPayload hands a runner its instructions through a directory
+// the app has no write access to. In the run directory — the app's own —
+// the file could be swapped for a symlink before the platform wrote it, and
+// the write landed wherever the link pointed; or rewritten after, and the
+// runner obeyed the app.
+func writeRunnerPayload(p appPaths, name string, body []byte) (string, error) {
+	if err := os.MkdirAll(p.ctl, 0o700); err != nil {
+		return "", err
+	}
+	file := filepath.Join(p.ctl, name)
+	if err := os.WriteFile(file, body, 0o600); err != nil {
+		return "", err
+	}
+	return file, nil
 }

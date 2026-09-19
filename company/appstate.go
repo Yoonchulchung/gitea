@@ -6,6 +6,7 @@ package company
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -70,6 +71,11 @@ const (
 	ReasonRogueListener      = "rogue_listener"   // the app opened a port of its own
 	ReasonUnresponsive       = "unresponsive"     // stopped answering, and restarts did not help
 	ReasonStopFailed         = "stop_failed"      // the process outlived SIGKILL
+	ReasonRemoved            = "removed"          // an admin took it off the platform; its data waits
+	ReasonRestored           = "data_restored"    // the database was put back from a snapshot
+	ReasonDeployCancelled    = "deploy_cancelled" // an admin cleared a deploy that had stopped moving
+	ReasonTmpFull            = "tmp_full"         // the app filled its temporary space
+	ReasonRenamed            = "renamed"          // the repository was renamed or transferred; the app followed
 )
 
 // appHistoryLimit bounds the per-app history. It doubles as the rollback
@@ -235,6 +241,11 @@ func readAppStateFile(file string) (*AppState, bool) {
 		log.Error("company: app state %s is corrupt, treating as absent: %v", file, err)
 		return nil, false
 	}
+	// JSON reads a number back as a float64, and "%dMB" printed it as
+	// "%!d(float64=192)MB" on the memory cause panel.
+	if f, ok := st.UserMessageArg.(float64); ok && f == math.Trunc(f) {
+		st.UserMessageArg = int(f)
+	}
 	return &st, true
 }
 
@@ -264,11 +275,27 @@ func writeFileAtomic(file string, body []byte) error {
 	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		return err
 	}
-	tmp := file + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o600); err != nil {
+	// A random name, not file+".tmp": a fixed name in a directory anyone else
+	// can write is a symlink waiting to be planted, and two writers would
+	// collide on it.
+	tmp, err := os.CreateTemp(filepath.Dir(file), filepath.Base(file)+".*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, file)
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Rename(tmp.Name(), file); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	return nil
 }
 
 // readFileIfExists returns nil, nil when the file is simply absent — the

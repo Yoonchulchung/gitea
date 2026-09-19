@@ -119,6 +119,20 @@ func buildSeccompFilter(spec sandboxSpec) []unix.SockFilter {
 	deny(unix.SYS_PIDFD_SEND_SIGNAL)
 	deny(unix.SYS_RT_SIGQUEUEINFO)
 	deny(unix.SYS_RT_TGSIGQUEUEINFO)
+	// tkill names a thread, and SIGKILL to any thread ends its whole process
+	// — Gitea's included, with its pid never appearing in the call.
+	deny(unix.SYS_TKILL)
+	// Handles to other processes and their memory, and the syscall-free
+	// path: an io_uring can open a socket without ever calling socket(), and
+	// the family rules below would not see it.
+	deny(unix.SYS_PIDFD_GETFD)
+	deny(unix.SYS_PROCESS_MADVISE)
+	deny(unix.SYS_IO_URING_SETUP)
+	deny(unix.SYS_IO_URING_ENTER)
+	deny(unix.SYS_IO_URING_REGISTER)
+	// New namespaces and execution domains are nothing an application needs.
+	deny(unix.SYS_UNSHARE)
+	deny(unix.SYS_PERSONALITY)
 
 	// Leaving the process group the platform stops as one. A process in a
 	// session of its own outlives every stop and restart, holding the app's

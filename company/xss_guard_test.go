@@ -76,6 +76,8 @@ func TestDynamicTrKeysComeFromOurOwnVocabulary(t *testing.T) {
 		".Evidence":  true, // stored request evidence: HasKey-guarded
 		".DetailKey": true, // PermissionRequest.DetailKey: written only by our own code, never from a form
 		".OpKey":     true, // describeActivity: looked up in activityOpKeys, never assembled from the stored op_type
+		".State":     true, // deployAttempt.State: departmentStatusLabel, a constant set
+		".Heading":   true, // appUnavailable: one of its own constant keys
 		".Hint":      true, // LogFinding: taken from failureHints, never from the log; its argument is escaped by Tr
 	}
 	for _, path := range companyTemplateRoots(t) {

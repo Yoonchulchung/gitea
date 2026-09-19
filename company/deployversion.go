@@ -49,24 +49,13 @@ func DeployVersion(ctx context.Context, owner, repo, sha, actor string, isAdmin 
 		return userKeyError("company.err.version_already_running")
 	}
 
-	if err := MutateAppState(owner, repo, func(s *AppState) bool {
-		s.Desired = AppStateRunning
-		s.Actual = AppStateQueued
-		s.Reason, s.Message, s.UserMessage = "", "", ""
-		s.AppendHistory(AppHistoryEntry{
-			Status: AppStateQueued, SHA: full, Actor: actor,
-			Reason: ReasonVersionPinned,
-		})
-		return true
-	}); err != nil {
-		return err
-	}
+	prior := markQueued(owner, repo, full, 0, true, AppHistoryEntry{Actor: actor, Reason: ReasonVersionPinned})
 	log.Info("company: %s/%s: %s asked for version %s", owner, repo, actor, full)
 
 	// PRID is left at whatever the state holds: it identifies the request that
 	// approved this app's permissions, and choosing an old version is not a
 	// new request.
-	enqueueDeploy(owner, repo, full, st.PRID)
+	enqueueDeploy(owner, repo, full, st.PRID, prior)
 	return nil
 }
 

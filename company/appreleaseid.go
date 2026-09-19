@@ -295,7 +295,7 @@ func InstalledPackages(owner, repo string) []string {
 // rather than lost: pip is asked now and the result written where a deploy
 // would have written it. Only the live release, not every old one — the
 // question is about what is running.
-func backfillInstalledPackages(ctx context.Context) {
+func backfillInstalledPackages() {
 	for _, st := range ListAppStates() {
 		release, err := os.Readlink(appPathsFor(st.Owner, st.Repo).current)
 		if err != nil {
@@ -312,7 +312,7 @@ func backfillInstalledPackages(ctx context.Context) {
 			log.Warn("company: %s/%s: no virtualenv to read its package list from", st.Owner, st.Repo)
 			continue
 		}
-		recordInstalledPackages(ctx, venv, release)
+		recordInstalledPackages(venv, release)
 		log.Info("company: %s/%s: recorded the running release's package list, which predated that record", st.Owner, st.Repo)
 	}
 }

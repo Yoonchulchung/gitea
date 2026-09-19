@@ -123,7 +123,10 @@ func ParseRequirements(content string) ([]Requirement, []RequirementError) {
 
 	for line := 1; scanner.Scan(); line++ {
 		raw := scanner.Text()
-		text := strings.TrimSpace(raw)
+		// Notepad and Excel write a byte-order mark first, invisible in every
+		// view Gitea offers; TrimSpace does not remove it, and the first
+		// package was refused as "write one package per line".
+		text := strings.TrimSpace(strings.TrimPrefix(raw, "\uFEFF"))
 		// Strip trailing comments, but only when the "#" starts a token —
 		// "#" is not legal inside a name or version, so this can't eat part
 		// of a valid requirement.
@@ -186,6 +189,14 @@ func shapeProblem(text string) (string, []any) {
 			return strings.ContainsRune("><~!= ", r)
 		})[0], "[")
 		return "company.req.no_ranges", []any{text, name}
+	case strings.Contains(text, "["):
+		// pkg[extra] pulls in packages nobody listed or approved. Said so,
+		// rather than "one package per line" against a line that has one.
+		name, _, _ := strings.Cut(text, "[")
+		return "company.req.no_extras", []any{text, strings.TrimSpace(name)}
+	case strings.Contains(text, ";"):
+		name, _, _ := strings.Cut(text, ";")
+		return "company.req.no_markers", []any{text, strings.TrimSpace(name)}
 	default:
 		return "company.req.one_per_line", []any{text}
 	}

@@ -121,9 +121,11 @@ func departmentCause(st *AppState) *AppCause {
 			AdminHint: "company.app.cause.data_full.admin",
 			// Written by the watchdog, which runs with no reader and so has
 			// no language of its own — same as the memory case below.
-			Detail:     st.UserMessageKey,
-			DetailArg:  st.UserMessageArg,
-			DetailText: st.UserMessage,
+			Detail:      st.UserMessageKey,
+			DetailArg:   st.UserMessageArg,
+			DetailText:  st.UserMessage,
+			Action:      "deploy",
+			ActionLabel: "company.app.request_storage",
 		}
 	case ReasonMigrationFailed:
 		return &AppCause{
@@ -221,6 +223,29 @@ func departmentCause(st *AppState) *AppCause {
 			// written for a department", which was true of some of them and
 			// not of the filesystem errors that also land here.
 			DetailText: st.UserMessage,
+		}
+	case ReasonDeployCancelled:
+		return &AppCause{
+			Summary:     "company.app.cause.deploy_cancelled",
+			Detail:      "company.app.cause.deploy_cancelled.detail",
+			AdminHint:   "company.app.cause.deploy_cancelled.admin",
+			Action:      "deploy",
+			ActionLabel: "company.app.cause.no_release.action",
+		}
+	case ReasonTmpFull:
+		return &AppCause{
+			Summary:   "company.app.cause.tmp_full",
+			AdminHint: "company.app.cause.tmp_full.admin",
+			Detail:    st.UserMessageKey,
+			DetailArg: st.UserMessageArg,
+			Action:    "app", ActionLabel: "company.app.cause.tmp_full.action",
+		}
+	case ReasonRemoved:
+		return &AppCause{
+			Summary:     "company.app.cause.removed",
+			Detail:      "company.app.cause.removed.detail",
+			Action:      "deploy",
+			ActionLabel: "company.app.cause.no_release.action",
 		}
 	case ReasonRolledBack:
 		return &AppCause{

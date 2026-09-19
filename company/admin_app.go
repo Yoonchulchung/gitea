@@ -218,7 +218,7 @@ func AdminApp(ctx *context.Context) {
 	// A running process whose env predates the last save is using stale
 	// values, and nothing about the app makes that visible from outside.
 	ctx.Data["EnvRestartRequired"] = st.Actual == AppStateRunning && envVersion != st.EnvVersionRunning
-	ctx.Data["AppURL"] = setting.AppSubURL + appProxyPrefix + "/" + st.Owner + "/" + st.Repo
+	ctx.Data["AppURL"] = setting.AppSubURL + appURL(st.Owner, st.Repo)
 	ctx.Data["AdminAppLink"] = setting.AppSubURL + "/-/admin/company-deploys/" + st.Owner + "/" + st.Repo
 	// What the field falls back to when it is left empty, shown as its
 	// placeholder so the instance default is visible without being typed.
@@ -304,6 +304,8 @@ func AdminAppControl(ctx *context.Context) {
 		err = RedeployApp(owner, name, actor, true)
 	case "remove":
 		err = RemoveApp(ctx, owner, name, actor)
+	case "cancel-deploy":
+		err = CancelStuckDeploy(owner, name, actor)
 	default:
 		ctx.HTTPError(http.StatusBadRequest, "unknown action")
 		return

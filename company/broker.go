@@ -8,7 +8,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -123,6 +125,17 @@ var hopByHopHeaders = []string{
 // serve handles one outbound request from the app.
 func (b *appBroker) serve(w http.ResponseWriter, r *http.Request) {
 	host := hostWithoutPort(r.Host)
+	// Only a plain path, as the policy will match it and the destination
+	// will read it. An opaque request-URI ("x:@evil/…") would have been
+	// pasted behind the allowed host and parsed as a different host; a
+	// ".." segment or an encoded slash would pass one path here and reach
+	// another there.
+	if r.URL.Opaque != "" || !strings.HasPrefix(r.URL.Path, "/") || path.Clean(r.URL.Path) != r.URL.Path ||
+		strings.Contains(strings.ToLower(r.URL.RawPath), "%2f") {
+		b.audit(r, host, http.StatusBadRequest, 0, "request path refused")
+		http.Error(w, "the broker only accepts a plain path", http.StatusBadRequest)
+		return
+	}
 	// Policy is read per request, not captured at listener start, so an
 	// admin's change applies to the next call rather than the next restart.
 	if !outboundRuleFor(SettingsFor(b.owner, b.repo), host, r.Method, r.URL.Path) {
@@ -135,7 +148,7 @@ func (b *appBroker) serve(w http.ResponseWriter, r *http.Request) {
 	// Always https out. The traffic crosses a real network from here; an app
 	// that genuinely needs plaintext http to an internal legacy box is a
 	// decision an admin should have to make knowingly, not a default.
-	outURL := "https://" + host + r.URL.RequestURI()
+	outURL := (&url.URL{Scheme: "https", Host: host, Path: r.URL.Path, RawQuery: r.URL.RawQuery}).String()
 	out, err := http.NewRequestWithContext(r.Context(), r.Method, outURL, r.Body)
 	if err != nil {
 		b.audit(r, host, http.StatusBadGateway, 0, "bad request: "+err.Error())
@@ -144,7 +157,13 @@ func (b *appBroker) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	copyBrokerHeaders(out.Header, r.Header)
 
-	client := &http.Client{Timeout: brokerRequestTimeout}
+	client := &http.Client{
+		Timeout: brokerRequestTimeout,
+		// A redirect is handed back to the app, which may follow it with a
+		// request of its own — through this same policy. Followed here, it
+		// would go wherever the allowed host pointed, unchecked and unlogged.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	resp, err := client.Do(out)
 	if err != nil {
 		b.audit(r, host, http.StatusBadGateway, 0, err.Error())

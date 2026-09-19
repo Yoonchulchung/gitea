@@ -126,7 +126,7 @@
 							{{end}}
 						</tr>
 					{{else}}
-						<tr><td colspan="6" class="text-grey">{{ctx.Locale.Tr "company.admin.no_repos"}}</td></tr>
+						<tr><td colspan="{{if .DataEnabled}}6{{else}}5{{end}}" class="text-grey">{{ctx.Locale.Tr "company.admin.no_repos"}}</td></tr>
 					{{end}}
 				</tbody>
 			</table>

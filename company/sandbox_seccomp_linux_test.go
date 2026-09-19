@@ -79,7 +79,7 @@ func TestSeccompFilterDenies(t *testing.T) {
 		// The alternative routes to the same thing.
 		for _, nr := range []uintptr{
 			unix.SYS_PIDFD_OPEN, unix.SYS_PIDFD_SEND_SIGNAL,
-			unix.SYS_RT_SIGQUEUEINFO, unix.SYS_RT_TGSIGQUEUEINFO,
+			unix.SYS_RT_SIGQUEUEINFO, unix.SYS_RT_TGSIGQUEUEINFO, unix.SYS_TKILL,
 		} {
 			assert.Equal(t, seccompDenyPerm, runFilter(t, filter, call(nr)))
 		}
@@ -87,6 +87,15 @@ func TestSeccompFilterDenies(t *testing.T) {
 
 	t.Run("leaving the process group the platform stops", func(t *testing.T) {
 		for _, nr := range []uintptr{unix.SYS_SETSID, unix.SYS_SETPGID} {
+			assert.Equal(t, seccompDenyPerm, runFilter(t, filter, call(nr)))
+		}
+	})
+
+	t.Run("sockets without socket(), and handles to other processes", func(t *testing.T) {
+		for _, nr := range []uintptr{
+			unix.SYS_IO_URING_SETUP, unix.SYS_IO_URING_ENTER, unix.SYS_IO_URING_REGISTER,
+			unix.SYS_PIDFD_GETFD, unix.SYS_PROCESS_MADVISE, unix.SYS_UNSHARE, unix.SYS_PERSONALITY,
+		} {
 			assert.Equal(t, seccompDenyPerm, runFilter(t, filter, call(nr)))
 		}
 	})

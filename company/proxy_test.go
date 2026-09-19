@@ -6,6 +6,7 @@ package company
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -145,6 +146,31 @@ func (d *discardWriter) WriteHeader(int)             {}
 // root — uvicorn's --root-path builds URLs with the prefix, it does not strip
 // it from what arrives. Forwarding the mounted path unchanged made every app
 // answer its own 404 for its own index page.
+// Opened without its trailing slash, an app's relative links resolved
+// against /apps/{owner}/ and its stylesheet was never found.
+func TestAppRootRedirect(t *testing.T) {
+	for _, c := range []struct{ path, query, want string }{
+		{"/apps/PO/Test_Huyndai", "", "Test_Huyndai/"},
+		{"/apps/PO/Test_Huyndai", "tab=2", "Test_Huyndai/?tab=2"},
+		{"/apps/PO/Test_Huyndai/", "", ""},
+		{"/apps/PO/Test_Huyndai/x", "", ""},
+	} {
+		got, ok := appRootRedirect(c.path, c.query)
+		assert.Equal(t, c.want, got, c.path)
+		assert.Equal(t, c.want != "", ok, c.path)
+	}
+}
+
+// The router strips a trailing slash from URL.Path before any handler sees
+// it; what the client actually sent is the only record of it.
+func TestRequestPathKeepsTheSlashTheClientSent(t *testing.T) {
+	r := &http.Request{URL: &url.URL{Path: "/apps/PO/app/items"}, RequestURI: "/apps/PO/app/items/?page=2"}
+	assert.Equal(t, "/apps/PO/app/items/", requestPath(r))
+
+	r.RequestURI = "/apps/PO/app/items?page=2"
+	assert.Equal(t, "/apps/PO/app/items", requestPath(r))
+}
+
 func TestAppRelativePathStripsMountPrefix(t *testing.T) {
 	cases := map[string]string{
 		"/apps/PO/Test_FastAPI":         "/",
@@ -272,7 +298,7 @@ func TestHTMLRewriteScopeAndContentLength(t *testing.T) {
 	resp := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}
 	resp.Header.Set("Content-Type", "text/html; charset=utf-8")
 	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
-	rewriteHTMLBody(prefix, resp)
+	rewriteHTMLBody(prefix, resp, false)
 
 	out, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -283,7 +309,7 @@ func TestHTMLRewriteScopeAndContentLength(t *testing.T) {
 	// JSON is not rewritten: "/docs" in a payload is data, not a link.
 	jsonResp := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"u":"/docs"}`))}
 	jsonResp.Header.Set("Content-Type", "application/json")
-	rewriteHTMLBody(prefix, jsonResp)
+	rewriteHTMLBody(prefix, jsonResp, false)
 	out, err = io.ReadAll(jsonResp.Body)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"u":"/docs"}`, string(out))
@@ -293,7 +319,7 @@ func TestHTMLRewriteScopeAndContentLength(t *testing.T) {
 	gz := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}
 	gz.Header.Set("Content-Type", "text/html")
 	gz.Header.Set("Content-Encoding", "gzip")
-	rewriteHTMLBody(prefix, gz)
+	rewriteHTMLBody(prefix, gz, false)
 	out, err = io.ReadAll(gz.Body)
 	require.NoError(t, err)
 	assert.Equal(t, body, string(out))
@@ -342,4 +368,64 @@ func TestPolicyHeadersWinAndCanRemoveADefault(t *testing.T) {
 	// second header entirely.
 	assert.Empty(t, resp.Header.Get("Bad"))
 	assert.False(t, validHeaderName("Bad\r\nName"))
+}
+
+// A script's fetch("/api/...") is invisible to the markup rewrite, so the page
+// carries a shim that mounts those paths — placed before any script of the
+// app's own, and never into a fragment meant to be swapped into a page.
+func TestInjectAppPathShim(t *testing.T) {
+	const prefix = "/apps/PO/app"
+	doc := string(injectAppPathShim(prefix, []byte(`<!DOCTYPE html><html><head><script src="script.js"></script></head><body></body></html>`)))
+	shim := strings.Index(doc, "window.__appPathShim")
+	require.Positive(t, shim)
+	assert.Less(t, shim, strings.Index(doc, `src="script.js"`), "the shim runs before the app's scripts")
+	assert.Contains(t, doc, `var prefix = "/apps/PO/app"`)
+
+	headless := string(injectAppPathShim(prefix, []byte(`<html><body><p>hi</p></body></html>`)))
+	assert.True(t, strings.HasPrefix(headless, "<html><script>"), "right after <html> when there is no <head>")
+
+	for _, fragment := range []string{`<tr><td>1</td></tr>`, `<div id="list"></div>`, ``} {
+		assert.Equal(t, fragment, string(injectAppPathShim(prefix, []byte(fragment))))
+	}
+}
+
+func TestCSPInForce(t *testing.T) {
+	appSet := &http.Response{Header: http.Header{"Content-Security-Policy": {"default-src 'self'"}}}
+	appNone := &http.Response{Header: http.Header{}}
+	adminSets := AppSettings{Security: AppSecurity{Headers: map[string]string{"content-security-policy": "default-src 'self'"}}}
+	adminRemoves := AppSettings{Security: AppSecurity{Headers: map[string]string{"Content-Security-Policy": ""}}}
+
+	assert.True(t, cspInForce(AppSettings{}, appSet))
+	assert.False(t, cspInForce(AppSettings{}, appNone))
+	assert.True(t, cspInForce(adminSets, appNone))
+	assert.False(t, cspInForce(adminRemoves, appSet), "an admin's empty value removes the app's")
+}
+
+// A cookie is confined to the app by rebuilding it, not by patching the first
+// Path= — a browser obeys the last one, and "Path=/decoy; Path=/" reached
+// Gitea's own cookie jar. Domain widens it to other hosts; a name that is one
+// of Gitea's own is the visitor's session being replaced.
+func TestScopeCookie(t *testing.T) {
+	const prefix = "/apps/PO/app"
+	got, ok := scopeCookie(prefix, "session=abc; Path=/decoy; Path=/; Domain=example.com; HttpOnly")
+	require.True(t, ok)
+	assert.Contains(t, got, "Path="+prefix+"/")
+	assert.NotContains(t, got, "/decoy")
+	assert.NotContains(t, got, "Domain")
+	assert.Contains(t, got, "HttpOnly")
+
+	got, ok = scopeCookie(prefix, "session=abc")
+	require.True(t, ok)
+	assert.Contains(t, got, "Path="+prefix+"/", "no path means the app's, not the page's directory")
+
+	_, ok = scopeCookie(prefix, "i_like_gitea=stolen; Path=/")
+	assert.False(t, ok, "an app may not set Gitea's session cookie")
+}
+
+// Gitea's session cookie is Path=/ and so arrives with every app request;
+// forwarded, the department's code could replay the visitor as themselves.
+func TestGiteaCookiesNeverReachTheApp(t *testing.T) {
+	assert.True(t, isGiteaCookie("i_like_gitea"))
+	assert.True(t, isGiteaCookie("gitea_incredible"))
+	assert.False(t, isGiteaCookie("appsession"), "the app's own cookies still round-trip")
 }

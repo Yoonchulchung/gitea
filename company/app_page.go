@@ -69,7 +69,7 @@ func AppPage(ctx *context.Context) {
 	ctx.Data["EnvRestartRequired"] = st.Actual == AppStateRunning && envVersion != st.EnvVersionRunning
 	ctx.Data["EnvHistory"] = AppEnvHistory(owner, name)
 	ctx.Data["CanControl"] = canWrite
-	ctx.Data["AppURL"] = setting.AppSubURL + appProxyPrefix + "/" + owner + "/" + name
+	ctx.Data["AppURL"] = setting.AppSubURL + appURL(owner, name)
 	ctx.Data["AppLink"] = ctx.Repo.RepoLink + "/_app"
 	ctx.Data["DeployLink"] = ctx.Repo.RepoLink + "/deploy"
 	// The department may narrow access on their own but not widen it —
@@ -343,6 +343,16 @@ func historyReasonLabel(reason string) string {
 		return "company.app.history.reason.unresponsive"
 	case ReasonStopFailed:
 		return "company.app.history.reason.stop_failed"
+	case ReasonRemoved:
+		return "company.app.history.reason.removed"
+	case ReasonDeployCancelled:
+		return "company.app.history.reason.deploy_cancelled"
+	case ReasonTmpFull:
+		return "company.app.history.reason.tmp_full"
+	case ReasonRenamed:
+		return "company.app.history.reason.renamed"
+	case ReasonRestored:
+		return "company.app.history.reason.data_restored"
 	case livenessRestartReason:
 		return "company.app.history.reason.unresponsive_restart"
 	case ReasonSuspended:

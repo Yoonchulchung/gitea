@@ -16,7 +16,7 @@
 				<div class="header">{{ctx.Locale.Tr .Summary}}</div>
 				{{/* When, not just what: "it broke four minutes ago" is what tells
 				     someone whether their last change caused it. */}}
-				{{if .At}}<div class="tw-text-13 tw-mt-1">{{DateUtils.TimeSince .At}} · {{DateUtils.AbsoluteShort .At}}</div>{{end}}
+				{{if .At}}<div class="tw-text-13 tw-mt-1">{{DateUtils.TimeSince .At}} · {{DateUtils.FullTime .At}}</div>{{end}}
 				{{if .Detail}}<div class="tw-mt-1 company-app-cause-line">{{if .DetailArg}}{{ctx.Locale.Tr .Detail .DetailArg}}{{else}}{{ctx.Locale.Tr .Detail}}{{end}}</div>{{end}}
 				{{range StringUtils.Split .DetailText "\n"}}<div class="tw-mt-1 company-app-cause-line">{{.}}</div>{{end}}
 				{{with $.Finding}}
@@ -67,6 +67,10 @@
 						<form method="post" action="{{.AppLink}}/stop" data-company-confirm="{{ctx.Locale.Tr "company.app.stop_confirm"}}">
 							{{.CsrfTokenHtml}}<button class="ui button">{{ctx.Locale.Tr "company.app.stop"}}</button>
 						</form>
+					{{else if .App.IsBusy}}
+						{{/* A deploy is in progress: a start button here would be
+						     refused every time it was pressed. */}}
+						<span class="text-grey">{{ctx.Locale.Tr "company.app.busy_note"}}</span>
 					{{else if .App.HasRelease}}
 						<form method="post" action="{{.AppLink}}/start">{{.CsrfTokenHtml}}<button class="ui primary button">{{ctx.Locale.Tr "company.app.start"}}</button></form>
 					{{else}}
@@ -96,13 +100,13 @@
 					<span>
 						<span class="text-grey">{{ctx.Locale.Tr "company.app.running_version"}}</span>
 						<span class="tw-font-mono tw-ml-2">{{if .Running.SHA}}{{ShortSha .Running.SHA}}{{else}}{{ctx.Locale.Tr "company.app.version_unknown"}}{{end}}</span>
-						<span class="text-grey tw-ml-2" title="{{DateUtils.AbsoluteShort .Running.BuiltAt}}">{{ctx.Locale.Tr "company.app.deployed_ago" (DateUtils.TimeSince .Running.BuiltAt)}}</span>
+						<span class="text-grey tw-ml-2" title="{{DateUtils.FullTime .Running.BuiltAt}}">{{ctx.Locale.Tr "company.app.deployed_ago" (DateUtils.TimeSince .Running.BuiltAt)}}</span>
 					</span>
 					{{if .Previous.Exists}}
 						<span>
 							<span class="text-grey">{{ctx.Locale.Tr "company.app.rollback_target"}}</span>
 							<span class="tw-font-mono tw-ml-2">{{if .Previous.SHA}}{{ShortSha .Previous.SHA}}{{else}}{{ctx.Locale.Tr "company.app.version_unknown"}}{{end}}</span>
-							<span class="text-grey tw-ml-2" title="{{DateUtils.AbsoluteShort .Previous.BuiltAt}}">{{ctx.Locale.Tr "company.app.deployed_ago" (DateUtils.TimeSince .Previous.BuiltAt)}}</span>
+							<span class="text-grey tw-ml-2" title="{{DateUtils.FullTime .Previous.BuiltAt}}">{{ctx.Locale.Tr "company.app.deployed_ago" (DateUtils.TimeSince .Previous.BuiltAt)}}</span>
 						</span>
 					{{else}}
 						<span class="text-grey">{{ctx.Locale.Tr "company.app.no_rollback_target"}}</span>
@@ -124,6 +128,9 @@
 						<div class="tw-mt-2 company-app-cause-line">{{ctx.Locale.Tr "company.app.data_full_hint"}}</div>
 					{{else if .DataUsage.Warning}}
 						<div class="tw-mt-2 company-app-cause-line">{{ctx.Locale.Tr "company.app.data_warn_hint"}}</div>
+					{{end}}
+					{{if and .CanControl (or .DataUsage.Full .DataUsage.Warning)}}
+						<a class="ui small basic button tw-mt-2" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_storage"}}</a>
 					{{end}}
 				</div>
 			{{end}}

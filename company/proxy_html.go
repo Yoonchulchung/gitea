@@ -117,7 +117,7 @@ const htmlRewriteLimit = 8 << 20
 // Returns without touching anything it is not sure about, because passing the
 // body through unchanged leaves one broken link, while getting this wrong
 // breaks the page.
-func rewriteHTMLBody(prefix string, resp *http.Response) {
+func rewriteHTMLBody(prefix string, resp *http.Response, shim bool) {
 	sameHost := ""
 	if resp.Request != nil {
 		sameHost = resp.Request.Host
@@ -135,19 +135,122 @@ func rewriteHTMLBody(prefix string, resp *http.Response) {
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, htmlRewriteLimit+1))
-	_ = resp.Body.Close()
+	original := resp.Body
+	body, err := io.ReadAll(io.LimitReader(original, htmlRewriteLimit+1))
 	if err != nil || len(body) > htmlRewriteLimit {
-		// Put back what was read so the response is still served. A page that
-		// could not be rewritten is better than no page.
-		resp.Body = io.NopCloser(bytes.NewReader(body))
+		// Too big, or broken partway: served whole and unrewritten, the read
+		// part first and the rest still streaming behind it. A page that could
+		// not be rewritten is better than a page cut off at the limit.
+		resp.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(body), original), original}
 		return
 	}
+	_ = original.Close()
 
 	rewritten := rewriteHTML(prefix, sameHost, body)
+	// text/html only: in XHTML a script is parsed as markup, and the shim's
+	// own text would end the page in a parse error.
+	if shim && strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
+		rewritten = injectAppPathShim(prefix, rewritten)
+	}
 	resp.Body = io.NopCloser(bytes.NewReader(rewritten))
 	resp.ContentLength = int64(len(rewritten))
 	resp.Header.Set("Content-Length", strconv.Itoa(len(rewritten)))
+}
+
+// appPathShimJS sends a page script's root-relative requests to the app. The
+// proxy rewrites URLs in markup, but fetch("/api/entries") is a string inside
+// a script that only the page can see, so an app written to run at the root
+// reached Gitea instead, got its login page back, and told its user it could
+// not reach its own server.
+const appPathShimJS = `(function () {
+  if (window.__appPathShim) return;
+  window.__appPathShim = true;
+  var prefix = PREFIX, origin = location.origin;
+  function mounted(p) {
+    return p === prefix || [prefix + "/", prefix + "?", prefix + "#"].some(function (s) { return p.indexOf(s) === 0; });
+  }
+  function fix(u) {
+    if (u.indexOf(origin + "/") === 0) return origin + fix(u.slice(origin.length));
+    if (u.charAt(0) !== "/" || u.charAt(1) === "/" || mounted(u)) return u;
+    return prefix + u;
+  }
+  function fixSocket(u) {
+    u = String(u);
+    var ws = location.protocol === "https:" ? "wss://" : "ws://";
+    if (u.indexOf(ws + location.host + "/") === 0) return ws + location.host + fix(u.slice(ws.length + location.host.length));
+    return fix(u);
+  }
+  var fetch0 = window.fetch;
+  if (fetch0) {
+    window.fetch = function (input, init) {
+      if (typeof input === "string" || input instanceof URL) {
+        return fetch0.call(window, fix(String(input)), init);
+      }
+      if (!(input instanceof Request) || fix(input.url) === input.url) return fetch0.call(window, input, init);
+      var r = input, bodyless = r.method === "GET" || r.method === "HEAD";
+      return (bodyless ? Promise.resolve(undefined) : r.arrayBuffer()).then(function (body) {
+        return fetch0.call(window, new Request(fix(r.url), {
+          method: r.method, headers: r.headers, body: body, mode: r.mode, credentials: r.credentials,
+          cache: r.cache, redirect: r.redirect, referrer: r.referrer, integrity: r.integrity,
+          keepalive: r.keepalive, signal: r.signal
+        }), init);
+      });
+    };
+  }
+  var open0 = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    var args = Array.prototype.slice.call(arguments);
+    args[1] = fix(String(url));
+    return open0.apply(this, args);
+  };
+  if (navigator.sendBeacon) {
+    var beacon0 = navigator.sendBeacon;
+    navigator.sendBeacon = function (url, data) { return beacon0.call(navigator, fix(String(url)), data); };
+  }
+  ["EventSource", "WebSocket"].forEach(function (name) {
+    var Ctor = window[name];
+    if (!Ctor) return;
+    var Wrapped = function (url, arg) {
+      return arg === undefined ? new Ctor(fixSocket(url)) : new Ctor(fixSocket(url), arg);
+    };
+    Wrapped.prototype = Ctor.prototype;
+    Object.keys(Ctor).forEach(function (k) { Wrapped[k] = Ctor[k]; });
+    window[name] = Wrapped;
+  });
+})();`
+
+// injectAppPathShim puts appPathShimJS first in the document, before any of
+// the app's own scripts run. Only into a whole document: a fragment fetched
+// to be swapped into a page has to arrive exactly as the app sent it.
+func injectAppPathShim(prefix string, body []byte) []byte {
+	tokenizer := html.NewTokenizer(bytes.NewReader(body))
+	offset, at := 0, -1
+	for tt := tokenizer.Next(); tt != html.ErrorToken; tt = tokenizer.Next() {
+		offset += len(tokenizer.Raw())
+		if tt != html.StartTagToken {
+			continue
+		}
+		name, _ := tokenizer.TagName()
+		if string(name) == "html" {
+			at = offset // a <head> may still follow; right after it is better
+			continue
+		}
+		if string(name) == "head" {
+			at = offset
+		}
+		break
+	}
+	if at < 0 {
+		return body
+	}
+	script := "<script>" + strings.Replace(appPathShimJS, "PREFIX", strconv.Quote(prefix), 1) + "</script>"
+	out := make([]byte, 0, len(body)+len(script))
+	out = append(out, body[:at]...)
+	out = append(out, script...)
+	return append(out, body[at:]...)
 }
 
 func isHTMLResponse(resp *http.Response) bool {

@@ -87,13 +87,13 @@
 					     the repository home route only, so these buttons appear there and
 					     nowhere else. */}}
 					{{with $.CompanyApp}}
-						{{/* "Running" alone does not say whether it has been up for a
-						     week or restarted a minute ago, which is the first thing
-						     anyone asks when something looks wrong. */}}
-						{{if and .Running .StartedAt}}
-							<span class="text-grey tw-text-12" data-tooltip-content="{{DateUtils.AbsoluteShort .StartedAt}}">{{ctx.Locale.Tr "company.sidebar.started_ago" (DateUtils.TimeSince .StartedAt)}}</span>
+						{{/* Only when it is not running: the deploy badge beside the
+						     file list already says "running", and saying it three
+						     times on one page is noise. For every other state that
+						     badge shows the deploy request, not the app. */}}
+						{{if .ShowState}}
+							<span class="company-app-state {{.Status}}" data-tooltip-content="{{ctx.Locale.Tr .StatusLabel}}">{{ctx.Locale.Tr .StatusLabel}}</span>
 						{{end}}
-						<span class="company-app-state {{.Status}}" data-tooltip-content="{{ctx.Locale.Tr .StatusLabel}}">{{ctx.Locale.Tr .StatusLabel}}</span>
 						{{if .CanControl}}
 							{{if .Suspended}}
 								{{/* Deliberately no start button: an app an administrator
@@ -128,7 +128,7 @@
 					{{end}}
 					{{if and (not .IsEmpty) (not $.IsAdmin) ($.Permission.CanRead ctx.Consts.RepoUnitTypeCode)}}
 						<a class="ui compact small basic primary button" href="{{$.RepoLink}}/deploy">
-							Deploy Request
+							{{ctx.Locale.Tr "company.deploy.title"}}
 						</a>
 					{{end}}
 				</div>

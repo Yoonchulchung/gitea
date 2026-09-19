@@ -23,10 +23,16 @@
 				<a class="ui tiny basic button" href="{{.AdminAppLink}}/data">{{svg "octicon-database" 14}} {{ctx.Locale.Tr "company.data.title"}}</a>
 				<div class="tw-flex-1"></div>
 				{{if eq .App.Actual "running"}}
-					<form method="post" action="{{.AdminAppLink}}/restart">{{.CsrfTokenHtml}}<button class="ui tiny button">{{ctx.Locale.Tr "company.app.restart"}}</button></form>
-					<form method="post" action="{{.AdminAppLink}}/stop">{{.CsrfTokenHtml}}<button class="ui tiny button">{{ctx.Locale.Tr "company.app.stop"}}</button></form>
+					<form method="post" action="{{.AdminAppLink}}/restart" data-company-confirm="{{ctx.Locale.Tr "company.adminapp.restart_confirm"}}">{{.CsrfTokenHtml}}<button class="ui tiny button">{{ctx.Locale.Tr "company.app.restart"}}</button></form>
+					<form method="post" action="{{.AdminAppLink}}/stop" data-company-confirm="{{ctx.Locale.Tr "company.app.stop_confirm"}}">{{.CsrfTokenHtml}}<button class="ui tiny button">{{ctx.Locale.Tr "company.app.stop"}}</button></form>
 				{{else if eq .App.Actual "suspended"}}
 					<form method="post" action="{{.AdminAppLink}}/resume">{{.CsrfTokenHtml}}<button class="ui tiny primary button">{{ctx.Locale.Tr "company.adminapp.resume"}}</button></form>
+				{{else if .App.IsBusy}}
+					{{/* A deploy in progress has no controls — except when it has
+					     stopped moving, which the admin is the only one who can clear. */}}
+					<form method="post" action="{{.AdminAppLink}}/cancel-deploy" data-company-confirm="{{ctx.Locale.Tr "company.adminapp.cancel_deploy_confirm"}}">
+						{{.CsrfTokenHtml}}<button class="ui tiny button">{{ctx.Locale.Tr "company.adminapp.cancel_deploy"}}</button>
+					</form>
 				{{else}}
 					<form method="post" action="{{.AdminAppLink}}/start">{{.CsrfTokenHtml}}<button class="ui tiny primary button">{{ctx.Locale.Tr "company.app.start"}}</button></form>
 				{{end}}
@@ -44,7 +50,7 @@
 					     stop, the department cannot undo it. The reason is required
 					     because "an administrator stopped this" with no explanation
 					     leaves them nothing to act on. */}}
-					<form method="post" action="{{.AdminAppLink}}/suspend" class="tw-flex tw-gap-1">
+					<form method="post" action="{{.AdminAppLink}}/suspend" class="tw-flex tw-gap-1" data-company-confirm="{{ctx.Locale.Tr "company.adminapp.suspend_confirm"}}">
 						{{.CsrfTokenHtml}}
 						<input class="tw-w-48" type="text" name="reason" placeholder="{{ctx.Locale.Tr "company.adminapp.suspend_reason"}}" required>
 						<button class="ui tiny red basic button">{{ctx.Locale.Tr "company.adminapp.suspend"}}</button>
@@ -79,7 +85,7 @@
 					{{/* An admin correlates this against the log, so the absolute
 					     time matters as much as the relative one. */}}
 					{{with .Cause}}{{if .At}}
-						<span class="text-grey tw-text-12">{{DateUtils.TimeSince .At}} · {{DateUtils.AbsoluteShort .At}}</span>
+						<span class="text-grey tw-text-12">{{DateUtils.TimeSince .At}} · {{DateUtils.FullTime .At}}</span>
 					{{end}}{{end}}
 				</div>
 				{{with .Cause}}

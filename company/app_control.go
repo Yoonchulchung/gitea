@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"gitea.dev/modules/log"
 )
@@ -156,12 +157,41 @@ func RemoveApp(ctx context.Context, owner, repo, actor string) error {
 		st.Actual = AppStateStopped
 		st.HasRelease = false // the files are gone; a redeploy is the only way back
 		st.PID = 0
-		st.Reason = "removed"
+		st.Reason = ReasonRemoved
 		st.Message = "removed from the platform by " + actor
 		st.UserMessage = ""
 		st.UserMessageKey = "company.app.removed"
 		st.Health = AppHealth{State: "unknown"}
-		st.AppendHistory(AppHistoryEntry{Status: AppStateStopped, Actor: actor, Reason: "removed"})
+		st.AppendHistory(AppHistoryEntry{Status: AppStateStopped, Actor: actor, Reason: ReasonRemoved})
+		return true
+	})
+}
+
+// CancelStuckDeploy takes an app out of a busy state nothing will finish.
+//
+// Only a state that has stood for a while: a deploy still building is not
+// stuck, and pulling its record out from under it would leave the worker
+// writing over whatever comes next. The app is recorded as what it actually
+// is — running if its process is, failed if not.
+func CancelStuckDeploy(owner, repo, actor string) error {
+	st := LoadAppState(owner, repo)
+	if !st.IsBusy() {
+		return userKeyError("company.err.not_deploying")
+	}
+	if time.Since(time.Unix(st.UpdatedAt, 0)) < staleDeployAfter {
+		return userKeyError("company.err.deploy_not_stuck", int(staleDeployAfter.Minutes()))
+	}
+	serving := IsAppRunning(owner, repo)
+	return MutateAppState(owner, repo, func(st *AppState) bool {
+		st.Actual = AppStateFailed
+		if serving {
+			st.Actual = AppStateRunning
+		}
+		st.FailedAt = time.Now().Unix()
+		st.Reason = ReasonDeployCancelled
+		st.Message = "a deploy that had been " + st.Actual + " for over " + staleDeployAfter.String() + " was cancelled by " + actor
+		st.UserMessage = ""
+		st.AppendHistory(AppHistoryEntry{Status: AppStateFailed, Actor: actor, Reason: ReasonDeployCancelled})
 		return true
 	})
 }
@@ -192,15 +222,7 @@ func RedeployApp(owner, repo, actor string, isAdmin bool) error {
 	if st.SHA == "" {
 		return audienceKeyError("company.err.never_deployed", "company.err.never_deployed.admin")
 	}
-	if err := MutateAppState(owner, repo, func(s *AppState) bool {
-		s.Desired = AppStateRunning
-		s.Actual = AppStateQueued
-		s.Reason, s.Message, s.UserMessage = "", "", ""
-		s.AppendHistory(AppHistoryEntry{Status: AppStateQueued, SHA: st.SHA, Actor: actor, Reason: "redeploy"})
-		return true
-	}); err != nil {
-		return err
-	}
-	enqueueDeploy(owner, repo, st.SHA, st.PRID)
+	prior := markQueued(owner, repo, st.SHA, 0, true, AppHistoryEntry{Actor: actor, Reason: "redeploy"})
+	enqueueDeploy(owner, repo, st.SHA, st.PRID, prior)
 	return nil
 }

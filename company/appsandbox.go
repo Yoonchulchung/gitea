@@ -33,6 +33,9 @@ import (
 // release actually lives on the host.
 const sandboxSocketPath = "/run/app.sock"
 
+// sandboxCtlPath is where a runner finds its instructions under bubblewrap.
+const sandboxCtlPath = "/ctl"
+
 // sandboxProbe caches whether bwrap actually works here. Probed once: the
 // answer cannot change while the process runs, and the check spawns a
 // process, far too expensive to repeat on every app start.
@@ -357,6 +360,9 @@ func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, a
 	if snapshotDir != "" {
 		bwrapArgs = append(bwrapArgs, "--bind", snapshotDir, sandboxSnapshotPath)
 	}
+	if _, err := os.Stat(p.ctl); err == nil {
+		bwrapArgs = append(bwrapArgs, "--ro-bind", p.ctl, sandboxCtlPath)
+	}
 	bwrapArgs = append(bwrapArgs,
 		// The code and its dependencies are read-only: an app that cannot
 		// rewrite its own release cannot persist a backdoor into it.
@@ -420,6 +426,9 @@ func landlockCommand(release string, p appPaths, settings AppSettings, interpret
 	}
 	if snapshotDir != "" {
 		argv = append(argv, "--rw", snapshotDir)
+	}
+	if _, err := os.Stat(p.ctl); err == nil {
+		argv = append(argv, "--ro", p.ctl)
 	}
 	if settings.Network.Mode != NetworkNone {
 		argv = append(argv, "--allow-network")

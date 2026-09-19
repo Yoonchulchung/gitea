@@ -70,8 +70,16 @@ type ServerLogQuery struct {
 	// MinLevel drops anything below it ("warn" keeps warn/error/fatal). Empty
 	// keeps everything.
 	MinLevel string
+	// Requests keeps the router's line for every request that completed. Off,
+	// they go unless a search asks for them: the page polls for notifications
+	// every few seconds, and those lines were three quarters of the log.
+	Requests bool
 	Limit    int
 }
+
+// routineRequestLine is the router's record of a request that completed
+// without a server error. A 5xx stays: that one is part of a story.
+var routineRequestLine = regexp.MustCompile(`router: completed \S+ \S+ for \S+, [1-4]\d\d `)
 
 // serverLogLevels is the ordering MinLevel compares against, lowest first.
 var serverLogLevels = []string{"trace", "debug", "info", "warn", "error", "fatal"}
@@ -163,6 +171,7 @@ func ReadServerLogs(query ServerLogQuery) ([]ServerLogLine, bool, error) {
 	}
 
 	minLevel := slices.Index(serverLogLevels, query.MinLevel)
+	hideRequests := !query.Requests && query.Text == ""
 
 	files := ServerLogFiles()
 	if query.File != "" {
@@ -179,7 +188,7 @@ func ReadServerLogs(query ServerLogQuery) ([]ServerLogLine, bool, error) {
 	ring := make([]ServerLogLine, 0, limit)
 	truncated := false
 	for _, name := range files {
-		if scanServerLog(filepath.Join(setting.Log.RootPath, name), name, matcher, minLevel, limit, deadline, &ring, &truncated) {
+		if scanServerLog(filepath.Join(setting.Log.RootPath, name), name, matcher, minLevel, hideRequests, limit, deadline, &ring, &truncated) {
 			truncated = true
 			break
 		}
@@ -189,7 +198,7 @@ func ReadServerLogs(query ServerLogQuery) ([]ServerLogLine, bool, error) {
 
 // scanServerLog appends one file's matches into the ring, reporting whether
 // it stopped on the deadline rather than at end of file.
-func scanServerLog(path, name string, matcher func(string) bool, minLevel, limit int, deadline time.Time, ring *[]ServerLogLine, truncated *bool) bool {
+func scanServerLog(path, name string, matcher func(string) bool, minLevel int, hideRequests bool, limit int, deadline time.Time, ring *[]ServerLogLine, truncated *bool) bool {
 	f, err := os.Open(path)
 	if err != nil {
 		return false // a file rotated away mid-read is not an error
@@ -225,6 +234,9 @@ func scanServerLog(path, name string, matcher func(string) bool, minLevel, limit
 			continue
 		}
 		if !matcher(line) { // matched raw, so searching for a date or a level works
+			continue
+		}
+		if hideRequests && routineRequestLine.MatchString(text) {
 			continue
 		}
 		if len(*ring) == limit {
