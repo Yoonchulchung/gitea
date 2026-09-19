@@ -257,21 +257,34 @@
 	gap: 2px;
 }
 .company-kpi b { font-size: 1.5rem; line-height: 1.1; }
-/* A limit card is a form: the pencil opens a field with Save and Cancel
+/* A limit card is a form: the pencil turns the number after the slash into
+   a field on the same line, with a tick and a cross beside it
    (web_src/js/features/company-app-charts.ts). */
 .company-kpi-edit { margin: 0; }
-.company-kpi-pencil {
+.company-kpi-pencil, .company-kpi-ok, .company-kpi-cancel {
 	border: 0;
 	background: none;
-	padding: 0 0 0 6px;
+	padding: 0 0 0 4px;
 	color: var(--color-text-light-2);
 	cursor: pointer;
 	vertical-align: middle;
 	opacity: .6;
 }
-.company-kpi-pencil:hover { opacity: 1; color: var(--color-primary); }
-.company-kpi-editor { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
-.company-kpi-editor input { width: 5.5em; padding: 2px 4px; font-size: .85rem; }
+.company-kpi-pencil:hover, .company-kpi-cancel:hover { opacity: 1; color: var(--color-primary); }
+.company-kpi-ok { color: var(--color-green); opacity: 1; }
+.company-kpi-limit-input {
+	width: 4.5em;
+	font: inherit;
+	color: var(--color-text);
+	text-align: right;
+	border: 0;
+	border-bottom: 1px solid var(--color-primary);
+	background: transparent;
+	padding: 0 2px;
+	-moz-appearance: textfield;
+}
+.company-kpi-limit-input::-webkit-outer-spin-button, .company-kpi-limit-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.company-kpi-limit-input:focus { outline: none; }
 .company-kpi b small { font-size: .8rem; font-weight: 400; color: var(--color-text-light-2); }
 .company-kpi span { font-size: .75rem; color: var(--color-text-light-2); }
 .company-kpi.bad b { color: var(--color-error-text); }

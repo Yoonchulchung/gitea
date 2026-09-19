@@ -198,20 +198,32 @@ export function initCompanyAppCharts() {
   }
 }
 
-// A limit card on the admin app page: the pencil opens the field, Save
-// submits the card's own form, Cancel or Escape closes it. The field is
-// disabled while closed so a stray Enter elsewhere cannot submit it.
+// A limit card on the admin app page: the pencil swaps the number after
+// the slash for a field on the same line; the tick (or Enter) submits the
+// card's own form, the cross (or Escape) puts the number back. The field
+// is disabled while closed so a stray Enter elsewhere cannot submit it.
 export function initCompanyKpiEdit() {
   for (const form of document.querySelectorAll<HTMLFormElement>('form.company-kpi-edit')) {
-    const editor = form.querySelector<HTMLElement>('.company-kpi-editor');
-    const input = editor?.querySelector<HTMLInputElement>('input');
+    const text = form.querySelector<HTMLElement>('.company-kpi-limit-text');
+    const input = form.querySelector<HTMLInputElement>('.company-kpi-limit-input');
     const pencil = form.querySelector<HTMLButtonElement>('.company-kpi-pencil');
-    if (!editor || !input || !pencil) continue;
+    const actions = form.querySelector<HTMLElement>('.company-kpi-limit-actions');
+    const unit = form.querySelector<HTMLElement>('.company-kpi-limit-unit'); // the data card shows "128 MiB" but is edited in MB
+    if (!text || !input || !pencil || !actions) continue;
+    const original = input.value;
     const open = (on: boolean) => {
-      editor.classList.toggle('tw-hidden', !on);
+      text.classList.toggle('tw-hidden', on);
       pencil.classList.toggle('tw-hidden', on);
+      input.classList.toggle('tw-hidden', !on);
+      actions.classList.toggle('tw-hidden', !on);
+      unit?.classList.toggle('tw-hidden', !on);
       input.disabled = !on;
-      if (on) input.focus();
+      if (on) {
+        input.focus();
+        input.select();
+      } else {
+        input.value = original;
+      }
     };
     pencil.addEventListener('click', () => open(true));
     form.querySelector('.company-kpi-cancel')!.addEventListener('click', () => open(false));

@@ -138,29 +138,18 @@
 				     first, peak second — the sidebar a department sees shows the
 				     current reading, and two numbers for "memory" with no word
 				     between them read as a disagreement. */}}
+				{{/* The limit is edited where it stands: the pencil turns the number
+				     after the slash into a field on the same line, Enter or the tick
+				     saves, Escape or the cross puts the number back. */}}
 				<form method="post" action="{{.AdminAppLink}}/limits" class="company-kpi company-kpi-edit">
 					{{.CsrfTokenHtml}}
-					<b{{if not .Summary.ResourcesMeasured}} class="text-grey"{{end}}>{{if .Summary.ResourcesMeasured}}{{.MemoryNowMB}}{{else}}—{{end}}<small>/{{.MemoryLimitMB}}MB{{if .Summary.ResourcesMeasured}} · {{ctx.Locale.Tr "company.adminapp.kpi_memory_peak" .Summary.MemMaxMB}}{{end}}</small>
-						<button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button></b>
+					<b{{if not .Summary.ResourcesMeasured}} class="text-grey"{{end}}>{{if .Summary.ResourcesMeasured}}{{.MemoryNowMB}}{{else}}—{{end}}<small>/<span class="company-kpi-limit"><span class="company-kpi-limit-text">{{.MemoryLimitMB}}</span><input type="number" name="memory_mb" class="company-kpi-limit-input tw-hidden" min="0" max="16384" step="1" value="{{if .Settings.Limits.MemoryMB}}{{.Settings.Limits.MemoryMB}}{{end}}" placeholder="{{.MemoryLimitMB}}" disabled>MB</span><button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button><span class="company-kpi-limit-actions tw-hidden"><button class="company-kpi-ok" aria-label="{{ctx.Locale.Tr "save"}}" data-tooltip-content="{{ctx.Locale.Tr "save"}}">{{svg "octicon-check" 12}}</button><button type="button" class="company-kpi-cancel" aria-label="{{ctx.Locale.Tr "cancel"}}" data-tooltip-content="{{ctx.Locale.Tr "cancel"}}">{{svg "octicon-x" 12}}</button></span>{{if .Summary.ResourcesMeasured}} · {{ctx.Locale.Tr "company.adminapp.kpi_memory_peak" .Summary.MemMaxMB}}{{end}}</small></b>
 					<span>{{ctx.Locale.Tr "company.adminapp.kpi_memory"}}</span>
-					<div class="company-kpi-editor tw-hidden">
-						<input type="number" name="memory_mb" min="0" max="16384" step="1" value="{{if .Settings.Limits.MemoryMB}}{{.Settings.Limits.MemoryMB}}{{end}}" placeholder="{{.MemoryLimitMB}}" disabled>
-						<span class="tw-text-12">MB</span>
-						<button class="ui tiny primary button">{{ctx.Locale.Tr "save"}}</button>
-						<button type="button" class="ui tiny basic button company-kpi-cancel">{{ctx.Locale.Tr "cancel"}}</button>
-					</div>
 				</form>
 				<form method="post" action="{{.AdminAppLink}}/limits" class="company-kpi company-kpi-edit">
 					{{.CsrfTokenHtml}}
-					<b{{if not .Summary.ResourcesMeasured}} class="text-grey"{{end}}>{{if .Summary.ResourcesMeasured}}{{.Summary.CPUMaxPct}}%{{else}}—{{end}}<small>/{{.CPUPercent}}%</small>
-						<button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button></b>
+					<b{{if not .Summary.ResourcesMeasured}} class="text-grey"{{end}}>{{if .Summary.ResourcesMeasured}}{{.Summary.CPUMaxPct}}%{{else}}—{{end}}<small>/<span class="company-kpi-limit"><span class="company-kpi-limit-text">{{.CPUPercent}}</span><input type="number" name="cpu_percent" class="company-kpi-limit-input tw-hidden" min="0" max="3200" step="1" value="{{if .Settings.Limits.CPUPercent}}{{.Settings.Limits.CPUPercent}}{{end}}" placeholder="{{.CPUPercent}}" disabled>%</span><button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button><span class="company-kpi-limit-actions tw-hidden"><button class="company-kpi-ok" aria-label="{{ctx.Locale.Tr "save"}}" data-tooltip-content="{{ctx.Locale.Tr "save"}}">{{svg "octicon-check" 12}}</button><button type="button" class="company-kpi-cancel" aria-label="{{ctx.Locale.Tr "cancel"}}" data-tooltip-content="{{ctx.Locale.Tr "cancel"}}">{{svg "octicon-x" 12}}</button></span></small></b>
 					<span>{{ctx.Locale.Tr "company.adminapp.kpi_cpu"}}</span>
-					<div class="company-kpi-editor tw-hidden">
-						<input type="number" name="cpu_percent" min="0" max="3200" step="1" value="{{if .Settings.Limits.CPUPercent}}{{.Settings.Limits.CPUPercent}}{{end}}" placeholder="{{.CPUPercent}}" disabled>
-						<span class="tw-text-12">%</span>
-						<button class="ui tiny primary button">{{ctx.Locale.Tr "save"}}</button>
-						<button type="button" class="ui tiny basic button company-kpi-cancel">{{ctx.Locale.Tr "cancel"}}</button>
-					</div>
 				</form>
 				{{if .DataUsage}}
 					{{/* Coloured from the warning threshold, not from full: a quota
@@ -170,15 +159,8 @@
 					     instance default, and a literal 0 reads as "no storage". */}}
 					<form method="post" action="{{.AdminAppLink}}/limits" class="company-kpi company-kpi-edit{{if .DataUsage.Full}} full{{else if .DataUsage.Warning}} warn{{end}}">
 						{{.CsrfTokenHtml}}
-						<b>{{FormatByteSize .DataUsage.Bytes}}<small>/{{FormatByteSize .DataUsage.QuotaBytes}}</small>
-							<button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button></b>
+						<b>{{FormatByteSize .DataUsage.Bytes}}<small>/<span class="company-kpi-limit"><span class="company-kpi-limit-text">{{FormatByteSize .DataUsage.QuotaBytes}}</span><input type="number" name="data_mb" class="company-kpi-limit-input tw-hidden" min="0" max="{{.MaxDataQuotaMB}}" step="1" value="{{if .Settings.Limits.DataMB}}{{.Settings.Limits.DataMB}}{{end}}" placeholder="{{.DefaultDataQuotaMB}}" disabled><span class="company-kpi-limit-unit tw-hidden">MB</span></span><button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button><span class="company-kpi-limit-actions tw-hidden"><button class="company-kpi-ok" aria-label="{{ctx.Locale.Tr "save"}}" data-tooltip-content="{{ctx.Locale.Tr "save"}}">{{svg "octicon-check" 12}}</button><button type="button" class="company-kpi-cancel" aria-label="{{ctx.Locale.Tr "cancel"}}" data-tooltip-content="{{ctx.Locale.Tr "cancel"}}">{{svg "octicon-x" 12}}</button></span></small></b>
 						<span>{{ctx.Locale.Tr "company.adminapp.kpi_data"}} {{if .DataUsage.QuotaBytes}}<small>{{.DataUsage.Percent}}%</small>{{end}}</span>
-						<div class="company-kpi-editor tw-hidden">
-							<input type="number" name="data_mb" min="0" max="{{.MaxDataQuotaMB}}" step="1" value="{{if .Settings.Limits.DataMB}}{{.Settings.Limits.DataMB}}{{end}}" placeholder="{{.DefaultDataQuotaMB}}" disabled>
-							<span class="tw-text-12">MB</span>
-							<button class="ui tiny primary button">{{ctx.Locale.Tr "save"}}</button>
-							<button type="button" class="ui tiny basic button company-kpi-cancel">{{ctx.Locale.Tr "cancel"}}</button>
-						</div>
 					</form>
 				{{end}}
 				{{if .Summary.Blocked}}<div class="company-kpi bad"><b>{{.Summary.Blocked}}</b><span>{{ctx.Locale.Tr "company.adminapp.kpi_blocked"}}</span></div>{{end}}
