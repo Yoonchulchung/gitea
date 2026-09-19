@@ -331,6 +331,9 @@ func renderDeployForm(ctx *context.Context) {
 	}
 
 	ctx.Data["DeployFormHeadingKey"] = formHeadingKey
+	// What would fail on this snapshot, found here rather than by the deploy
+	// or by the first person to open a page (company/deploycheck.go).
+	ctx.Data["DeployChecks"] = RunDeployChecks(ctx, ctx.Repo.Repository)
 
 	ctx.Data["Title"] = string(ctx.Locale.Tr("company.deploy.title"))
 	ctx.Data["Repo"] = ctx.Repo.Repository

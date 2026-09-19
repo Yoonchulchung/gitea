@@ -87,6 +87,7 @@ require (
 	github.com/sergi/go-diff v1.4.0
 	github.com/stretchr/testify v1.12.1
 	github.com/syndtr/goleveldb v1.0.0
+	github.com/tdewolff/parse/v2 v2.8.16
 	github.com/ulikunitz/xz v0.5.16
 	github.com/urfave/cli-docs/v3 v3.1.0
 	github.com/urfave/cli/v3 v3.11.0

@@ -69,6 +69,27 @@
 			</div>
 		{{end}}
 
+		{{/* Not a gate: the request can still be sent, since the checks are
+		     about syntax and a department may be asking for something else.
+		     But a file that does not parse is said here, at the line, before
+		     the deploy says it in a log. See company/deploycheck.go. */}}
+		{{with .DeployChecks}}
+			{{if or .Problems .Checked}}
+				<div class="ui {{if .Problems}}warning{{else}}positive{{end}} message company-deploy-checks">
+					<div class="header">{{svg "octicon-checklist" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.check.header"}}</div>
+					{{if .Problems}}
+						<p class="tw-mt-1">{{ctx.Locale.Tr "company.check.problems" (len .Findings)}}</p>
+						<ul class="tw-mt-1 tw-mb-0">
+							{{range .Findings}}<li><span class="tw-font-mono">{{.Path}}:{{.Line}}</span> — {{.Message}}</li>{{end}}
+						</ul>
+					{{else}}
+						<p class="tw-mt-1 tw-mb-0">{{ctx.Locale.Tr "company.check.ok" .Python .HTML .JS}}</p>
+					{{end}}
+					{{if .PythonUnavailable}}<p class="tw-text-12 tw-mt-1 tw-mb-0">{{ctx.Locale.Tr "company.check.python_unavailable"}}</p>{{end}}
+					{{if .Truncated}}<p class="tw-text-12 tw-mt-1 tw-mb-0">{{ctx.Locale.Tr "company.check.truncated"}}</p>{{end}}
+				</div>
+			{{end}}
+		{{end}}
 		<form class="ui form company-deploy-form" id="deploy-form" method="post">
 			{{/* Two columns: what is being deployed on the left, what is being
 			     asked for on the right. They are separate questions — one is a
