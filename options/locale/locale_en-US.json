@@ -4592,7 +4592,7 @@
   "company.err.migration_failed.admin": "Schema migration failed: %s",
   "company.err.rollback_too_old": "That version is too old to put back on your own, because the app has saved data since. An administrator can do it after taking a snapshot.",
   "company.err.rollback_too_old.admin": "The commit is %[1]d days old; departments may go back %[2]d days ([company] APP_DATA_ROLLBACK_MAX_DAYS). Deploy it as an administrator to override.",
-  "company.admin.col_data": "Data",
+  "company.admin.col_data": "Data (used / limit)",
   "company.data.title": "Data",
   "company.data.browse_header": "Browse the data",
   "company.data.browse_capped": "Showing the first %d rows of this query.",

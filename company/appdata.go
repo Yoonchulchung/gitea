@@ -649,6 +649,9 @@ func (u AppDataUsage) Warning() bool {
 // every read, and stopping it would turn a full disk into an outage.
 func (u AppDataUsage) Full() bool { return u.QuotaBytes > 0 && u.Bytes >= u.QuotaBytes }
 
+// QuotaMB is the limit as the list writes it, beside the memory limit.
+func (u AppDataUsage) QuotaMB() int64 { return u.QuotaBytes >> 20 }
+
 func appDataQuotaBytes(settings AppSettings) int64 {
 	mb := settings.Limits.DataMB
 	if mb <= 0 {

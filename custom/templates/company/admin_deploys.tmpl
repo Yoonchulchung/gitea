@@ -121,7 +121,7 @@
 						<th class="tw-w-1/8">{{ctx.Locale.Tr "company.admin.col_deploy"}}</th>
 						<th class="tw-w-1/8">{{ctx.Locale.Tr "company.admin.col_requests"}}</th>
 						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_memory"}}</th>
-						{{if $.DataEnabled}}<th class="tw-w-1/12">{{ctx.Locale.Tr "company.admin.col_data"}}</th>{{end}}
+						{{if $.DataEnabled}}<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_data"}}</th>{{end}}
 						<th class="tw-w-1/12"></th>
 					</tr>
 				</thead>
@@ -167,16 +167,21 @@
 								{{if .MemLimitMB}}
 									<div class="company-fleet-mem">
 										<span class="company-fleet-bar"><span class="company-fleet-bar-fill{{if ge .MemPct 90}} hot{{end}}" style="width: {{.MemPct}}%"></span></span>
-										<span class="tw-font-mono">{{if .MemPeakMB}}{{.MemNowMB}}{{else}}<span class="text-grey">—</span>{{end}} <span class="text-grey">/ {{.MemLimitMB}}MB</span></span>
+										<span>{{if .MemPeakMB}}{{.MemNowMB}}{{else}}<span class="text-grey">—</span>{{end}} <span class="text-grey">/ {{.MemLimitMB}}MB</span></span>
 									</div>
 								{{else}}
 									<span class="text-grey">—</span>
 								{{end}}
 							</td>
 							{{if $.DataEnabled}}
-								<td class="tw-text-13 tw-font-mono">
-									{{if .HasData}}
-										<span{{if .Data.Full}} class="company-data-full"{{else if .Data.Warning}} class="company-data-warn"{{end}}>{{FormatByteSize .Data.Bytes}}</span>
+								<td class="tw-text-13">
+									{{if and .HasData .Data.QuotaBytes}}
+										<div class="company-fleet-mem">
+											<span class="company-fleet-bar"><span class="company-fleet-bar-fill{{if .Data.Warning}} hot{{end}}" style="width: {{if gt .Data.Percent 100}}100{{else}}{{.Data.Percent}}{{end}}%"></span></span>
+											<span><span{{if .Data.Full}} class="company-data-full"{{else if .Data.Warning}} class="company-data-warn"{{end}}>{{FormatByteSize .Data.Bytes}}</span> <span class="text-grey">/ {{.Data.QuotaMB}}MB</span></span>
+										</div>
+									{{else if .HasData}}
+										<span>{{FormatByteSize .Data.Bytes}}</span>
 									{{else}}
 										<span class="text-grey">—</span>
 									{{end}}
