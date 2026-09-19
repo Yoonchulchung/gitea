@@ -108,6 +108,12 @@ func GateNonAdminUI(ctx *context.Context) {
 		// every request that renders anything, including the login page —
 		// where someone who cannot get in is exactly who needs the address.
 		SetPlatformFooterData(ctx)
+		// Which repository is the platform's own, for the repository header:
+		// it carries the snapshots every deploy request is made of, and a
+		// deploy request *from* it would feed it to itself.
+		if owner, name, err := centralDeployOwnerName(); err == nil {
+			ctx.Data["CompanyCentralRepoPath"] = owner + "/" + name
+		}
 	}
 
 	if ctx.Doer == nil {

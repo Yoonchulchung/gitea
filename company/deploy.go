@@ -193,8 +193,8 @@ type deployFilePreview struct {
 // snapshotFilesUnderPrefix), so staff can see exactly what they're sending
 // before they click through.
 func DeployForm(ctx *context.Context) {
-	if !ctx.Repo.Permission.CanRead(unit.TypeCode) {
-		ctx.NotFound(nil)
+	if !ctx.Repo.Permission.CanRead(unit.TypeCode) || isCentralDeployRepo(ctx.Repo.Repository) {
+		ctx.NotFound(nil) // the central repository cannot request a deploy of itself
 		return
 	}
 	renderDeployForm(ctx)
@@ -677,7 +677,7 @@ func groupDiffSegments(rows []deploySplitRow) []deployDiffSegment {
 // requester's ID so the rest of this package can still show/authorize
 // against them without granting any real access.
 func DeployPost(ctx *context.Context) {
-	if !ctx.Repo.Permission.CanRead(unit.TypeCode) {
+	if !ctx.Repo.Permission.CanRead(unit.TypeCode) || isCentralDeployRepo(ctx.Repo.Repository) {
 		ctx.NotFound(nil)
 		return
 	}

@@ -6,12 +6,15 @@ package company
 import (
 	"fmt"
 
+	"gitea.dev/models/db"
 	issues_model "gitea.dev/models/issues"
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
 	"gitea.dev/modules/timeutil"
 	"gitea.dev/services/context"
+
+	"xorm.io/xorm"
 )
 
 // An administrator's dashboard feed is Gitea's: every branch the platform
@@ -80,14 +83,28 @@ func SetDashboardDeploys(ctx *context.Context) {
 	}
 	ctx.Data["CompanyCentralRepoPath"] = central.FullName()
 
-	rows := make([]dashboardDeploy, 0, dashboardDeployRows)
-	for _, closed := range []bool{false, true} {
-		var prs []*issues_model.PullRequest
-		if err := deployRequestSession(ctx, central, "deploy/", closed).
-			Desc("issue.updated_unix").Limit(dashboardDeployRows).Find(&prs); err != nil {
-			log.Error("company: dashboard deploys: %v", err)
-			return
-		}
+	// Its own page parameter, so the feed's paging and this never move
+	// each other.
+	page := max(ctx.FormInt("deploys"), 1)
+	session := func() *xorm.Session {
+		return db.GetEngine(ctx).
+			Join("INNER", "issue", "issue.id = pull_request.issue_id").
+			Where("pull_request.base_repo_id = ?", central.ID).
+			And("pull_request.head_repo_id = ?", central.ID).
+			And("pull_request.head_branch LIKE ?", "deploy/%")
+	}
+	total, err := session().Count(new(issues_model.PullRequest))
+	if err != nil {
+		log.Error("company: dashboard deploys: %v", err)
+		return
+	}
+	var prs []*issues_model.PullRequest
+	if err := session().Desc("issue.updated_unix").Limit(dashboardDeployRows, (page-1)*dashboardDeployRows).Find(&prs); err != nil {
+		log.Error("company: dashboard deploys: %v", err)
+		return
+	}
+	rows := make([]dashboardDeploy, 0, len(prs))
+	{
 		for _, pr := range prs {
 			if err := pr.LoadIssue(ctx); err != nil {
 				continue
@@ -118,8 +135,7 @@ func SetDashboardDeploys(ctx *context.Context) {
 			rows = append(rows, row)
 		}
 	}
-	if len(rows) > dashboardDeployRows {
-		rows = rows[:dashboardDeployRows]
-	}
 	ctx.Data["DashboardDeploys"] = rows
+	ctx.Data["DashboardDeployPage"] = page
+	ctx.Data["DashboardDeployHasNext"] = int64(page*dashboardDeployRows) < total
 }

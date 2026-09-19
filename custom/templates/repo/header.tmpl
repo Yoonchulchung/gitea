@@ -14,6 +14,9 @@
 <div class="secondary-nav">
 	{{with .Repository}}
 	<div class="ui container">
+		{{/* The one repository that is the platform's, not a department's —
+		     see company.GateNonAdminUI for CompanyCentralRepoPath. */}}
+		{{$isCentral := and $.CompanyCentralRepoPath (eq (printf "%s/%s" .OwnerName .Name) $.CompanyCentralRepoPath)}}
 		<div class="repo-header flex-left-right">
 			{{/* left part */}}
 			<div class="flex-text-block">
@@ -37,6 +40,9 @@
 					{{end}}
 					{{if $.Permission.HasAnyUnitPublicAccess}}
 						<span class="ui basic orange label">{{ctx.Locale.Tr "repo.desc.public_access"}}</span>
+					{{end}}
+					{{if $isCentral}}
+						<span class="ui basic blue label not-mobile">{{svg "octicon-rocket" 12}} {{ctx.Locale.Tr "company.repo.central_badge"}}</span>
 					{{end}}
 					{{if .IsTemplate}}
 						<span class="ui basic label not-mobile">{{ctx.Locale.Tr "repo.desc.template"}}</span>
@@ -135,8 +141,10 @@
 							</form>
 						{{end}}
 					{{end}}
-					{{/* Administrators too: they make and deploy repositories of their own. */}}
-					{{if and (not .IsEmpty) ($.Permission.CanRead ctx.Consts.RepoUnitTypeCode)}}
+					{{/* Administrators too: they make and deploy repositories of their
+					     own. Never the central repository: a request from it would
+					     snapshot the snapshots into itself. */}}
+					{{if and (not .IsEmpty) (not $isCentral) ($.Permission.CanRead ctx.Consts.RepoUnitTypeCode)}}
 						<a class="ui compact small basic primary button" href="{{$.RepoLink}}/deploy">
 							{{ctx.Locale.Tr "company.deploy.title"}}
 						</a>

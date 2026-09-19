@@ -2,13 +2,13 @@
      deploy what, and how it went. Set by company.SetDashboardDeploys
      (company/dashboard_deploys.go); rendered only when there is something
      to show, like the apps panel. */}}
-{{with .DashboardDeploys}}
+{{if or .DashboardDeploys (gt .DashboardDeployPage 1)}}
 	<div class="ui segments company-dashboard-deploys">
 		<div class="ui segment company-dashboard-apps-head">
 			<strong>{{ctx.Locale.Tr "company.dashboard.deploys"}}</strong>
 			<a class="muted tw-text-12" href="{{AppSubUrl}}/-/admin/company-deploys">{{ctx.Locale.Tr "company.dashboard.deploys_all"}}</a>
 		</div>
-		{{range .}}
+		{{range .DashboardDeploys}}
 			<div class="ui segment company-dashboard-deploy">
 				<div class="company-dashboard-deploy-main">
 					<a class="company-dashboard-app-name" href="{{.AppLink}}">{{.Owner}}/{{.Repo}}</a>
@@ -22,6 +22,14 @@
 				{{with .Status}}
 					<span class="ui {{if eq .Status "approved" "deployed"}}green{{else if eq .Status "rejected" "deploy_failed"}}red{{else if eq .Status "cancelled"}}grey{{else}}yellow{{end}} tiny label">{{ctx.Locale.Tr (printf "company.deploy_status.%s" .Status)}}</span>
 				{{end}}
+			</div>
+		{{else}}
+			<div class="ui segment text-grey">{{ctx.Locale.Tr "company.dashboard.deploys_none"}}</div>
+		{{end}}
+		{{if or (gt .DashboardDeployPage 1) .DashboardDeployHasNext}}
+			<div class="ui segment tw-flex tw-justify-between">
+				{{if gt .DashboardDeployPage 1}}<a href="?deploys={{Eval .DashboardDeployPage "-" 1}}">&larr; {{ctx.Locale.Tr "company.dashboard.newer"}}</a>{{else}}<span></span>{{end}}
+				{{if .DashboardDeployHasNext}}<a href="?deploys={{Eval .DashboardDeployPage "+" 1}}">{{ctx.Locale.Tr "company.dashboard.older"}} &rarr;</a>{{end}}
 			</div>
 		{{end}}
 	</div>
