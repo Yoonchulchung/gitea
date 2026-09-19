@@ -78,7 +78,6 @@ func setDeployReviewData(ctx *gitea_context.Context, pr *issues_model.PullReques
 	ctx.Data["DeployDeptOwner"] = deptOwner
 	ctx.Data["DeployDeptName"] = deptName
 	ctx.Data["DeployDeptLink"] = fmt.Sprintf("%s/%s/%s", setting.AppSubURL, deptOwner, deptName)
-	ctx.Data["DeployFilesURL"] = fmt.Sprintf("%s/org/%s/dashboard/deploy-requests/%d", setting.AppSubURL, deptOwner, pr.ID)
 	ctx.Data["DeployChatURL"] = fmt.Sprintf("%s/company/deploy-request/%d/chat", setting.AppSubURL, pr.ID)
 	if _, _, requesterID, ok := parseDeployBranchName(pr.HeadBranch); ok {
 		if requester, err := user_model.GetUserByID(ctx, requesterID); err == nil {

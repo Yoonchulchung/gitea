@@ -94,6 +94,15 @@
 						{{if .ShowState}}
 							<span class="company-app-state {{.Status}}" data-tooltip-content="{{ctx.Locale.Tr .StatusLabel}}">{{ctx.Locale.Tr .StatusLabel}}</span>
 						{{end}}
+						{{/* A department reaches its app from the sidebar panel below;
+						     an administrator has no such panel, and the admin screens
+						     are two clicks away. Beside stop and redeploy, so "look
+						     at it, then decide" needs no detour. */}}
+						{{if and $.IsAdmin .Running}}
+							<a class="ui compact small basic button" href="{{AppSubUrl}}{{.AppURL}}" target="_blank" rel="noopener">
+								{{svg "octicon-link-external" 14}} {{ctx.Locale.Tr "company.app.open"}}
+							</a>
+						{{end}}
 						{{if .CanControl}}
 							{{if .Suspended}}
 								{{/* Deliberately no start button: an app an administrator

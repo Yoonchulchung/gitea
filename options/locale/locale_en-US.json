@@ -4051,7 +4051,6 @@
   "company.review.department": "App",
   "company.review.requester": "Requested by",
   "company.review.submitted": "Submitted",
-  "company.review.files": "See the changed files",
   "company.review.decide": "Approve with \"Create merge commit\" below; reject with \"Close Pull Request\" and say why.",
   "company.review.perms_none": "No extra permissions requested.",
   "company.review.packages": "Packages (%d)",

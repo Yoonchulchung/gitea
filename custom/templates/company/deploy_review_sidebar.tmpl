@@ -20,9 +20,6 @@
 				{{ctx.Locale.Tr (printf "company.deploy_status.%s" .Status)}}
 			</div>
 		{{end}}
-		<div class="tw-mt-3">
-			<a class="ui basic tiny fluid button" href="{{.DeployFilesURL}}">{{svg "octicon-file-diff" 14 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.files"}}</a>
-		</div>
 		{{if not .Issue.IsClosed}}
 			<p class="text-grey tw-text-12 tw-mt-3 tw-mb-0">{{ctx.Locale.Tr "company.review.decide"}}</p>
 		{{end}}
