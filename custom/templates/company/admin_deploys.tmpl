@@ -18,23 +18,22 @@
 		     figure is made of: a number with its meaning underneath was read
 		     twice before it was understood. */}}
 		<div class="company-kpis company-kpis-titled">
-			<div class="company-kpi"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_apps"}}</span><b>{{.CountTotal}}</b></div>
-			<div class="company-kpi"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_running"}}</span><b>{{.CountRunning}}</b></div>
-			<div class="company-kpi"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_error_rate"}}</span><b>{{printf "%.1f" .Fleet.ErrorRate}}%</b><span>{{ctx.Locale.Tr "company.admin.kpi_error_rate_note"}}</span></div>
-			<div class="company-kpi"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_p95"}}</span><b>{{.Fleet.P95}}<small>ms</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_p95_note"}}</span></div>
+			<div class="company-kpi"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_apps"}}</h3><b>{{.CountTotal}}</b></div>
+			<div class="company-kpi"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_running"}}</h3><b>{{.CountRunning}}</b></div>
+			<div class="company-kpi"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_error_rate"}}</h3><b>{{printf "%.1f" .Fleet.ErrorRate}}%</b></div>
+			<div class="company-kpi"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_p95"}}</h3><b>{{.Fleet.P95}}<small>ms</small></b></div>
 			{{/* The limits added up against the machine: thirty modest apps, or
 			     one generous one, can promise more memory than exists, and this
 			     is where that shows before the kernel decides who finds out. */}}
 			<div class="company-kpi{{if .Fleet.CommitOver}} full{{else if .Fleet.CommitWarn}} warn{{end}}">
-				<span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_committed"}}</span>
-				<b>{{.Fleet.CommittedMB}}<small>MB{{if .Fleet.HostKnown}} / {{.Fleet.HostTotalMB}}MB{{end}}</small></b>
-				<span>{{if .Fleet.HostKnown}}{{ctx.Locale.Tr "company.admin.kpi_committed_note" .Fleet.CommitPct}}{{else}}{{ctx.Locale.Tr "company.admin.kpi_committed_note_nohost"}}{{end}}</span>
+				<h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_committed"}}</h3>
+				<b>{{.Fleet.CommittedMB}}<small>MB{{if .Fleet.HostKnown}} / {{.Fleet.HostTotalMB}}MB · {{.Fleet.CommitPct}}%{{end}}</small></b>
 			</div>
 			{{if .Fleet.HostAvailable}}
-				<div class="company-kpi"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_host_free"}}</span><b>{{.Fleet.HostAvailMB}}<small>MB</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_host_free_note"}}</span></div>
+				<div class="company-kpi"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_host_free"}}</h3><b>{{.Fleet.HostAvailMB}}<small>MB</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_host_free_note"}}</span></div>
 			{{end}}
 			{{if .Fleet.HostKnown}}
-				<div class="company-kpi{{if eq .Fleet.RoomApps 0}} warn{{end}}"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_room"}}</span><b>{{.Fleet.RoomApps}}<small> {{ctx.Locale.Tr "company.admin.kpi_room_unit"}}</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_room_note" .Fleet.DefaultMemMB .Fleet.RoomMB}}</span></div>
+				<div class="company-kpi{{if eq .Fleet.RoomApps 0}} warn{{end}}"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_room"}}</h3><b>{{.Fleet.RoomApps}}<small> {{ctx.Locale.Tr "company.admin.kpi_room_unit"}} · {{.Fleet.RoomMB}}MB</small></b></div>
 			{{end}}
 		</div>
 		{{/* Which wall holds the limits: the kernel (a systemd scope) or the
@@ -79,82 +78,136 @@
 			</div>
 		{{end}}
 
-		<h4 class="ui top attached header">
-			{{ctx.Locale.Tr "company.admin.deploys_title" .CountTotal}}
-			<div class="ui right">
-				<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.counts" .CountRunning .CountStopped .CountFailed}}</span>
+		{{/* The list: a state tab, an owner, an order, ten at a time — and a
+		     row that says what the app is before the figures say how it is
+		     doing. Ticked rows can be stopped or started together
+		     (company/admin_bulk.go; the counting and the auto-submitting
+		     selects are in web_src/js/features/company-app-charts.ts). */}}
+		<form method="get" class="company-fleet-bar" id="fleet-filters">
+			<input type="hidden" name="page" value="1">
+			<div class="company-fleet-tabs">
+				{{$q := .}}
+				<a class="company-fleet-tab{{if or (eq .ListState "") (eq .ListState "all")}} active{{end}}" href="?state=all&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.admin.tab_all"}} <b>{{.CountTotal}}</b></a>
+				<a class="company-fleet-tab{{if eq .ListState "running"}} active{{end}}" href="?state=running&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.status.running"}} <b>{{.CountRunning}}</b></a>
+				<a class="company-fleet-tab{{if eq .ListState "stopped"}} active{{end}}" href="?state=stopped&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.status.stopped"}} <b>{{.CountStopped}}</b></a>
+				<a class="company-fleet-tab{{if eq .ListState "failed"}} active{{end}}" href="?state=failed&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.status.failed"}} <b>{{.CountFailed}}</b></a>
+				<a class="company-fleet-tab{{if eq .ListState "undeployed"}} active{{end}}" href="?state=undeployed&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.admin.tab_undeployed"}} <b>{{.CountUndeployed}}</b></a>
 			</div>
-		</h4>
-		<div class="ui attached table segment">
-			<table class="ui very basic table">
+			<div class="company-fleet-controls">
+				<input type="hidden" name="state" value="{{.ListState}}">
+				<label class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.filter_owner"}}
+					<select name="owner" class="company-fleet-select">
+						<option value="">{{ctx.Locale.Tr "company.admin.tab_all"}}</option>
+						{{range .Owners}}<option value="{{.}}" {{if eq $.ListOwner .}}selected{{end}}>{{.}}</option>{{end}}
+					</select>
+				</label>
+				<label class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.filter_sort"}}
+					<select name="sort" class="company-fleet-select">
+						<option value="recent" {{if or (eq .ListSort "") (eq .ListSort "recent")}}selected{{end}}>{{ctx.Locale.Tr "company.admin.sort_recent"}}</option>
+						<option value="name" {{if eq .ListSort "name"}}selected{{end}}>{{ctx.Locale.Tr "company.admin.sort_name"}}</option>
+						<option value="memory" {{if eq .ListSort "memory"}}selected{{end}}>{{ctx.Locale.Tr "company.admin.sort_memory"}}</option>
+					</select>
+				</label>
+			</div>
+		</form>
+		<form method="post" action="{{AppSubUrl}}/-/admin/company-deploys/bulk" class="company-fleet" id="fleet-bulk">
+			{{.CsrfTokenHtml}}
+			<table class="ui very basic table company-fleet-table">
 				<thead>
 					<tr>
-						<th class="tw-w-1/12">{{ctx.Locale.Tr "company.admin.col_status"}}</th>
+						<th class="company-fleet-check"><input type="checkbox" class="company-fleet-check-all" aria-label="{{ctx.Locale.Tr "company.admin.select_all"}}"></th>
 						<th>{{ctx.Locale.Tr "company.admin.col_app"}}</th>
-						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_deploy"}}</th>
-						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_requests"}}</th>
+						<th class="tw-w-1/12">{{ctx.Locale.Tr "company.admin.col_status"}}</th>
+						<th class="tw-w-1/8">{{ctx.Locale.Tr "company.admin.col_deploy"}}</th>
+						<th class="tw-w-1/8">{{ctx.Locale.Tr "company.admin.col_requests"}}</th>
 						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_memory"}}</th>
 						{{if $.DataEnabled}}<th class="tw-w-1/12">{{ctx.Locale.Tr "company.admin.col_data"}}</th>{{end}}
+						<th class="tw-w-1/12"></th>
 					</tr>
 				</thead>
 				<tbody>
 					{{range .Rows}}
 						<tr>
-							<td>{{template "company/admin_deploys_status" .State}}</td>
+							<td class="company-fleet-check"><input type="checkbox" name="app" value="{{.State.Owner}}/{{.State.Repo}}" class="company-fleet-check-row"></td>
 							<td>
 								{{if .Repo}}
-									<a href="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .State.Owner}}/{{PathEscape .State.Repo}}">{{.State.Owner}}/{{.State.Repo}}</a>
-									<a class="muted tw-ml-2 tw-text-12" href="{{.Repo.Link}}">{{svg "octicon-link-external" 12}}</a>
+									<a class="company-fleet-name" href="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .State.Owner}}/{{PathEscape .State.Repo}}">{{.State.Owner}}/{{.State.Repo}}</a>
+									<a class="muted tw-ml-1 tw-text-12" href="{{.Repo.Link}}">{{svg "octicon-link-external" 12}}</a>
 								{{else}}
-									{{.State.Owner}}/{{.State.Repo}}
+									<span class="company-fleet-name">{{.State.Owner}}/{{.State.Repo}}</span>
+								{{end}}
+								<div class="company-fleet-sub{{if or .Odd (not .Repo)}} odd{{end}}">
+									{{if not .Repo}}{{svg "octicon-alert" 12}} {{ctx.Locale.Tr "company.admin.repo_gone"}}
+									{{else if .Odd}}{{svg "octicon-alert" 12}} {{ctx.Locale.Tr "company.admin.sub_odd_name"}}
+									{{else if eq .Kind "running"}}FastAPI · {{if .State.Sandboxed}}{{ctx.Locale.Tr "company.admin.sub_sandboxed"}}{{else}}<span class="text-red">{{ctx.Locale.Tr "company.admin.unsandboxed"}}</span>{{end}}{{if .NetworkOpen}} · <span class="text-red">{{ctx.Locale.Tr "company.admin.network_open"}}</span>{{end}}
+									{{else if eq .Kind "failed"}}{{ctx.Locale.Tr "company.admin.sub_failed"}}{{if .State.Reason}} · <code>{{.State.Reason}}</code>{{end}}
+									{{else if eq .Kind "undeployed"}}{{ctx.Locale.Tr "company.admin.sub_undeployed"}}
+									{{else}}{{ctx.Locale.Tr "company.admin.sub_stopped"}}{{end}}
+								</div>
+							</td>
+							<td>
+								{{if eq .Kind "undeployed"}}
+									<span class="company-fleet-pill undeployed">{{ctx.Locale.Tr "company.admin.tab_undeployed"}}</span>
+								{{else}}
+									<span class="company-fleet-pill {{.State.Actual}}">{{template "company/admin_deploys_status" .State}}</span>
 								{{end}}
 							</td>
 							<td class="tw-text-13">
-								{{if .State.UpdatedAt}}
-									{{DateUtils.TimeSince .State.UpdatedAt}}
-								{{else}}
-									<span class="text-grey">{{ctx.Locale.Tr "company.admin.never_deployed"}}</span>
-								{{end}}
+								{{if .State.UpdatedAt}}{{DateUtils.TimeSince .State.UpdatedAt}}{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.admin.never_deployed"}}</span>{{end}}
 							</td>
-							{{/* No health column: the status already comes from the health
-							     check (a failing one flips it), and the app page has the
-							     detail. Memory sits here instead — the figure that decides
-							     whether the limits can all be honoured. */}}
-							{{/* The shape, not just the number: "1.2k" cannot say whether
-							     that is normal for this app, and a spike is what someone
-							     scanning this page is looking for. */}}
 							<td class="tw-text-13">
 								{{if .Sparkline}}
 									{{template "company/sparkline" dict "Points" .Sparkline}}
-									<span class="text-grey tw-ml-1">{{.Requests}}</span>
+									<b class="tw-ml-1">{{.Requests}}</b>
 								{{else}}
 									<span class="text-grey">—</span>
 								{{end}}
 							</td>
 							<td class="tw-text-13">
 								{{if .MemLimitMB}}
-									{{if .MemPeakMB}}{{.MemNowMB}}<span class="text-grey">/{{.MemLimitMB}}MB · {{ctx.Locale.Tr "company.adminapp.kpi_memory_peak" .MemPeakMB}}</span>{{else}}<span class="text-grey">—/{{.MemLimitMB}}MB</span>{{end}}
+									<div class="company-fleet-mem">
+										<span class="company-fleet-bar"><span class="company-fleet-bar-fill{{if ge .MemPct 90}} hot{{end}}" style="width: {{.MemPct}}%"></span></span>
+										<span class="tw-font-mono">{{if .MemPeakMB}}{{.MemNowMB}}{{else}}<span class="text-grey">—</span>{{end}} <span class="text-grey">/ {{.MemLimitMB}}MB</span></span>
+									</div>
 								{{else}}
 									<span class="text-grey">—</span>
 								{{end}}
 							</td>
 							{{if $.DataEnabled}}
-								<td class="tw-text-13">
+								<td class="tw-text-13 tw-font-mono">
 									{{if .HasData}}
-										<span{{if .Data.Full}} class="company-data-full"{{else if .Data.Warning}} class="company-data-warn"{{end}}>{{.Data.Percent}}%</span>
-										<span class="text-grey tw-ml-1">{{FormatByteSize .Data.Bytes}}</span>
+										<span{{if .Data.Full}} class="company-data-full"{{else if .Data.Warning}} class="company-data-warn"{{end}}>{{FormatByteSize .Data.Bytes}}</span>
 									{{else}}
 										<span class="text-grey">—</span>
 									{{end}}
 								</td>
 							{{end}}
+							<td class="tw-text-right">
+								{{if and .Repo (eq .Kind "undeployed")}}
+									<a class="ui tiny basic button" href="{{.Repo.Link}}/deploy">{{ctx.Locale.Tr "company.admin.first_deploy"}}</a>
+								{{else if .Repo}}
+									<a class="ui tiny basic button" href="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .State.Owner}}/{{PathEscape .State.Repo}}">{{ctx.Locale.Tr "company.admin.manage"}}</a>
+								{{end}}
+							</td>
 						</tr>
 					{{else}}
-						<tr><td colspan="{{if .DataEnabled}}6{{else}}5{{end}}" class="text-grey">{{ctx.Locale.Tr "company.admin.no_repos"}}</td></tr>
+						<tr><td colspan="{{if .DataEnabled}}8{{else}}7{{end}}" class="text-grey">{{ctx.Locale.Tr "company.admin.no_repos"}}</td></tr>
 					{{end}}
 				</tbody>
 			</table>
-		</div>
+			<div class="company-fleet-foot">
+				<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.showing" .ListFrom .ListTo .ListTotal}} · {{ctx.Locale.Tr "company.admin.selected" 0}}</span>
+				<span class="company-fleet-bulk tw-hidden">
+					<button class="ui tiny button" name="verb" value="stop">{{ctx.Locale.Tr "company.app.stop"}}</button>
+					<button class="ui tiny button" name="verb" value="start">{{ctx.Locale.Tr "company.app.start"}}</button>
+				</span>
+				<span class="company-fleet-pager">
+					{{if gt .ListPage 1}}<a class="ui tiny basic button" href="?{{.ListQuery}}&page={{Eval .ListPage "-" 1}}">{{ctx.Locale.Tr "company.admin.prev"}}</a>{{else}}<span class="ui tiny basic button disabled">{{ctx.Locale.Tr "company.admin.prev"}}</span>{{end}}
+					<span class="tw-text-13">{{.ListPage}} / {{.ListPages}}</span>
+					{{if lt .ListPage .ListPages}}<a class="ui tiny basic button" href="?{{.ListQuery}}&page={{Eval .ListPage "+" 1}}">{{ctx.Locale.Tr "company.admin.next"}}</a>{{else}}<span class="ui tiny basic button disabled">{{ctx.Locale.Tr "company.admin.next"}}</span>{{end}}
+				</span>
+			</div>
+		</form>
 	</div>
 <style>
 .company-deploys-attention-header { background: var(--color-error-bg) !important; }

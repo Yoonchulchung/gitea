@@ -6,9 +6,11 @@ package company
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"gitea.dev/models/db"
 	repo_model "gitea.dev/models/repo"
@@ -61,6 +63,73 @@ type adminDeployRow struct {
 	MemLimitMB int
 	MemNowMB   int
 	MemPeakMB  int
+}
+
+// Kind is how the list groups an app: what it is doing, or that it has
+// never been deployed — a repository waiting, which "stopped" misdescribes.
+func (r *adminDeployRow) Kind() string {
+	switch {
+	case r.State.Actual == AppStateRunning:
+		return "running"
+	case r.State.Actual == AppStateFailed:
+		return "failed"
+	case r.State.IsBusy():
+		return "running"
+	case !r.State.HasRelease && r.State.UpdatedAt == 0:
+		return "undeployed"
+	default:
+		return "stopped"
+	}
+}
+
+// MemPct is the bar under the memory figure, capped at the limit.
+func (r *adminDeployRow) MemPct() int {
+	if r.MemLimitMB <= 0 || r.MemNowMB <= 0 {
+		return 0
+	}
+	return min(r.MemNowMB*100/r.MemLimitMB, 100)
+}
+
+// Odd is a repository name that follows no naming rule — no letter or
+// digit in it — which is what a test left behind looks like.
+func (r *adminDeployRow) Odd() bool {
+	return !strings.ContainsFunc(r.State.Repo, func(c rune) bool { return unicode.IsLetter(c) || unicode.IsDigit(c) })
+}
+
+const adminDeploysPageSize = 10
+
+// filterDeployRows keeps the rows a state tab and an owner select ask for.
+func filterDeployRows(rows []*adminDeployRow, kind, owner string) []*adminDeployRow {
+	out := rows[:0:0]
+	for _, r := range rows {
+		if kind != "" && kind != "all" && r.Kind() != kind {
+			continue
+		}
+		if owner != "" && !strings.EqualFold(r.State.Owner, owner) {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// sortDeployRows orders by what the select says: the most recently
+// deployed first, by name, or by memory in use.
+func sortDeployRows(rows []*adminDeployRow, by string) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		switch by {
+		case "name":
+			if a.State.Owner != b.State.Owner {
+				return a.State.Owner < b.State.Owner
+			}
+			return a.State.Repo < b.State.Repo
+		case "memory":
+			return a.MemNowMB > b.MemNowMB
+		default:
+			return a.State.UpdatedAt > b.State.UpdatedAt
+		}
+	})
 }
 
 // AdminDeploys lists every department app and its current state.
@@ -129,20 +198,29 @@ func AdminDeploys(ctx *context.Context) {
 	})
 
 	attention := make([]*adminDeployRow, 0, len(rows))
-	var running, stopped, failed int
+	var running, stopped, failed, undeployed int
+	owners := map[string]bool{}
 	for _, r := range rows {
 		if r.NeedsAttention {
 			attention = append(attention, r)
 		}
-		switch r.State.Actual {
-		case AppStateRunning:
+		owners[r.State.Owner] = true
+		switch r.Kind() {
+		case "running":
 			running++
-		case AppStateFailed:
+		case "failed":
 			failed++
+		case "undeployed":
+			undeployed++
 		default:
 			stopped++
 		}
 	}
+	ownerNames := make([]string, 0, len(owners))
+	for o := range owners {
+		ownerNames = append(ownerNames, o)
+	}
+	sort.Strings(ownerNames)
 
 	// The build environment, on the page an admin already opens — a missing
 	// interpreter or a broken base package list stops every deploy, and
@@ -162,11 +240,32 @@ func AdminDeploys(ctx *context.Context) {
 
 	ctx.Data["DataEnabled"] = AppDataEnabled()
 	ctx.Data["Title"] = ctx.Locale.TrString("company.admin.nav_deploys")
-	ctx.Data["Rows"] = rows
 	ctx.Data["Attention"] = attention
 	ctx.Data["CountTotal"] = len(rows)
-	ctx.Data["Fleet"] = summarizeFleet(rows, since)
+	ctx.Data["Fleet"] = summarizeFleet(rows, since) // fills every row's memory figures first
 	ctx.Data["CountRunning"] = running
+	ctx.Data["CountUndeployed"] = undeployed
+	ctx.Data["Owners"] = ownerNames
+
+	// The list itself: a state tab, an owner, an order, a page of ten.
+	kind, owner, sortBy := ctx.FormString("state"), ctx.FormString("owner"), ctx.FormString("sort")
+	shown := filterDeployRows(rows, kind, owner)
+	sortDeployRows(shown, sortBy)
+	page := max(ctx.FormInt("page"), 1)
+	pages := max((len(shown)+adminDeploysPageSize-1)/adminDeploysPageSize, 1)
+	page = min(page, pages)
+	from := (page - 1) * adminDeploysPageSize
+	to := min(from+adminDeploysPageSize, len(shown))
+	ctx.Data["Rows"] = shown[from:to]
+	ctx.Data["ListState"] = kind
+	ctx.Data["ListOwner"] = owner
+	ctx.Data["ListSort"] = sortBy
+	ctx.Data["ListPage"] = page
+	ctx.Data["ListPages"] = pages
+	ctx.Data["ListFrom"] = from + 1
+	ctx.Data["ListTo"] = to
+	ctx.Data["ListTotal"] = len(shown)
+	ctx.Data["ListQuery"] = "state=" + url.QueryEscape(kind) + "&owner=" + url.QueryEscape(owner) + "&sort=" + url.QueryEscape(sortBy)
 	ctx.Data["CountStopped"] = stopped
 	ctx.Data["CountFailed"] = failed
 	ctx.HTML(http.StatusOK, tplAdminDeploys)

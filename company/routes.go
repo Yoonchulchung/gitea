@@ -84,6 +84,7 @@ func RegisterAdminRoutes(m *web.Router) {
 	// /{owner}/{repo}/… route would be reachable by non-admins the moment
 	// it existed.
 	m.Get("/company-deploys", AdminDeploys)
+	m.Post("/company-deploys/bulk", AdminBulkControl) // the apps ticked on the list — company/admin_bulk.go
 	// Package policy is its own page: the dashboard is about what is
 	// happening now, this is about what every app may install.
 	// Outbound access across every app at once. Per-app it was already

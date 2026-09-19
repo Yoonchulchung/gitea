@@ -56,7 +56,7 @@ import {initColorPickers} from './features/colorpicker.ts';
 import {initCompanyWorkspace} from './features/company-workspace.ts';
 import {initCompanyDeployPreview, initCompanyDeployReview, initCompanyDeployReviewPackages} from './features/company-deploy-review.ts';
 import {initCompanyDeployStatus} from './features/company-deploy-status.ts';
-import {initCompanyAppCharts, initCompanyConfirmForms, initCompanyKpiEdit} from './features/company-app-charts.ts';
+import {initCompanyAppCharts, initCompanyConfirmForms, initCompanyFleet, initCompanyKpiEdit} from './features/company-app-charts.ts';
 import {initCompanyAppEnv} from './features/company-app-env.ts';
 import {initCompanyDeployForm, initCompanyDeploySubmit} from './features/company-deploy-form.ts';
 import {initCompanySettingsAI} from './features/company-settings-ai.ts';
@@ -174,6 +174,7 @@ const initPerformanceTracer = callInitFunctions([
   initCompanyAppEnv,
   initCompanyConfirmForms,
   initCompanyKpiEdit, // the pencil on the admin app page's limit cards
+  initCompanyFleet, // the admin app list's filters, ticks and bulk buttons
   initCompanyDeployForm,
   initCompanyDeploySubmit,
   initCompanySettingsAI,
