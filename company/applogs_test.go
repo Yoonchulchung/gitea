@@ -130,3 +130,45 @@ func TestSplitLogTimeLeavesUnstampedLinesWhole(t *testing.T) {
 type closableBuffer struct{ bytes.Buffer }
 
 func (closableBuffer) Close() error { return nil }
+
+// The files rotate by size, not by day, so a person looking for last week
+// picks a period; and a page holds only so many lines, so they can turn back.
+func TestLogFilesHaveAPeriodAndPagesTurnBack(t *testing.T) {
+	withTempAppData(t)
+	p := appPathsFor("PO", "app")
+	require.NoError(t, os.MkdirAll(p.logs, 0o700))
+	stamp := func(day int, line string) string {
+		return time.Date(2026, 9, day, 10, 0, 0, 0, time.UTC).Format(logTimeLayout) + " " + line + "\n"
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(p.logs, appLogName+".1"), []byte(stamp(10, "old one")+stamp(11, "old two")), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(p.logs, appLogName), []byte(stamp(18, "new one")+stamp(19, "new two")+stamp(19, "new three")), 0o600))
+
+	files := AppLogFiles("PO", "app")
+	require.Len(t, files, 2)
+	assert.Equal(t, appLogName+".1", files[0].Name, "oldest first")
+	assert.Equal(t, time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC).Unix(), files[0].From)
+	assert.Equal(t, time.Date(2026, 9, 11, 10, 0, 0, 0, time.UTC).Unix(), files[0].To)
+	assert.True(t, files[1].Live)
+
+	lines, _, err := ReadAppLogs("PO", "app", LogQuery{File: appLogName + ".1"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"old one", "old two"}, texts(lines), "one file, chosen by period")
+
+	lines, truncated, err := ReadAppLogs("PO", "app", LogQuery{Limit: 2})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"new two", "new three"}, texts(lines))
+	assert.True(t, truncated, "there is more before this page")
+
+	lines, truncated, err = ReadAppLogs("PO", "app", LogQuery{Limit: 2, Before: 2})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"old two", "new one"}, texts(lines), "turned back one page")
+	assert.True(t, truncated)
+
+	lines, truncated, err = ReadAppLogs("PO", "app", LogQuery{Limit: 2, Before: 4})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"old one"}, texts(lines), "the last page is what is left")
+	assert.False(t, truncated)
+
+	_, _, err = ReadAppLogs("PO", "app", LogQuery{File: "../../etc/passwd"})
+	require.NoError(t, err)
+}

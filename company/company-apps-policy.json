@@ -1,1 +1,0 @@
-{"Version":0,"Defaults":{"Enabled":null,"BasePackages":null,"Access":"","Install":null,"Start":"","HealthPath":"","Limits":{"MemoryMB":0,"Processes":0,"OpenFiles":0,"TmpMB":0,"DataMB":0},"Network":{"Mode":"","Allow":null},"Download":{"Policy":"","MaxResponseBytes":0},"Dependencies":{"Allow":null,"AllowExtra":null},"Security":{"Headers":null}},"Apps":null}

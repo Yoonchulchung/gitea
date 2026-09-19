@@ -392,7 +392,10 @@ func AppLogs(ctx *context.Context) {
 		Text:   ctx.FormString("q"),
 		Regexp: ctx.FormBool("regexp"),
 		Limit:  ctx.FormInt("limit"),
+		File:   ctx.FormString("file"),
+		Before: ctx.FormInt("before"),
 	}
+	setLogPagingData(ctx, query, AppLogFiles(owner, name))
 	lines, truncated, err := ReadAppLogs(owner, name, query)
 
 	// The app's own output, so it names the server's paths — a Python

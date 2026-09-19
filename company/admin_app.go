@@ -242,7 +242,10 @@ func AdminAppLogs(ctx *context.Context) {
 		Text:   ctx.FormString("q"),
 		Regexp: ctx.FormBool("regexp"),
 		Limit:  ctx.FormInt("limit"),
+		File:   ctx.FormString("file"),
+		Before: ctx.FormInt("before"),
 	}
+	setLogPagingData(ctx, query, AppLogFiles(st.Owner, st.Repo))
 	lines, truncated, err := ReadAppLogs(st.Owner, st.Repo, query)
 
 	// A filter over what was read, not another search: the patterns are the

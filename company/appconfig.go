@@ -360,6 +360,11 @@ func SetAppsConfig(cfg *AppsConfig) {
 	appsConfigCache.mu.Unlock()
 	// Kept on disk so a restart that cannot read the repository still
 	// applies the policy that was in force, not the built-in defaults.
+	// Only under a data directory: tests run with none, and wrote the copy
+	// into whatever their working directory was.
+	if setting.AppDataPath == "" {
+		return
+	}
 	if body, err := json.Marshal(cfg); err == nil {
 		if err := writeFileAtomic(lastGoodAppsConfigFile(), body); err != nil {
 			log.Warn("company: could not keep a copy of the policy: %v", err)
