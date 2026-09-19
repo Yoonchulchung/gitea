@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	issues_model "gitea.dev/models/issues"
+	repo_model "gitea.dev/models/repo"
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/git"
 	"gitea.dev/modules/json"
@@ -167,6 +168,40 @@ func packagesToApprove(names []string, packages []reviewPackage) []PermissionReq
 	return out
 }
 
+// deployApprovalCheck is the rule itself, for both doors to the same
+// merge: the pull request at index is a deploy request or it is not, and if
+// it is, doer approves it only as a site administrator. Every decision is
+// logged with who made it.
+func deployApprovalCheck(ctx context.Context, doer *user_model.User, repo *repo_model.Repository, index int64) (pr *issues_model.PullRequest, deptOwner, deptName string, refuse bool) {
+	pr, err := issues_model.GetPullRequestByIndex(ctx, repo.ID, index)
+	if err != nil {
+		return nil, "", "", false
+	}
+	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, false)
+	if !ok {
+		return nil, "", "", false
+	}
+	if doer == nil || !doer.IsAdmin {
+		name := "anonymous"
+		if doer != nil {
+			name = doer.Name
+		}
+		log.Warn("company: deploy request #%d for %s/%s: approval refused for non-administrator %q", pr.ID, deptOwner, deptName, name)
+		return pr, deptOwner, deptName, true
+	}
+	log.Info("company: deploy request #%d for %s/%s approved by %s", pr.ID, deptOwner, deptName, doer.Name)
+	return pr, deptOwner, deptName, false
+}
+
+// GuardDeployApprovalAPI is the same rule on the API's merge route
+// (routers/api/v1/api.go): a token with write access to the central
+// repository is not an administrator's approval either.
+func GuardDeployApprovalAPI(ctx *gitea_context.APIContext) {
+	if _, _, _, refuse := deployApprovalCheck(ctx, ctx.Doer, ctx.Repo.Repository, ctx.PathParamInt64("index")); refuse {
+		ctx.APIError(http.StatusForbidden, "only an administrator can approve a deploy request")
+	}
+}
+
 // GuardDeployApproval runs ahead of Gitea's own merge handler on POST
 // /{owner}/{repo}/pulls/{index}/merge (routers/web/web.go). For anything
 // that is not a Deploy Request it does nothing.
@@ -182,20 +217,14 @@ func packagesToApprove(names []string, packages []reviewPackage) []PermissionReq
 // the request, so that ApplyPermissionsOnMerge writes them to apps.yml with
 // everything else the merge approves.
 func GuardDeployApproval(ctx *gitea_context.Context) {
-	pr, err := issues_model.GetPullRequestByIndex(ctx, ctx.Repo.Repository.ID, ctx.PathParamInt64("index"))
-	if err != nil {
-		return // Gitea's handler answers for a pull request that is not there
-	}
-	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, false)
-	if !ok {
-		return
-	}
-	if ctx.Doer == nil || !ctx.Doer.IsAdmin {
-		log.Warn("company: deploy request #%d for %s/%s: approval refused for non-administrator %q", pr.ID, deptOwner, deptName, ctx.Doer.Name)
+	pr, deptOwner, deptName, refuse := deployApprovalCheck(ctx, ctx.Doer, ctx.Repo.Repository, ctx.PathParamInt64("index"))
+	if refuse {
 		ctx.HTTPError(http.StatusForbidden, "only an administrator can approve a deploy request")
 		return
 	}
-	log.Info("company: deploy request #%d for %s/%s approved by %s", pr.ID, deptOwner, deptName, ctx.Doer.Name)
+	if pr == nil {
+		return // not a deploy request, or not there: Gitea's handler answers
+	}
 
 	names := ctx.Req.Form["company_package"] // parsed by the form binding just before
 	if len(names) == 0 {

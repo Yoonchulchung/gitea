@@ -4,6 +4,7 @@
 package company
 
 import (
+	stdcontext "context"
 	"fmt"
 	"net/http"
 
@@ -25,7 +26,7 @@ import (
 // allowClosed is for the pages that still have something to say about a
 // closed request — its outcome, who asked — as opposed to the actions that
 // need its branch, which cleanup has deleted by then.
-func verifyDeployRequestPR(ctx *context.Context, pr *issues_model.PullRequest, allowClosed bool) (deptOwner, deptName string, ok bool) {
+func verifyDeployRequestPR(ctx stdcontext.Context, pr *issues_model.PullRequest, allowClosed bool) (deptOwner, deptName string, ok bool) {
 	if pr.BaseRepoID != pr.HeadRepoID {
 		return "", "", false
 	}
