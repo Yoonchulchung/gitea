@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"gitea.dev/modules/graceful"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/process"
+	"gitea.dev/modules/setting"
 	"gitea.dev/modules/translation"
 	"gitea.dev/modules/util"
 )
@@ -639,6 +641,34 @@ func installedPackages(venv string) (map[string]bool, error) {
 type installedPackage struct {
 	Name, Version string
 	Requires      []string // what its metadata says it depends on, by name
+}
+
+// platformStackPackages is the base stack with what it pulls in, as names
+// and versions, read from the first complete environment on this host: the
+// list an administrator sees under the base packages so that "anyio" on a
+// request is recognisable. Empty until something has been built.
+func platformStackPackages(basePackages []string) []installedPackage {
+	venvs, _ := filepath.Glob(filepath.Join(setting.AppDataPath, "company-apps", "*", "venvs", "*", venvCompleteMarker))
+	for _, marker := range venvs {
+		venv := filepath.Dir(marker)
+		stack := baseStackPackages(venv, basePackages)
+		if len(stack) == 0 {
+			continue
+		}
+		installed, err := distInfoPackages(venv)
+		if err != nil {
+			continue
+		}
+		var out []installedPackage
+		for _, pkg := range installed {
+			if stack[normalizePackageName(pkg.Name)] {
+				out = append(out, installedPackage{Name: pkg.Name, Version: pkg.Version})
+			}
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		return out
+	}
+	return nil
 }
 
 // baseStackPackages is everything the platform's base packages bring in,

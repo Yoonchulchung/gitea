@@ -64,6 +64,18 @@
 			</div>
 		</div>
 
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.pkg.stack_header" (len .StackPackages)}}</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13 tw-mt-0">{{ctx.Locale.Tr "company.pkg.stack_explain"}}</p>
+			{{if .StackPackages}}
+				<div class="tw-flex tw-flex-wrap tw-gap-1">
+					{{range .StackPackages}}<span class="ui basic label tw-font-mono">{{.Name}} <span class="text-grey">{{.Version}}</span></span>{{end}}
+				</div>
+			{{else}}
+				<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.pkg.stack_none"}}</span>
+			{{end}}
+		</div>
+
 		{{if .SharedAllow}}
 			<h4 class="ui top attached header">{{ctx.Locale.Tr "company.pkg.shared_header"}}</h4>
 			<div class="ui attached segment">

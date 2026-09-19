@@ -67,6 +67,7 @@ func AdminPackages(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Locale.TrString("company.title.packages")
 	ctx.Data["BasePackages"] = strings.Join(defaults.BasePackages, "\n")
 	ctx.Data["SharedAllow"] = defaults.Dependencies.Allow
+	ctx.Data["StackPackages"] = platformStackPackages(defaults.BasePackages)
 	ctx.Data["AppPackages"] = rows
 	// What is waiting on an admin, oldest first. See pendingApprovals.
 	ctx.Data["PendingApprovals"] = pendingApprovals(ctx)
