@@ -104,13 +104,15 @@ func withLiveState(attempts []deployAttempt, st *AppState, runningSHA string) []
 // Compared by prefix because the build log records a shortened SHA
 // (appendBuildLog) while the release records the full one. A deploy can be
 // attempted more than once for the same commit, so only the newest matching
-// attempt is marked — the list is already newest first.
+// attempt is marked — the list is already newest first — and only one that
+// succeeded: a failed redeploy of the running commit built nothing, and a
+// row reading "failed" and "running" at once was what an operator saw.
 func markCurrent(attempts []deployAttempt, runningSHA string) {
 	if runningSHA == "" {
 		return
 	}
 	for i := range attempts {
-		if attempts[i].SHA != "" && strings.HasPrefix(runningSHA, attempts[i].SHA) {
+		if !attempts[i].Failed && attempts[i].SHA != "" && strings.HasPrefix(runningSHA, attempts[i].SHA) {
 			attempts[i].Current = true
 			return
 		}

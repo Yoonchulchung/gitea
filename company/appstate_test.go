@@ -299,6 +299,16 @@ func TestMarkCurrentFlagsTheLiveRelease(t *testing.T) {
 	assert.True(t, attempts[1].Current)
 	assert.False(t, attempts[2].Current, "only the newest attempt for that commit is marked")
 
+	// A redeploy of the running commit that failed built nothing: the
+	// earlier, successful attempt is still what serves.
+	again := []deployAttempt{
+		{SHA: "bbbbbbbbbbbb", Failed: true},
+		{SHA: "bbbbbbbbbbbb"},
+	}
+	markCurrent(again, "bbbbbbbbbbbbccccccccccccdddddddddddd")
+	assert.False(t, again[0].Current, "a failed attempt never runs")
+	assert.True(t, again[1].Current)
+
 	// Nothing deployed yet: no row claims to be running.
 	none := []deployAttempt{{SHA: "aaaaaaaaaaaa"}}
 	markCurrent(none, "")
