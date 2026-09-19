@@ -334,6 +334,8 @@ func renderDeployForm(ctx *context.Context) {
 	// What would fail on this snapshot, found here rather than by the deploy
 	// or by the first person to open a page (company/deploycheck.go).
 	ctx.Data["DeployChecks"] = RunDeployChecks(ctx, ctx.Repo.Repository)
+	// And whether it starts, tried for real (company/deploystartup.go).
+	ctx.Data["StartupCheck"], ctx.Data["HasStartupCheck"] = EnsureStartupCheck(ctx, ctx.Repo.Repository, false)
 
 	ctx.Data["Title"] = string(ctx.Locale.Tr("company.deploy.title"))
 	ctx.Data["Repo"] = ctx.Repo.Repository
@@ -721,6 +723,23 @@ func DeployPost(ctx *context.Context) {
 	// that fixes them.
 	if report := runPreflight(ctx, deptRepo); !report.Deployable {
 		ctx.Data["Preflight"] = report
+		ctx.Data["SubmittedTitle"] = title
+		ctx.Data["SubmittedMessage"] = body
+		ctx.Data["SubmittedReason"] = ctx.FormString("perm_reason")
+		renderDeployForm(ctx)
+		return
+	}
+
+	// The version has to have started once, here, before anyone is asked to
+	// approve it. Still running: wait, the form says so. Failed: fix it. The
+	// check not being possible — packages awaiting approval, no sandbox — is
+	// not the department's to fix, and does not hold the request.
+	if check, ok := EnsureStartupCheck(ctx, deptRepo, false); ok && check.Blocks() {
+		key := "company.deploy.startup_failed"
+		if check.Pending() {
+			key = "company.deploy.startup_running"
+		}
+		ctx.Flash.Error(ctx.Locale.TrString(key), true)
 		ctx.Data["SubmittedTitle"] = title
 		ctx.Data["SubmittedMessage"] = body
 		ctx.Data["SubmittedReason"] = ctx.FormString("perm_reason")

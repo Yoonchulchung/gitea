@@ -1,4 +1,5 @@
 import {registerGlobalInitFunc} from '../modules/observer.ts';
+import {GET} from '../modules/fetch.ts';
 
 // Powers the "Files included" section on the Deploy Request page
 // (custom/templates/company/deploy.tmpl): per-file collapse, a path
@@ -123,6 +124,27 @@ export function initCompanyDeployForm(): void {
 // POST, so the page has no way to know which step the server is on, and
 // inventing stages would tell someone something the platform does not know.
 // An indeterminate indicator with an honest sentence is what there is.
+// The startup check box (custom/templates/company/deploy_startup.tmpl) is
+// refreshed from the server while the check builds and runs, and left
+// alone once it has a verdict.
+export function initCompanyStartupCheck(): void {
+  registerGlobalInitFunc('initCompanyStartupCheck', (el: HTMLElement) => {
+    const url = el.getAttribute('data-url')!;
+    const pending = () => ['building', 'running'].includes(el.querySelector<HTMLElement>('.company-startup-check')?.getAttribute('data-state') ?? '');
+    const poll = async () => {
+      if (!pending()) return;
+      try {
+        const resp = await GET(url);
+        if (resp.ok) el.innerHTML = await resp.text();
+      } catch {
+        // the next tick asks again
+      }
+      window.setTimeout(poll, 3000);
+    };
+    if (pending()) window.setTimeout(poll, 3000);
+  });
+}
+
 export function initCompanyDeploySubmit(): void {
   const form = document.querySelector<HTMLFormElement>('#deploy-form');
   const button = form?.querySelector<HTMLButtonElement>('#submit-button');

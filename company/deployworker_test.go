@@ -6,6 +6,7 @@ package company
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -106,4 +107,31 @@ func TestEnqueueDeployRejectsWhenFull(t *testing.T) {
 	// The accepted job carries no failure: enqueueDeploy only records the
 	// rejection, leaving the queued state its caller already wrote.
 	assert.Empty(t, LoadAppState("PO", "first").Reason)
+}
+
+func TestBaseStackPackagesFollowsMetadata(t *testing.T) {
+	venv := t.TempDir()
+	site := filepath.Join(venv, "lib", "python3.12", "site-packages")
+	write := func(name, version string, requires ...string) {
+		dir := filepath.Join(site, name+"-"+version+".dist-info")
+		require.NoError(t, os.MkdirAll(dir, 0o700))
+		lines := []string{"Metadata-Version: 2.1", "Name: " + name, "Version: " + version}
+		for _, r := range requires {
+			lines = append(lines, "Requires-Dist: "+r)
+		}
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "METADATA"), []byte(strings.Join(lines, "\n")+"\n\nbody\n"), 0o600))
+	}
+	write("fastapi", "0.115.0", "starlette>=0.46.0", "typing-extensions>=4.8.0; python_version < '3.13'")
+	write("starlette", "0.46.0", "anyio<5,>=3.4.0", "httpx>=0.27; extra == \"full\"")
+	write("anyio", "4.9.0", "idna>=2.8")
+	write("idna", "3.10")
+	write("typing_extensions", "4.12.0")
+	write("requests", "2.32.0", "idna") // the department's own, and its dependency shared with the stack
+
+	stack := baseStackPackages(venv, []string{"fastapi==0.115.0"})
+	for _, name := range []string{"fastapi", "starlette", "anyio", "idna", "typing-extensions"} {
+		assert.True(t, stack[name], name)
+	}
+	assert.False(t, stack["requests"])
+	assert.False(t, stack["httpx"], "an extra nobody installed")
 }

@@ -20,6 +20,7 @@ import (
 	"gitea.dev/modules/git"
 	"gitea.dev/modules/json"
 	"gitea.dev/modules/log"
+	"gitea.dev/modules/translation"
 	gitea_context "gitea.dev/services/context"
 
 	"github.com/tdewolff/parse/v2"
@@ -128,7 +129,7 @@ func RunDeployChecks(ctx *gitea_context.Context, repo *repo_model.Repository) Ch
 		}
 	}
 	if len(pyFiles) > 0 {
-		findings, err := checkPython(ctx, pyFiles)
+		findings, err := checkPython(ctx, ctx.Locale, pyFiles)
 		if err != nil {
 			report.PythonUnavailable = true
 			log.Warn("company: deploy check: python files not checked: %v", err)
@@ -159,20 +160,67 @@ func checkKind(name string) string {
 }
 
 // pythonCheckScript parses every file it is given and reports the first
-// syntax error in each. ast.parse compiles nothing and runs nothing.
-const pythonCheckScript = `import ast, json, sys
+// syntax error in each; a file that parses is then read for what would
+// fail the moment it is imported — a name nothing defines, used by code
+// that runs at import — and main.py for the app the platform starts.
+// ast.parse compiles nothing and runs nothing. Names are gathered from the
+// whole file, function bodies included, so a name bound anywhere counts as
+// defined: that misses some failures and invents none.
+const pythonCheckScript = `import ast, builtins, json, sys
+
+KNOWN = set(dir(builtins)) | {"__name__", "__file__", "__doc__", "__builtins__", "__spec__", "__loader__", "__package__", "__annotations__", "__path__", "__cached__"}
+
+def bound(tree):
+    names, star = set(), False
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for a in node.names:
+                if a.name == "*": star = True
+                else: names.add((a.asname or a.name).split(".")[0])
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)): names.add(node.name)
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load): names.add(node.id)
+        elif isinstance(node, ast.arg): names.add(node.arg)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)): names.update(node.names)
+        elif isinstance(node, ast.ExceptHandler) and node.name: names.add(node.name)
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name: names.add(node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest: names.add(node.rest)
+    return names, star
+
+def undefined_at_import(tree, names):
+    out, seen = [], set()
+    def visit(node):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            for d in getattr(node, "decorator_list", []): visit(d)
+            for d in node.args.defaults + [d for d in node.args.kw_defaults if d]: visit(d)
+            return
+        if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            visit(node.generators[0].iter)
+            return
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id not in names and node.id not in KNOWN and node.id not in seen:
+            seen.add(node.id)
+            out.append((node.lineno, node.id))
+        for child in ast.iter_child_nodes(node): visit(child)
+    visit(tree)
+    return out
+
 out = []
 for f in json.load(sys.stdin)["files"]:
     try:
-        ast.parse(f["source"], filename=f["path"])
+        tree = ast.parse(f["source"], filename=f["path"])
     except SyntaxError as e:
-        out.append({"path": f["path"], "line": e.lineno or 1, "message": e.msg})
+        out.append({"path": f["path"], "line": e.lineno or 1, "message": e.msg}); continue
     except (ValueError, RecursionError) as e:
-        out.append({"path": f["path"], "line": 1, "message": str(e)})
+        out.append({"path": f["path"], "line": 1, "message": str(e)}); continue
+    names, star = bound(tree)
+    if not star:
+        for line, name in undefined_at_import(tree, names):
+            out.append({"path": f["path"], "line": line, "code": "undefined", "name": name})
+    if f["path"] == "main.py" and "app" not in names:
+        out.append({"path": f["path"], "line": 1, "code": "no_app"})
 json.dump(out, sys.stdout)
 `
 
-func checkPython(ctx context.Context, files []checkFile) ([]CheckFinding, error) {
+func checkPython(ctx context.Context, locale translation.Locale, files []checkFile) ([]CheckFinding, error) {
 	python, err := pythonPath()
 	if err != nil {
 		return nil, err
@@ -198,13 +246,22 @@ func checkPython(ctx context.Context, files []checkFile) ([]CheckFinding, error)
 		Path    string `json:"path"`
 		Line    int    `json:"line"`
 		Message string `json:"message"`
+		Code    string `json:"code"`
+		Name    string `json:"name"`
 	}
 	if err := json.Unmarshal(out, &results); err != nil {
 		return nil, err
 	}
 	findings := make([]CheckFinding, 0, len(results))
 	for _, r := range results {
-		findings = append(findings, CheckFinding{Path: r.Path, Line: r.Line, Kind: "python", Message: r.Message})
+		message := r.Message
+		switch r.Code {
+		case "undefined":
+			message = locale.TrString("company.check.undefined", r.Name)
+		case "no_app":
+			message = locale.TrString("company.check.no_app")
+		}
+		findings = append(findings, CheckFinding{Path: r.Path, Line: r.Line, Kind: "python", Message: message})
 	}
 	return findings, nil
 }

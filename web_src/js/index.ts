@@ -58,7 +58,7 @@ import {initCompanyDeployPreview, initCompanyDeployReview, initCompanyDeployRevi
 import {initCompanyDeployStatus} from './features/company-deploy-status.ts';
 import {initCompanyAppCharts, initCompanyConfirmForms, initCompanyFleet, initCompanyKpiEdit} from './features/company-app-charts.ts';
 import {initCompanyAppEnv} from './features/company-app-env.ts';
-import {initCompanyDeployForm, initCompanyDeploySubmit} from './features/company-deploy-form.ts';
+import {initCompanyDeployForm, initCompanyDeploySubmit, initCompanyStartupCheck} from './features/company-deploy-form.ts';
 import {initCompanySettingsAI} from './features/company-settings-ai.ts';
 import {initAdminSelfCheck} from './features/admin/selfcheck.ts';
 import {initOAuth2SettingsDisableCheckbox} from './features/oauth2-settings.ts';
@@ -177,6 +177,7 @@ const initPerformanceTracer = callInitFunctions([
   initCompanyFleet, // the admin app list's filters, ticks and bulk buttons
   initCompanyDeployForm,
   initCompanyDeploySubmit,
+  initCompanyStartupCheck,
   initCompanySettingsAI,
 
   initOAuth2SettingsDisableCheckbox,

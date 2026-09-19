@@ -1,0 +1,25 @@
+{{/* The startup check's box on the request form (company/deploystartup.go).
+     Rendered on the form and again by GET …/deploy/startup-check while the
+     check runs, so it is one template. The rerun button submits a form that
+     lives outside the request form, since a form cannot hold another. */}}
+{{if .HasStartupCheck}}{{with .StartupCheck}}
+	<div class="ui {{if eq .State "passed"}}positive{{else if eq .State "failed"}}negative{{end}} message company-startup-check" data-state="{{.State}}">
+		<div class="header">{{svg "octicon-play" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.startup.header"}}{{if .Pending}} <div class="ui active inline mini loader tw-ml-2"></div>{{end}}</div>
+		<p class="tw-mt-1 tw-mb-0">
+			{{if eq .State "building"}}{{ctx.Locale.Tr "company.startup.building"}}
+			{{else if eq .State "running"}}{{ctx.Locale.Tr "company.startup.running" .HealthPath}}
+			{{else if eq .State "passed"}}{{ctx.Locale.Tr "company.startup.passed" .HealthPath .Seconds}}
+			{{else if eq .State "blocked"}}{{ctx.Locale.Tr "company.startup.blocked"}}
+			{{else if eq .State "unavailable"}}{{ctx.Locale.Tr "company.startup.unavailable"}}
+			{{else if eq .Stage "import"}}{{ctx.Locale.Tr "company.startup.failed_import"}}
+			{{else if eq .Stage "app"}}{{ctx.Locale.Tr "company.startup.failed_app"}}
+			{{else if eq .Stage "startup"}}{{ctx.Locale.Tr "company.startup.failed_startup"}}
+			{{else if eq .Stage "request"}}{{ctx.Locale.Tr "company.startup.failed_request" .HealthPath}}
+			{{else if eq .Stage "timeout"}}{{ctx.Locale.Tr "company.startup.failed_timeout"}}
+			{{else}}{{ctx.Locale.Tr "company.startup.failed_build"}}{{end}}
+		</p>
+		{{if .Error}}<pre class="company-startup-output">{{.Error}}</pre>{{end}}
+		{{if .Output}}<details class="tw-mt-1"><summary class="tw-text-12">{{ctx.Locale.Tr "company.startup.output"}}</summary><pre class="company-startup-output">{{.Output}}</pre></details>{{end}}
+		{{if not .Pending}}<div class="tw-mt-2"><button type="submit" form="startup-rerun-form" class="ui tiny basic button">{{ctx.Locale.Tr "company.startup.rerun"}}</button></div>{{end}}
+	</div>
+{{end}}{{end}}

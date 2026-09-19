@@ -331,24 +331,30 @@ func buildRelease(ctx context.Context, job deployJob, p appPaths, release string
 		return "", err
 	}
 
-	reqPath := filepath.Join(appDir, "requirements.txt")
-	body, err := os.ReadFile(reqPath)
+	return note, venvForAppDir(ctx, p, release, appDir, settings)
+}
+
+// venvForAppDir builds the environment the files in appDir ask for, under
+// the policy in force. Shared with the startup check (company/deploystartup.go),
+// which must install exactly what a deploy would.
+func venvForAppDir(ctx context.Context, p appPaths, release, appDir string, settings AppSettings) error {
+	body, err := os.ReadFile(filepath.Join(appDir, "requirements.txt"))
 	if errors.Is(err, os.ErrNotExist) {
 		// No requirements.txt is the normal case for an app that only uses
 		// what the platform provides.
-		return note, buildVenv(ctx, p, release, nil, settings)
+		return buildVenv(ctx, p, release, nil, settings)
 	}
 	if err != nil {
-		return "", err
+		return err
 	}
 	reqs, reqErrs := ParseRequirements(string(body))
 	if len(reqErrs) > 0 {
-		return "", &packagesDeniedError{message: formatRequirementErrors(platformLocale(), reqErrs, settings.BasePackages)}
+		return &packagesDeniedError{message: formatRequirementErrors(platformLocale(), reqErrs, settings.BasePackages)}
 	}
 	if denied := DeniedPackages(reqs, settings.AllowedPackages()); len(denied) > 0 {
-		return "", &packagesDeniedError{message: formatDeniedPackages(denied)}
+		return &packagesDeniedError{message: formatDeniedPackages(denied)}
 	}
-	return note, buildVenv(ctx, p, release, reqs, settings)
+	return buildVenv(ctx, p, release, reqs, settings)
 }
 
 // extractAppSource copies the department's files out of the central deploy
@@ -376,13 +382,28 @@ func extractAppSource(ctx context.Context, job deployJob, appDir string) (note s
 	if err != nil {
 		return "", fmt.Errorf("no files were found for this app in the deploy repository: %w", err)
 	}
-	entries, err := tree.ListEntriesRecursiveFast(ctx, gitRepo)
+	links, err := writeTreeFiles(ctx, gitRepo, tree, appDir)
 	if err != nil {
 		return "", err
 	}
+	if _, err := os.Stat(filepath.Join(appDir, "main.py")); err != nil {
+		return "", errors.New("main.py was not found — the app must have a main.py exposing `app` in its repository root")
+	}
+	if len(links) > 0 {
+		note = "symbolic links are not deployed; left out: " + strings.Join(links, ", ")
+	}
+	return note, nil
+}
+
+// writeTreeFiles writes every file of a git tree under appDir, and names
+// the links it left out.
+func writeTreeFiles(ctx context.Context, gitRepo *git.Repository, tree *git.Tree, appDir string) (links []string, err error) {
+	entries, err := tree.ListEntriesRecursiveFast(ctx, gitRepo)
+	if err != nil {
+		return nil, err
+	}
 
 	var total int64
-	var links []string
 	for _, entry := range entries {
 		if entry.IsDir() || entry.IsSubModule() {
 			continue
@@ -399,35 +420,29 @@ func extractAppSource(ctx context.Context, job deployJob, appDir string) (note s
 			// A tree entry is not user input in the usual sense, but it does
 			// reach here through data staff control, so the path is checked
 			// rather than trusted.
-			return "", err
+			return nil, err
 		}
 		blob := entry.Blob(gitRepo)
 		total += blob.Size(ctx)
 		if total > maxSourceBytes {
-			return "", fmt.Errorf("the app's files exceed the %d MB limit", maxSourceBytes>>20)
+			return nil, fmt.Errorf("the app's files exceed the %d MB limit", maxSourceBytes>>20)
 		}
 		// GetBlobBytes treats a non-positive limit as "read nothing".
 		content, err := blob.GetBlobBytes(ctx, blob.Size(ctx))
 		if err != nil {
-			return "", fmt.Errorf("read %s: %w", entry.Name(), err)
+			return nil, fmt.Errorf("read %s: %w", entry.Name(), err)
 		}
 		if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-			return "", err
+			return nil, err
 		}
 		// Never executable: the app is started by the platform, and a file
 		// the department can mark +x is a way to get something other than
 		// uvicorn running.
 		if err := os.WriteFile(dest, content, 0o600); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
-	if _, err := os.Stat(filepath.Join(appDir, "main.py")); err != nil {
-		return "", errors.New("main.py was not found — the app must have a main.py exposing `app` in its repository root")
-	}
-	if len(links) > 0 {
-		note = "symbolic links are not deployed; left out: " + strings.Join(links, ", ")
-	}
-	return note, nil
+	return links, nil
 }
 
 // safeJoin joins base and rel, refusing anything that escapes base.
@@ -483,12 +498,14 @@ func buildVenv(ctx context.Context, p appPaths, release string, reqs []Requireme
 		if err := os.WriteFile(filepath.Join(venv, venvCompleteMarker), nil, 0o600); err != nil {
 			return err
 		}
-	} else if extra, err := unapprovedInstalled(venv, settings, map[string]bool{}); err != nil {
+	} else if extra, err := unapprovedInstalled(venv, settings, baseStackPackages(venv, settings.BasePackages)); err != nil {
 		return err
 	} else if len(extra) > 0 {
 		// A cached environment is checked against today's allowlist, not the
 		// one it was built under: a package an admin withdrew stayed
-		// importable in every release built from the cache.
+		// importable in every release built from the cache. Against the same
+		// baseline as a fresh build, or the platform's own stack — starlette,
+		// anyio and the rest — would be refused as the department's choice.
 		return &packagesDeniedError{
 			message:  platformLocale().TrString("company.err.deps_unapproved", strings.Join(extra, ", ")),
 			packages: extra,
@@ -619,7 +636,38 @@ func installedPackages(venv string) (map[string]bool, error) {
 	return names, nil
 }
 
-type installedPackage struct{ Name, Version string }
+type installedPackage struct {
+	Name, Version string
+	Requires      []string // what its metadata says it depends on, by name
+}
+
+// baseStackPackages is everything the platform's base packages bring in,
+// read from the metadata of what is installed: the packages themselves and,
+// following Requires-Dist, all they depend on. The same set a fresh build
+// records after installing the base and before the department's additions.
+func baseStackPackages(venv string, basePackages []string) map[string]bool {
+	installed, err := distInfoPackages(venv)
+	if err != nil {
+		return map[string]bool{}
+	}
+	requires := make(map[string][]string, len(installed))
+	for _, pkg := range installed {
+		requires[normalizePackageName(pkg.Name)] = pkg.Requires
+	}
+	stack := map[string]bool{}
+	queue := BasePackageNames(basePackages)
+	for len(queue) > 0 {
+		name := normalizePackageName(queue[0])
+		queue = queue[1:]
+		deps, installed := requires[name]
+		if stack[name] || !installed {
+			continue
+		}
+		stack[name] = true
+		queue = append(queue, deps...)
+	}
+	return stack
+}
 
 // distInfoPackages reads what is installed from the metadata pip wrote,
 // without running anything. `pip list` ran the interpreter — and with it any
@@ -642,6 +690,16 @@ func distInfoPackages(venv string) ([]installedPackage, error) {
 				pkg.Name = strings.TrimSpace(strings.TrimPrefix(line, "Name: "))
 			} else if pkg.Version == "" && strings.HasPrefix(line, "Version: ") {
 				pkg.Version = strings.TrimSpace(strings.TrimPrefix(line, "Version: "))
+			} else if dep, ok := strings.CutPrefix(line, "Requires-Dist: "); ok {
+				// "anyio<5,>=3.4.0; extra == 'standard'" — the name is what
+				// precedes the first version, extra or condition marker.
+				name := strings.TrimSpace(dep)
+				if i := strings.IndexAny(name, " <>=!~;[("); i >= 0 {
+					name = name[:i]
+				}
+				if name != "" {
+					pkg.Requires = append(pkg.Requires, normalizePackageName(name))
+				}
 			} else if line == "" {
 				break // the headers end at the first blank line
 			}

@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"testing"
 
+	"gitea.dev/modules/translation"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,12 +51,20 @@ func TestPythonCheckParsesWithoutRunning(t *testing.T) {
 	if _, err := pythonPath(); err != nil {
 		t.Skip("no build interpreter on this host")
 	}
-	findings, err := checkPython(context.Background(), []checkFile{
+	findings, err := checkPython(context.Background(), translation.NewLocale("en-US"), []checkFile{
 		{Path: "ok.py", Source: "import module_that_does_not_exist\nraise SystemExit(3)\n"},
 		{Path: "bad.py", Source: "def f(:\n    pass\n"},
+		// Parses, and dies on import: the case that reached an approver.
+		{Path: "main.py", Source: "TEST\n"},
+		// Bound later in the file, inside a function, by a star import: none of these are reported.
+		{Path: "fine.py", Source: "from os.path import *\napp = join('a')\n"},
+		{Path: "later.py", Source: "import fastapi\napp = fastapi.FastAPI()\n\ndef f():\n    return helper\nhelper = 1\n"},
 	})
 	require.NoError(t, err)
-	require.Len(t, findings, 1)
+	require.Len(t, findings, 3)
 	assert.Equal(t, "bad.py", findings[0].Path)
 	assert.Equal(t, 1, findings[0].Line)
+	assert.Equal(t, "main.py", findings[1].Path)
+	assert.Contains(t, findings[1].Message, "TEST")
+	assert.Equal(t, "main.py", findings[2].Path) // no app
 }
