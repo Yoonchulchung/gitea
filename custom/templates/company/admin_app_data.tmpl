@@ -80,6 +80,7 @@
 			</div>
 
 			{{template "company/data_browse" .}}
+			{{template "company/data_changes" .}}
 
 			{{if .SQLConsole}}
 				<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.sql_header"}}</h4>

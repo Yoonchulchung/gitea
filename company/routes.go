@@ -105,6 +105,7 @@ func RegisterAdminRoutes(m *web.Router) {
 		// the same handler as start/stop.
 		m.Get("/data", AdminAppData)
 		m.Get("/data/export", AdminAppDataExport)
+		m.Get("/data/csv", AdminAppDataCSV)
 		m.Post("/data/{verb}", AdminAppDataAction)
 		m.Post("/{verb}", AdminAppControl)
 	})

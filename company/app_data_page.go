@@ -12,18 +12,10 @@ import (
 
 const tplAppData templates.TplName = "company/app_data"
 
-// AppData lets a department look at its own app's database.
-//
-// Reading only. Everything that changes data — a snapshot, a restore, a
-// statement, an export — stays on the admin console, which is what was
-// decided when this was planned: those are judgement calls with no way back
-// except the one an administrator takes deliberately, and a restore in
-// particular loses whatever was written since. See docs/company/app-data.md.
-//
-// Reading is not in that category. It is a department's own data, it is the
-// question they ask first when an app behaves oddly, and the connection under
-// it cannot write (company/appdatatool.go), so there is nothing here for the
-// admin to be in the middle of.
+// AppData is a department's own view of its app's database: what is in it,
+// and the means to change it without writing SQL (company/appdataedit.go).
+// Reached only with write access to the repository, the same people who can
+// change the code that writes this data.
 func AppData(ctx *context.Context) {
 	owner := ctx.Repo.Owner.Name
 	name := ctx.Repo.Repository.Name
@@ -31,7 +23,7 @@ func AppData(ctx *context.Context) {
 	// The read-only resolver: asking whether data exists must not take a
 	// soft-deleted app off its retention clock. Same reason as the admin
 	// console (company/admin_app_data.go).
-	_, hasData := AppDataDirIfPresent(ctx, owner, name)
+	dataDir, hasData := AppDataDirIfPresent(ctx, owner, name)
 
 	ctx.Data["Title"] = ctx.Locale.TrString("company.data.title")
 	ctx.Data["App"] = LoadAppState(owner, name)
@@ -58,6 +50,7 @@ func AppData(ctx *context.Context) {
 		ctx.Data["BrowseTable"] = table
 		ctx.Data["BrowseSQL"] = statement
 		ctx.Data["BrowsePageSize"] = browsePageSize
+		setDataEditData(ctx, owner, name, table, ListSnapshots(dataDir))
 	}
 	ctx.HTML(http.StatusOK, tplAppData)
 }

@@ -352,6 +352,14 @@
 	max-height: 60vh;
 	overflow: auto;
 }
+.company-db-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; margin-bottom: 12px; }
+.company-db-tool > summary { list-style: none; cursor: pointer; }
+.company-db-tool > summary::-webkit-details-marker { display: none; }
+.company-db-tool[open] { flex-basis: 100%; }
+.company-db-editor { border: 1px solid var(--color-secondary); border-radius: var(--border-radius); padding: 12px; margin: 8px 0 12px; background: var(--color-box-body); }
+.company-db-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 12px; }
+.company-db-fields .field { margin-bottom: 0 !important; }
+.company-db-inline-btn { padding: 4px 8px !important; }
 .company-db-tables-head {
 	display: flex;
 	justify-content: space-between;

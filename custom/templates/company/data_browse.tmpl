@@ -33,6 +33,9 @@
 							{{if ge .Rows 0}}<span class="company-db-count">{{ctx.Locale.Tr "company.data.browse_rows" .Rows}}</span>{{end}}
 						</a>
 					{{end}}
+					{{if .Editable}}
+						{{template "company/data_create_table" .}}
+					{{end}}
 				</div>
 
 				<div class="company-db-main">
@@ -76,14 +79,34 @@
 						</details>
 					{{end}}
 
+					{{if and .Editable .BrowseTable .Browse.Schema}}
+						{{template "company/data_edit_controls" .}}
+					{{end}}
+
 					{{if and .Browse.Columns .Browse.Rows}}
 						{{/* Values are whatever the app stored, so they are printed as
 						     text and nothing here is marked safe. */}}
 						<div class="company-db-rows">
 							<table class="ui very basic compact table">
-								<thead><tr>{{range .Browse.Columns}}<th>{{.}}</th>{{end}}</tr></thead>
+								<thead><tr>{{range .Browse.Columns}}<th>{{.}}</th>{{end}}{{if and .Editable .Browse.RowIDs}}<th></th>{{end}}</tr></thead>
 								<tbody>
-									{{range .Browse.Rows}}<tr>{{range .}}<td class="tw-text-12">{{.}}</td>{{end}}</tr>{{end}}
+									{{range $i, $row := .Browse.Rows}}
+										<tr>
+											{{range $row}}<td class="tw-text-12">{{.}}</td>{{end}}
+											{{if and $.Editable $.Browse.RowIDs}}
+												{{$rid := index $.Browse.RowIDs $i}}
+												<td class="tw-text-12 tw-whitespace-nowrap">
+													<a href="{{$.DataLink}}?table={{$.BrowseTable}}&offset={{$.Browse.Offset}}&edit={{$rid}}">{{ctx.Locale.Tr "company.data.edit"}}</a>
+													<form method="post" action="{{$.DataLink}}/delete" class="tw-inline tw-ml-2" data-company-confirm="{{ctx.Locale.Tr "company.data.delete_confirm"}}">
+														{{$.CsrfTokenHtml}}
+														<input type="hidden" name="table" value="{{$.BrowseTable}}">
+														<input type="hidden" name="rowid" value="{{$rid}}">
+														<button class="ui tiny basic negative button company-db-inline-btn">{{ctx.Locale.Tr "company.data.delete"}}</button>
+													</form>
+												</td>
+											{{end}}
+										</tr>
+									{{end}}
 								</tbody>
 							</table>
 						</div>
@@ -117,4 +140,107 @@
 			<p class="text-grey">{{ctx.Locale.Tr "company.data.browse_no_tables"}}</p>
 		{{end}}
 	</div>
+{{end}}
+
+{{/* The controls that change data (company/appdataedit.go). Every name is
+     checked against the schema on the way in and every value is a
+     parameter; a copy of the data is taken before the first change in any
+     ten-minute stretch. */}}
+{{define "company/data_edit_controls"}}
+	{{if .EditRow}}
+		<form method="post" action="{{.DataLink}}/update" class="ui form company-db-editor">
+			{{.CsrfTokenHtml}}
+			<input type="hidden" name="table" value="{{.BrowseTable}}">
+			<input type="hidden" name="rowid" value="{{.EditRowID}}">
+			<h5 class="tw-mb-2">{{ctx.Locale.Tr "company.data.edit_row_header" .EditRowID}}</h5>
+			<div class="company-db-fields">
+				{{range .Browse.Schema}}
+					<div class="field">
+						<label>{{.Name}} <span class="text-grey tw-font-normal">{{.Type}}{{if .NotNull}} · {{ctx.Locale.Tr "company.data.schema_notnull"}}{{end}}</span></label>
+						<input name="col_{{.Name}}" value="{{index $.EditRow .Name}}" {{if .Auto}}readonly{{end}}>
+					</div>
+				{{end}}
+			</div>
+			<p class="text-grey tw-text-12">{{ctx.Locale.Tr "company.data.empty_is_null"}}</p>
+			<button class="ui small primary button">{{ctx.Locale.Tr "company.data.save"}}</button>
+			<a class="ui small button" href="{{.DataLink}}?table={{.BrowseTable}}&offset={{.Browse.Offset}}">{{ctx.Locale.Tr "company.data.cancel"}}</a>
+		</form>
+	{{end}}
+	<div class="company-db-tools">
+		<details class="company-db-tool">
+			<summary class="ui small button">{{svg "octicon-plus" 14}} {{ctx.Locale.Tr "company.data.add_row"}}</summary>
+			<form method="post" action="{{.DataLink}}/insert" class="ui form company-db-editor">
+				{{.CsrfTokenHtml}}
+				<input type="hidden" name="table" value="{{.BrowseTable}}">
+				<div class="company-db-fields">
+					{{range .Browse.Schema}}
+						<div class="field">
+							<label>{{.Name}} <span class="text-grey tw-font-normal">{{.Type}}{{if .NotNull}} · {{ctx.Locale.Tr "company.data.schema_notnull"}}{{end}}</span></label>
+							{{if .Auto}}
+								<input disabled placeholder="{{ctx.Locale.Tr "company.data.auto"}}">
+							{{else}}
+								<input name="col_{{.Name}}" {{if .Default}}placeholder="{{.Default}}"{{end}}>
+							{{end}}
+						</div>
+					{{end}}
+				</div>
+				<p class="text-grey tw-text-12">{{ctx.Locale.Tr "company.data.empty_is_null"}}</p>
+				<button class="ui small primary button">{{ctx.Locale.Tr "company.data.add_row_save"}}</button>
+			</form>
+		</details>
+		<details class="company-db-tool">
+			<summary class="ui small button">{{svg "octicon-upload" 14}} {{ctx.Locale.Tr "company.data.import_csv"}}</summary>
+			<form method="post" action="{{.DataLink}}/import" enctype="multipart/form-data" class="ui form company-db-editor"
+			      data-company-confirm="{{ctx.Locale.Tr "company.data.import_confirm"}}">
+				{{.CsrfTokenHtml}}
+				<input type="hidden" name="table" value="{{.BrowseTable}}">
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.data.import_explain"}}</p>
+				<div class="field"><input type="file" name="csv" accept=".csv,text/csv" required></div>
+				<div class="field">
+					<label class="tw-flex tw-items-center tw-gap-1"><input type="radio" name="mode" value="append" checked> {{ctx.Locale.Tr "company.data.import_append"}}</label>
+					<label class="tw-flex tw-items-center tw-gap-1"><input type="radio" name="mode" value="replace"> {{ctx.Locale.Tr "company.data.import_replace"}}</label>
+				</div>
+				<button class="ui small primary button">{{ctx.Locale.Tr "company.data.import_run"}}</button>
+			</form>
+		</details>
+		<a class="ui small button" href="{{.DataLink}}/csv?table={{.BrowseTable}}">{{svg "octicon-download" 14}} {{ctx.Locale.Tr "company.data.download_csv"}}</a>
+		<details class="company-db-tool">
+			<summary class="ui small button">{{svg "octicon-columns" 14}} {{ctx.Locale.Tr "company.data.add_column"}}</summary>
+			<form method="post" action="{{.DataLink}}/add-column" class="ui form company-db-editor">
+				{{.CsrfTokenHtml}}
+				<input type="hidden" name="table" value="{{.BrowseTable}}">
+				<div class="company-db-fields">
+					<div class="field"><label>{{ctx.Locale.Tr "company.data.add_column_name"}}</label><input name="column" required pattern="[A-Za-z_][A-Za-z0-9_]*"></div>
+					<div class="field"><label>{{ctx.Locale.Tr "company.data.add_column_type"}}</label>
+						<select name="type" class="ui dropdown">
+							{{range .ColumnTypes}}<option value="{{.}}">{{ctx.Locale.Tr (print "company.data.type_" .)}}</option>{{end}}
+						</select>
+					</div>
+					<div class="field"><label>{{ctx.Locale.Tr "company.data.add_column_default"}}</label><input name="default"></div>
+				</div>
+				<button class="ui small primary button">{{ctx.Locale.Tr "company.data.add_column"}}</button>
+			</form>
+		</details>
+	</div>
+{{end}}
+
+{{define "company/data_create_table"}}
+	<details class="company-db-tool tw-mt-2">
+		<summary class="ui small basic button tw-w-full">{{svg "octicon-plus" 14}} {{ctx.Locale.Tr "company.data.create_table"}}</summary>
+		<form method="post" action="{{.DataLink}}/create-table" class="ui form company-db-editor">
+			{{.CsrfTokenHtml}}
+			<p class="text-grey tw-text-12">{{ctx.Locale.Tr "company.data.create_table_explain"}}</p>
+			<div class="field"><label>{{ctx.Locale.Tr "company.data.create_table_name"}}</label><input name="name" required pattern="[A-Za-z_][A-Za-z0-9_]*"></div>
+			{{range .NewColumnRows}}
+				<div class="tw-flex tw-gap-1 tw-items-center tw-mb-1">
+					<input name="col_name_{{.}}" placeholder="{{ctx.Locale.Tr "company.data.add_column_name"}}" pattern="[A-Za-z_][A-Za-z0-9_]*" class="tw-flex-1">
+					<select name="col_type_{{.}}">
+						{{range $.ColumnTypes}}<option value="{{.}}">{{ctx.Locale.Tr (print "company.data.type_" .)}}</option>{{end}}
+					</select>
+					<label class="tw-flex tw-items-center tw-gap-1 tw-text-12"><input type="checkbox" name="col_required_{{.}}" value="1"> {{ctx.Locale.Tr "company.data.column_required"}}</label>
+				</div>
+			{{end}}
+			<button class="ui small primary button tw-mt-2">{{ctx.Locale.Tr "company.data.create_table"}}</button>
+		</form>
+	</details>
 {{end}}

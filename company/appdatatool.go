@@ -95,6 +95,7 @@ type dataToolResult struct {
 	Tables    []BrowseTable  `json:"tables"`
 	Columns   []string       `json:"columns"`
 	Cells     [][]string     `json:"cells"`
+	RowIDs    []int64        `json:"rowids"` // one per row of Cells; empty for a table without a rowid
 	More      bool           `json:"more"`
 	Schema    []BrowseColumn `json:"schema"`
 	CreateSQL string         `json:"createSQL"`
@@ -108,6 +109,7 @@ type BrowseColumn struct {
 	NotNull bool   `json:"notnull"`
 	Default string `json:"default"`
 	PK      bool   `json:"pk"`
+	Auto    bool   `json:"-"` // an INTEGER PRIMARY KEY, which SQLite assigns
 }
 
 // BrowseIndex is one index on the table being looked at.
@@ -341,6 +343,7 @@ type BrowseResult struct {
 	Table     string
 	Columns   []string
 	Rows      [][]string
+	RowIDs    []int64 // parallel to Rows; empty when the rows cannot be addressed for editing
 	Offset    int
 	More      bool
 	Schema    []BrowseColumn
@@ -380,7 +383,7 @@ func BrowseAppData(ctx context.Context, owner, repo, table, statement string, of
 	}
 	return &BrowseResult{
 		Tables: result.Tables, Table: table, Columns: result.Columns,
-		Rows: result.Cells, Offset: offset, More: result.More,
+		Rows: result.Cells, RowIDs: result.RowIDs, Offset: offset, More: result.More,
 		Schema: result.Schema, CreateSQL: result.CreateSQL, Indexes: result.Indexes,
 	}, nil
 }
@@ -526,16 +529,17 @@ def csv_name(name, used):
     used.add(candidate)
     return candidate
 
-def cell(v):
+def cell(v, full=False):
     # Rendered as text, never as the value's own repr: a BLOB is usually an
     # image or a hash and printing it fills the page with bytes, and a long
-    # text column would push every other column off the screen.
+    # text column would push every other column off the screen — except
+    # when the value is about to be edited or exported, which needs all of it.
     if v is None:
         return ""
     if isinstance(v, (bytes, bytearray, memoryview)):
         return "<%d bytes>" % len(bytes(v))
     s = v if isinstance(v, str) else str(v)
-    return s[:200] + "\u2026" if len(s) > 200 else s
+    return s if full or len(s) <= 200 else s[:200] + "\u2026"
 
 def objects(conn):
     return ["%s %s" % (t, n) for t, n in conn.execute(
@@ -620,19 +624,39 @@ def run(out):
 
         limit = max(1, min(int(payload.get("limit") or 50), 200))
         offset = max(0, int(payload.get("offset") or 0))
+        full = bool(payload.get("full"))
         sql, table = payload.get("sql"), payload.get("table")
+        rowids = None
         if sql:
             cur = conn.execute(sql)
         elif table:
             if table not in [t["name"] for t in listing]:
                 out["error"] = "no such table"
                 return
-            cur = conn.execute('SELECT * FROM "%s" LIMIT ? OFFSET ?' % table.replace('"', '""'), (limit, offset))
+            quoted = table.replace('"', '""')
+            # The rowid comes along so a row can be edited or deleted by
+            # identity rather than by matching its values. A WITHOUT ROWID
+            # table has none, and its rows are shown but not editable.
+            try:
+                if payload.get("rowid") is not None:
+                    cur = conn.execute('SELECT rowid, * FROM "%s" WHERE rowid = ?' % quoted, (int(payload["rowid"]),))
+                else:
+                    cur = conn.execute('SELECT rowid, * FROM "%s" LIMIT ? OFFSET ?' % quoted, (limit, offset))
+                rowids = []
+            except sqlite3.OperationalError:
+                cur = conn.execute('SELECT * FROM "%s" LIMIT ? OFFSET ?' % quoted, (limit, offset))
         else:
             out["ok"] = True   # nothing asked for: the listing is the answer
             return
-        out["columns"] = [d[0] for d in (cur.description or [])]
-        out["cells"] = [[cell(v) for v in row] for row in cur.fetchmany(limit)]
+        columns = [d[0] for d in (cur.description or [])]
+        rows = cur.fetchmany(limit)
+        if rowids is not None:
+            rowids = [r[0] for r in rows]
+            rows = [r[1:] for r in rows]
+            columns = columns[1:]
+        out["columns"] = columns
+        out["cells"] = [[cell(v, full) for v in row] for row in rows]
+        out["rowids"] = rowids or []
         out["more"] = len(cur.fetchmany(1)) > 0
 
         # The shape of the table, alongside its contents. Reading a column
@@ -655,6 +679,43 @@ def run(out):
                     "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name = ?"
                     " AND name NOT LIKE 'sqlite_%' ORDER BY name", (table,))
             ]
+        out["ok"] = True
+        return
+
+    if mode == "edit":
+        # Statements the platform built from a form, with every value a
+        # parameter. Guarded all the same: nothing here may open another file.
+        ATTACH, DETACH = getattr(sqlite3, "SQLITE_ATTACH", 24), getattr(sqlite3, "SQLITE_DETACH", 25)
+        PRAGMA = getattr(sqlite3, "SQLITE_PRAGMA", 19)
+        conn.set_authorizer(lambda action, *_: 1 if action in (ATTACH, DETACH, PRAGMA) else 0)
+        cur = conn.cursor()
+        cur.execute("BEGIN")
+        try:
+            changed = 0
+            for st in payload["statements"]:
+                cur.execute(st["sql"], st.get("params") or [])
+                changed += cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            out["changed"] = changed
+            cur.execute("COMMIT")
+        except Exception:
+            cur.execute("ROLLBACK")
+            raise
+        out["ok"] = True
+        return
+
+    if mode == "dump":
+        # Every row of one table, untruncated, for a file someone will edit
+        # in a spreadsheet and bring back. Capped so a runaway table cannot
+        # hold the helper for minutes.
+        table = payload["table"]
+        if table not in tables(conn):
+            out["error"] = "no such table"
+            return
+        cur = conn.execute('SELECT * FROM "%s" LIMIT 200001' % table.replace('"', '""'))
+        out["columns"] = [d[0] for d in (cur.description or [])]
+        rows = cur.fetchall()
+        out["more"] = len(rows) > 200000
+        out["cells"] = [[cell(v, True) for v in row] for row in rows[:200000]]
         out["ok"] = True
         return
 

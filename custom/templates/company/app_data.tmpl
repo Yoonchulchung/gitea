@@ -28,17 +28,67 @@
 						</div>
 					</div>
 				{{end}}
-				{{/* Said plainly rather than left to be discovered by a button that
-				     is not there: changing or restoring data is an administrator's
-				     to do, and who to ask is the useful half of that sentence. */}}
-				<p class="text-grey tw-text-13 tw-mb-0">
-					{{ctx.Locale.Tr "company.data.read_only_note"}}
-					{{if .CompanySupportEmail}}<a href="mailto:{{.CompanySupportEmail}}">{{.CompanySupportEmail}}</a>{{end}}
-				</p>
+				<p class="text-grey tw-text-13 tw-mb-0">{{ctx.Locale.Tr "company.data.edit_note"}}</p>
 			</div>
 
 			{{template "company/data_browse" .}}
+			{{template "company/data_history" .}}
 		{{end}}
 	</div>
 </div>
 {{template "base/footer" .}}
+
+{{/* The copies a change is undone from, and who changed what. Shared with
+     the admin console; a department's restore stops and starts the app by
+     itself (company/appdataedit.go), an administrator's asks them to. */}}
+{{define "company/data_history"}}
+	<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.snapshots_header"}}</h4>
+	<div class="ui attached segment">
+		<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.data.snapshots_explain_dept"}}</p>
+		<form method="post" action="{{.DataLink}}/snapshot" class="tw-mb-3">{{.CsrfTokenHtml}}
+			<button class="ui small button">{{ctx.Locale.Tr "company.data.take_snapshot"}}</button>
+		</form>
+		{{if .Snapshots}}
+			<table class="ui very basic table tw-text-13">
+				<tbody>
+					{{range .Snapshots}}
+						<tr>
+							<td class="tw-font-mono">{{.Name}}</td>
+							<td>{{FormatByteSize .Bytes}}</td>
+							<td title="{{DateUtils.FullTime .At}}">{{DateUtils.TimeSince .At}}</td>
+							<td class="tw-text-right">
+								<form method="post" action="{{$.DataLink}}/restore" class="tw-inline" data-company-confirm="{{ctx.Locale.Tr "company.data.restore_confirm_dept"}}">
+									{{$.CsrfTokenHtml}}
+									<input type="hidden" name="name" value="{{.Name}}">
+									<button class="ui tiny button">{{ctx.Locale.Tr "company.data.snapshot_restore_dept"}}</button>
+								</form>
+							</td>
+						</tr>
+					{{end}}
+				</tbody>
+			</table>
+		{{else}}
+			<p class="text-grey">{{ctx.Locale.Tr "company.data.no_snapshots"}}</p>
+		{{end}}
+	</div>
+	{{template "company/data_changes" .}}
+{{end}}
+
+{{define "company/data_changes"}}
+	{{if .RecentChanges}}
+		<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.changes_header"}}</h4>
+		<div class="ui attached segment">
+			<table class="ui very basic table tw-text-13">
+				<tbody>
+					{{range .RecentChanges}}
+						<tr>
+							<td title="{{DateUtils.FullTime .At}}">{{DateUtils.TimeSince .At}}</td>
+							<td>{{.Actor}}</td>
+							<td>{{ctx.Locale.Tr .Label .Table .Detail}}</td>
+						</tr>
+					{{end}}
+				</tbody>
+			</table>
+		</div>
+	{{end}}
+{{end}}

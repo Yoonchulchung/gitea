@@ -81,8 +81,18 @@ func AdminAppData(ctx *context.Context) {
 		ctx.Data["BrowseTable"] = table
 		ctx.Data["BrowseSQL"] = statement
 		ctx.Data["BrowsePageSize"] = browsePageSize
+		setDataEditData(ctx, st.Owner, st.Repo, table, snapshots)
 	}
 	ctx.HTML(http.StatusOK, tplAdminAppData)
+}
+
+// AdminAppDataCSV sends one table as a spreadsheet file.
+func AdminAppDataCSV(ctx *context.Context) {
+	st, _, ok := adminAppContext(ctx)
+	if !ok {
+		return
+	}
+	serveTableCSV(ctx, st.Owner, st.Repo)
 }
 
 // AdminAppDataAction handles the buttons. One entry point, because every one
@@ -114,8 +124,9 @@ func AdminAppDataAction(ctx *context.Context) {
 		err = adminPurgeArchive(ctx)
 		note = ctx.Locale.TrString("company.data.flash_purged")
 	default:
-		ctx.HTTPError(http.StatusBadRequest, "unknown action")
-		return
+		// The same row, column, table and import controls a department has
+		// (company/appdataedit.go).
+		note, err = dataEditAction(ctx, owner, repo, actor, ctx.PathParam("verb"), true)
 	}
 
 	if err != nil {
@@ -123,7 +134,7 @@ func AdminAppDataAction(ctx *context.Context) {
 	} else {
 		ctx.Flash.Success(note)
 	}
-	ctx.Redirect(adminDataLink(owner, repo))
+	ctx.Redirect(dataPageLink(adminDataLink(owner, repo), ctx.FormString("table")))
 }
 
 // adminPurgeArchive deletes soft-deleted data before its clock runs out.
