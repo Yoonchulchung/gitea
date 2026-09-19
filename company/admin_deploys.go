@@ -55,6 +55,12 @@ type adminDeployRow struct {
 	// administrator finding that out one app at a time finds it out late.
 	Data    AppDataUsage
 	HasData bool
+
+	// Memory: what it is allowed, what it holds now, the most it held in
+	// the window — beside each other, so a limit reads against evidence.
+	MemLimitMB int
+	MemNowMB   int
+	MemPeakMB  int
 }
 
 // AdminDeploys lists every department app and its current state.
@@ -209,7 +215,21 @@ type fleetSummary struct {
 	// then absent rather than zero (company/appsample.go).
 	Measured bool
 	MemMaxMB int
+
+	// CommittedMB is every running app's memory limit added up, against the
+	// host: the number that says whether the limits can all be honoured at
+	// once. HostKnown is whether this host reports its size at all.
+	CommittedMB   int
+	HostTotalMB   int
+	HostAvailMB   int
+	HostKnown     bool
+	HostAvailable bool
+	CommitPct     int
 }
+
+// CommitWarn and CommitOver are the two colours of the committed-memory card.
+func (f fleetSummary) CommitWarn() bool { return f.HostKnown && f.CommitPct >= memoryCommitWarnPct }
+func (f fleetSummary) CommitOver() bool { return f.HostKnown && f.CommitPct >= 100 }
 
 // requestSparkline returns one app's request shape and total.
 func requestSparkline(owner, repo string, since time.Time) (string, int) {
@@ -276,6 +296,21 @@ func summarizeFleet(rows []*adminDeployRow, since time.Time) fleetSummary {
 		if summary.ResourcesMeasured {
 			out.Measured = true
 			out.MemMaxMB = max(out.MemMaxMB, summary.MemMaxMB)
+			row.MemPeakMB = summary.MemMaxMB
+			row.MemNowMB = CurrentMemoryMB(row.State.Owner, row.State.Repo)
+		}
+		row.MemLimitMB = SettingsFor(row.State.Owner, row.State.Repo).Limits.MemoryMB
+		if row.State.Actual == AppStateRunning {
+			out.CommittedMB += row.MemLimitMB
+		}
+	}
+	if host, ok := hostMemory(); ok {
+		out.HostKnown = true
+		out.HostTotalMB = int(host.TotalBytes >> 20)
+		out.HostAvailable = host.HasAvailable
+		out.HostAvailMB = int(host.AvailableBytes >> 20)
+		if out.HostTotalMB > 0 {
+			out.CommitPct = out.CommittedMB * 100 / out.HostTotalMB
 		}
 	}
 	if out.Requests > 0 {

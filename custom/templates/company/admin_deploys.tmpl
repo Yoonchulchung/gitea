@@ -19,7 +19,22 @@
 			<div class="company-kpi"><b>{{.CountRunning}}</b><span>{{ctx.Locale.Tr "company.admin.kpi_running"}}</span></div>
 			<div class="company-kpi"><b>{{printf "%.1f" .Fleet.ErrorRate}}%</b><span>{{ctx.Locale.Tr "company.admin.kpi_error_rate"}}</span></div>
 			<div class="company-kpi"><b>{{.Fleet.P95}}<small>ms</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_p95"}}</span></div>
+			{{/* The limits added up against the machine: thirty modest apps, or
+			     one generous one, can promise more memory than exists, and this
+			     is where that shows before the kernel decides who finds out. */}}
+			<div class="company-kpi{{if .Fleet.CommitOver}} full{{else if .Fleet.CommitWarn}} warn{{end}}">
+				<b>{{.Fleet.CommittedMB}}<small>MB{{if .Fleet.HostKnown}}/{{.Fleet.HostTotalMB}}MB · {{.Fleet.CommitPct}}%{{end}}</small></b>
+				<span>{{ctx.Locale.Tr "company.admin.kpi_committed"}}</span>
+			</div>
+			{{if .Fleet.HostAvailable}}
+				<div class="company-kpi"><b>{{.Fleet.HostAvailMB}}<small>MB</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_host_free"}}</span></div>
+			{{end}}
 		</div>
+		{{if .Fleet.CommitWarn}}
+			<div class="ui {{if .Fleet.CommitOver}}negative{{else}}warning{{end}} message">
+				{{ctx.Locale.Tr "company.admin.commit_warning" .Fleet.CommittedMB .Fleet.HostTotalMB .Fleet.CommitPct}}
+			</div>
+		{{end}}
 
 		{{if .Attention}}
 			{{/* Only rendered when there is something to act on. A section that
@@ -67,8 +82,8 @@
 						<th class="tw-w-1/12">{{ctx.Locale.Tr "company.admin.col_status"}}</th>
 						<th>{{ctx.Locale.Tr "company.admin.col_app"}}</th>
 						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_deploy"}}</th>
-						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_health"}}</th>
 						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_requests"}}</th>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_memory"}}</th>
 						{{if $.DataEnabled}}<th class="tw-w-1/12">{{ctx.Locale.Tr "company.admin.col_data"}}</th>{{end}}
 					</tr>
 				</thead>
@@ -91,18 +106,10 @@
 									<span class="text-grey">{{ctx.Locale.Tr "company.admin.never_deployed"}}</span>
 								{{end}}
 							</td>
-							<td class="tw-text-13">
-								{{if eq .State.Health.State "up"}}
-									<span class="text-green" data-tooltip-content="{{if .State.Health.Own}}{{ctx.Locale.Tr "company.admin.health_own"}}{{else}}{{ctx.Locale.Tr "company.admin.health_answering"}}{{end}}">{{ctx.Locale.Tr "company.admin.health_up"}}</span>
-								{{else if eq .State.Health.State "down"}}
-									<span class="text-red" {{with .State.Health.Detail}}data-tooltip-content="{{.}}"{{end}}>{{ctx.Locale.Tr "company.admin.health_down"}}</span>
-								{{else}}
-									<span class="text-grey">—</span>
-								{{end}}
-								{{/* A health result with no timestamp is indistinguishable from a
-								     stale one, so always show when it was taken. */}}
-								{{if .State.Health.CheckedAt}}<span class="text-grey">· {{DateUtils.TimeSince .State.Health.CheckedAt}}</span>{{end}}
-							</td>
+							{{/* No health column: the status already comes from the health
+							     check (a failing one flips it), and the app page has the
+							     detail. Memory sits here instead — the figure that decides
+							     whether the limits can all be honoured. */}}
 							{{/* The shape, not just the number: "1.2k" cannot say whether
 							     that is normal for this app, and a spike is what someone
 							     scanning this page is looking for. */}}
@@ -110,6 +117,13 @@
 								{{if .Sparkline}}
 									{{template "company/sparkline" dict "Points" .Sparkline}}
 									<span class="text-grey tw-ml-1">{{.Requests}}</span>
+								{{else}}
+									<span class="text-grey">—</span>
+								{{end}}
+							</td>
+							<td class="tw-text-13">
+								{{if .MemLimitMB}}
+									{{if .MemPeakMB}}{{.MemNowMB}}<span class="text-grey">/{{.MemLimitMB}}MB · {{ctx.Locale.Tr "company.adminapp.kpi_memory_peak" .MemPeakMB}}</span>{{else}}<span class="text-grey">—/{{.MemLimitMB}}MB</span>{{end}}
 								{{else}}
 									<span class="text-grey">—</span>
 								{{end}}

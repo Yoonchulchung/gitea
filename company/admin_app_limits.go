@@ -63,12 +63,33 @@ func AdminSetLimits(ctx *context.Context) {
 		if mb > 0 {
 			subject = "set the memory limit"
 		}
+		// Against the machine, with every other running app's limit: a limit
+		// that cannot be honoured alongside the others is refused, and one
+		// that leaves little for the rest is saved with a warning.
+		effective := mb
+		if effective == 0 {
+			effective = builtinDefaults().Limits.MemoryMB
+		}
+		committed := memoryCommitmentMB(st.Owner, st.Repo) + effective
+		note := ""
+		if host, ok := hostMemory(); ok && host.TotalBytes > 0 {
+			totalMB := int(host.TotalBytes >> 20)
+			pct := committed * 100 / totalMB
+			if pct >= 100 {
+				ctx.Flash.Error(ctx.Locale.TrString("company.err.memory_over_host", committed, totalMB))
+				ctx.Redirect(back)
+				return
+			}
+			if pct >= memoryCommitWarnPct {
+				note = " " + ctx.Locale.TrString("company.flash.memory_commit_warn", committed, totalMB, pct)
+			}
+		}
 		if err := SetAppLimits(ctx, ctx.Doer, st.Owner, st.Repo, subject, func(s *AppSettings) { s.Limits.MemoryMB = mb }); err != nil {
 			ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 		} else {
 			// The limit is set on the process as it starts (company/appsandbox.go),
 			// so a running app keeps its old one until it is restarted.
-			ctx.Flash.Success(ctx.Locale.TrString("company.flash.memory_changed"))
+			ctx.Flash.Success(ctx.Locale.TrString("company.flash.memory_changed") + note)
 		}
 		ctx.Redirect(back)
 		return
