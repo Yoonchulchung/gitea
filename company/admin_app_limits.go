@@ -19,6 +19,25 @@ import (
 //
 // Raising it is deliberately per-app. The instance default is what every app
 // gets, and moving that to suit one department would move it for thirty.
+// parseLimitMB reads a limit typed into a card: empty is the instance
+// default (0), anything else a whole number of MB up to maxMB. Parsed
+// rather than taken from FormInt, which reads a typo as 0 — and 0 here
+// means "back to the default", which a typo must not do silently.
+func parseLimitMB(raw string, maxMB int) (int, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, true
+	}
+	mb, err := strconv.Atoi(raw)
+	if err != nil || mb < 0 || mb > maxMB {
+		return 0, false
+	}
+	return mb, true
+}
+
+// AdminSetLimits saves a limit typed into one of the app page's cards —
+// memory_mb or data_mb, whichever the card sent. Mounted at POST
+// /-/admin/company-deploys/{owner}/{repo}/limits.
 func AdminSetLimits(ctx *context.Context) {
 	st, _, ok := adminAppContext(ctx)
 	if !ok {
@@ -26,26 +45,38 @@ func AdminSetLimits(ctx *context.Context) {
 	}
 	back := setting.AppSubURL + "/-/admin/company-deploys/" + st.Owner + "/" + st.Repo
 
-	// Parsed rather than taken from FormInt, which reads anything unparsable
-	// as 0 — and 0 here means "follow the instance default". A typo would have
-	// silently reset the limit instead of being refused.
-	raw := strings.TrimSpace(ctx.FormString("data_mb"))
-	mb := 0
-	if raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil {
-			ctx.Flash.Error(ctx.Locale.TrString("company.err.bad_quota", maxDataQuotaMB))
+	// ParseForm first: the map is nil until something asks for a field
+	// (the same trap AdminApprovePackages notes), and an unparsed form
+	// made every card's Enter read as the data quota.
+	_ = ctx.Req.ParseForm()
+	if _, sent := ctx.Req.Form["memory_mb"]; sent {
+		mb, ok := parseLimitMB(ctx.FormString("memory_mb"), maxMemoryRequestMB)
+		if !ok {
+			ctx.Flash.Error(ctx.Locale.TrString("company.err.bad_memory_limit", maxMemoryRequestMB))
 			ctx.Redirect(back)
 			return
 		}
-		mb = parsed
-	}
-	if mb < 0 || mb > maxDataQuotaMB {
-		ctx.Flash.Error(ctx.Locale.TrString("company.err.bad_quota", maxDataQuotaMB))
+		subject := "set the memory limit to the default"
+		if mb > 0 {
+			subject = "set the memory limit"
+		}
+		if err := SetAppLimits(ctx, ctx.Doer, st.Owner, st.Repo, subject, func(s *AppSettings) { s.Limits.MemoryMB = mb }); err != nil {
+			ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
+		} else {
+			// The limit is set on the process as it starts (company/appsandbox.go),
+			// so a running app keeps its old one until it is restarted.
+			ctx.Flash.Success(ctx.Locale.TrString("company.flash.memory_changed"))
+		}
 		ctx.Redirect(back)
 		return
 	}
 
+	mb, ok := parseLimitMB(ctx.FormString("data_mb"), maxDataQuotaMB)
+	if !ok {
+		ctx.Flash.Error(ctx.Locale.TrString("company.err.bad_quota", maxDataQuotaMB))
+		ctx.Redirect(back)
+		return
+	}
 	subject := "set the data quota to unlimited"
 	if mb > 0 {
 		subject = "set the data quota"

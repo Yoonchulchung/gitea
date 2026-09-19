@@ -133,25 +133,41 @@
 				{{/* A blank is not a zero. This host may be unable to read an
 				     app's usage at all, and "0MB" would be read as evidence when
 				     sizing a limit. */}}
-				<div class="company-kpi">
-					{{/* Now first, peak second: the sidebar a department sees shows
-					     the current reading, and two screens giving two numbers for
-					     "memory" with no word between them read as a disagreement. */}}
-					{{if .Summary.ResourcesMeasured}}
-						<b>{{.MemoryNowMB}}<small>/{{.MemoryLimitMB}}MB · {{ctx.Locale.Tr "company.adminapp.kpi_memory_peak" .Summary.MemMaxMB}}</small></b>
-					{{else}}
-						<b class="text-grey">—<small>/{{.MemoryLimitMB}}MB</small></b>
-					{{end}}
+				{{/* The limit is typed where it is read: the card is a form, the
+				     number after the slash is its field, and Enter saves. Now
+				     first, peak second — the sidebar a department sees shows the
+				     current reading, and two numbers for "memory" with no word
+				     between them read as a disagreement. */}}
+				<form method="post" action="{{.AdminAppLink}}/limits" class="company-kpi company-kpi-edit">
+					{{.CsrfTokenHtml}}
+					<b{{if not .Summary.ResourcesMeasured}} class="text-grey"{{end}}>{{if .Summary.ResourcesMeasured}}{{.MemoryNowMB}}{{else}}—{{end}}<small>/{{.MemoryLimitMB}}MB{{if .Summary.ResourcesMeasured}} · {{ctx.Locale.Tr "company.adminapp.kpi_memory_peak" .Summary.MemMaxMB}}{{end}}</small>
+						<button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button></b>
 					<span>{{ctx.Locale.Tr "company.adminapp.kpi_memory"}}</span>
-				</div>
+					<div class="company-kpi-editor tw-hidden">
+						<input type="number" name="memory_mb" min="0" max="16384" step="1" value="{{if .Settings.Limits.MemoryMB}}{{.Settings.Limits.MemoryMB}}{{end}}" placeholder="{{.MemoryLimitMB}}" disabled>
+						<span class="tw-text-12">MB</span>
+						<button class="ui tiny primary button">{{ctx.Locale.Tr "save"}}</button>
+						<button type="button" class="ui tiny basic button company-kpi-cancel">{{ctx.Locale.Tr "cancel"}}</button>
+					</div>
+				</form>
 				{{if .DataUsage}}
 					{{/* Coloured from the warning threshold, not from full: a quota
 					     that is already full has stopped deploys, and the point of
-					     showing it is to be seen before that. */}}
-					<div class="company-kpi{{if .DataUsage.Full}} full{{else if .DataUsage.Warning}} warn{{end}}">
-						<b>{{FormatByteSize .DataUsage.Bytes}}<small>/{{FormatByteSize .DataUsage.QuotaBytes}}</small></b>
+					     showing it is to be seen before that. Empty rather than
+					     zero: clearing the field is how an app goes back to the
+					     instance default, and a literal 0 reads as "no storage". */}}
+					<form method="post" action="{{.AdminAppLink}}/limits" class="company-kpi company-kpi-edit{{if .DataUsage.Full}} full{{else if .DataUsage.Warning}} warn{{end}}">
+						{{.CsrfTokenHtml}}
+						<b>{{FormatByteSize .DataUsage.Bytes}}<small>/{{FormatByteSize .DataUsage.QuotaBytes}}</small>
+							<button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button></b>
 						<span>{{ctx.Locale.Tr "company.adminapp.kpi_data"}} {{if .DataUsage.QuotaBytes}}<small>{{.DataUsage.Percent}}%</small>{{end}}</span>
-					</div>
+						<div class="company-kpi-editor tw-hidden">
+							<input type="number" name="data_mb" min="0" max="{{.MaxDataQuotaMB}}" step="1" value="{{if .Settings.Limits.DataMB}}{{.Settings.Limits.DataMB}}{{end}}" placeholder="{{.DefaultDataQuotaMB}}" disabled>
+							<span class="tw-text-12">MB</span>
+							<button class="ui tiny primary button">{{ctx.Locale.Tr "save"}}</button>
+							<button type="button" class="ui tiny basic button company-kpi-cancel">{{ctx.Locale.Tr "cancel"}}</button>
+						</div>
+					</form>
 				{{end}}
 				{{if .Summary.Blocked}}<div class="company-kpi bad"><b>{{.Summary.Blocked}}</b><span>{{ctx.Locale.Tr "company.adminapp.kpi_blocked"}}</span></div>{{end}}
 			</div>
@@ -324,24 +340,6 @@
 				<span class="text-grey tw-text-12">
 					{{ctx.Locale.Tr "company.adminapp.download_note"}}
 				</span>
-			</form>
-		</div>
-
-		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminapp.limits_header"}}</h4>
-		<div class="ui attached segment">
-			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.limits_explain" .DefaultDataQuotaMB}}</p>
-			<form method="post" action="{{.AdminAppLink}}/limits" class="ui form tw-flex tw-gap-2 tw-items-end">
-				{{.CsrfTokenHtml}}
-				<div class="field tw-mb-0">
-					<label for="data_mb">{{ctx.Locale.Tr "company.adminapp.limits_data"}}</label>
-					{{/* Empty rather than zero-as-a-number: clearing the field is how
-					     an app goes back to the instance default, and a literal 0 in
-					     the box reads as "no storage". */}}
-					<input id="data_mb" type="number" name="data_mb" min="0" max="{{.MaxDataQuotaMB}}" step="1"
-					       value="{{if .Settings.Limits.DataMB}}{{.Settings.Limits.DataMB}}{{end}}"
-					       placeholder="{{.DefaultDataQuotaMB}}" class="tw-w-32">
-				</div>
-				<button class="ui small primary button tw-mb-0">{{ctx.Locale.Tr "company.adminapp.limits_save"}}</button>
 			</form>
 		</div>
 

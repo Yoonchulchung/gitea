@@ -198,6 +198,29 @@ export function initCompanyAppCharts() {
   }
 }
 
+// A limit card on the admin app page: the pencil opens the field, Save
+// submits the card's own form, Cancel or Escape closes it. The field is
+// disabled while closed so a stray Enter elsewhere cannot submit it.
+export function initCompanyKpiEdit() {
+  for (const form of document.querySelectorAll<HTMLFormElement>('form.company-kpi-edit')) {
+    const editor = form.querySelector<HTMLElement>('.company-kpi-editor');
+    const input = editor?.querySelector<HTMLInputElement>('input');
+    const pencil = form.querySelector<HTMLButtonElement>('.company-kpi-pencil');
+    if (!editor || !input || !pencil) continue;
+    const open = (on: boolean) => {
+      editor.classList.toggle('tw-hidden', !on);
+      pencil.classList.toggle('tw-hidden', on);
+      input.disabled = !on;
+      if (on) input.focus();
+    };
+    pencil.addEventListener('click', () => open(true));
+    form.querySelector('.company-kpi-cancel')!.addEventListener('click', () => open(false));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') open(false);
+    });
+  }
+}
+
 // Destructive controls (stop, remove, rollback) ask first. Stopping an app
 // disconnects whoever is using it right now, which is not obvious from a
 // button labelled "중지".
