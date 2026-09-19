@@ -54,7 +54,8 @@ const (
 	ReasonInstallFailed      = "install_failed"
 	ReasonPackageDenied      = "package_denied"
 	ReasonOOM                = "oom"
-	ReasonCPU                = "cpu" // over its CPU limit for a sustained stretch
+	ReasonCPU                = "cpu"         // over its CPU limit for a sustained stretch
+	ReasonHostMemory         = "host_memory" // stopped to keep the server itself from running out
 	ReasonHealthTimeout      = "health_timeout"
 	ReasonCrashLoop          = "crash_loop"
 	ReasonSuspended          = "suspended"

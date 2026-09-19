@@ -155,6 +155,9 @@ func AdminDeploys(ctx *context.Context) {
 	ctx.Data["PythonDetail"] = pythonDetail
 	ctx.Data["SandboxOK"] = sandboxOK
 	ctx.Data["SandboxDetail"] = sandboxDetail
+	cgroupOK, cgroupDetail := CgroupStatus()
+	ctx.Data["CgroupOK"] = cgroupOK
+	ctx.Data["CgroupDetail"] = cgroupDetail
 	ctx.Data["ConfigError"] = configErr
 
 	ctx.Data["DataEnabled"] = AppDataEnabled()
@@ -219,7 +222,12 @@ type fleetSummary struct {
 	// CommittedMB is every running app's memory limit added up, against the
 	// host: the number that says whether the limits can all be honoured at
 	// once. HostKnown is whether this host reports its size at all.
-	CommittedMB   int
+	CommittedMB int
+	// RoomApps is how many more apps, at the default memory limit, fit
+	// before the committed total reaches the warning share of the host.
+	RoomApps      int
+	RoomMB        int
+	DefaultMemMB  int
 	HostTotalMB   int
 	HostAvailMB   int
 	HostKnown     bool
@@ -311,6 +319,9 @@ func summarizeFleet(rows []*adminDeployRow, since time.Time) fleetSummary {
 		out.HostAvailMB = int(host.AvailableBytes >> 20)
 		if out.HostTotalMB > 0 {
 			out.CommitPct = out.CommittedMB * 100 / out.HostTotalMB
+			out.DefaultMemMB = builtinDefaults().Limits.MemoryMB
+			out.RoomMB = max(out.HostTotalMB*memoryCommitWarnPct/100-out.CommittedMB, 0)
+			out.RoomApps = out.RoomMB / out.DefaultMemMB
 		}
 	}
 	if out.Requests > 0 {

@@ -68,6 +68,7 @@ func StartMetricsFlusher() {
 				return
 			case <-ticker.C:
 				sampleAllApps()
+				checkHostPressure() // after the samples, so "the heaviest app" is this round's reading
 			}
 		}
 	}()

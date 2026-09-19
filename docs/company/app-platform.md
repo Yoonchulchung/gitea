@@ -166,6 +166,30 @@ central의 그 앱 prefix 아래 파일을 모두 지운 스냅샷으로 배포 
 3. **실패 원인을 평문으로 보여준다** — 로그를 읽혀 원인을 찾게 하면 결국 개발자를 부른다
 4. **배포 전에 검사한다** — 배포 요청 화면이 Python 문법(빌드에 쓰는 인터프리터의 `ast.parse`), HTML의 닫히지 않은 태그, JavaScript 문법을 먼저 검사해 파일과 줄 번호로 보여준다(`company/deploycheck.go`). 실행은 하지 않고 읽기만 한다. 요청을 막지는 않는다 — 문법이 아닌 것을 요청할 수도 있다
 
+## 메모리 압박·커널 한도·상태 보존 (2026-09-19)
+
+쿠버네티스급은 아니다 — 솔직하게 적는다. 플랫폼은 root 없이 한 계정으로 돌고,
+앱은 같은 커널을 나눠 쓴다. 그 안에서 할 수 있는 것을 다 한다:
+
+| 층 | 무엇 | 없으면 |
+|---|---|---|
+| 커널 한도 (`company/cgroup.go`) | `systemd-run --user --scope`로 앱마다 cgroup: `MemoryMax`·`MemoryHigh`(90%)·`CPUQuota`·`TasksMax`. 커널이 막는 벽이다. 부팅 때 한 번 probe, `[company] CGROUP_LIMITS = false`로 끌 수 있다 | 아래 두 층만. 관리자 앱 목록에 "Limits are held by: …"로 어느 쪽인지 적힌다. 필요 조건: systemd 사용자 세션(`loginctl enable-linger <플랫폼 계정>`) |
+| rlimit + watchdog | `RLIMIT_DATA`, 메모리 1.5×·CPU 1분·데이터 100% 초과 시 정지 | — |
+| 호스트 압박 (`company/hostpressure.go`) | 서버 여유 메모리가 `HOST_MEMORY_FLOOR_MB`(기본 512) 아래로 가면 **가장 많이 쓰는 앱 하나**를 SIGTERM으로 세우고 사유를 적는다. 1분에 하나. 커널 OOM 킬러가 SIGKILL로 아무나 고르기 전에 | Linux만(`MemAvailable`) |
+
+**독립성**: 앱마다 프로세스 그룹·소켓·supervisor·감시 카운터가 따로다. 한 앱의 크래시·
+한도 초과·정지는 그 앱의 상태 파일에만 적히고 Gitea 프로세스에는 닿지 않는다. 앱은
+`nice 10`·`oom_score_adj 500`이라 압박 상황에서도 커널은 Gitea보다 앱을 먼저 고른다.
+공유하는 것은 커널·디스크·메모리 총량뿐이고, 그것이 위 표의 존재 이유다.
+
+**용량**: 관리자 앱 목록의 "more apps fit" 카드 = (서버 메모리 × 80% − 실행 중 앱 한도 합) ÷
+기본 한도(192MB). 한도 편집 때도 같은 계산으로 거부·경고한다.
+
+**상태 보존**: 프로세스 메모리 이미지를 저장하지는 못한다(CRIU는 root). 대신 shim이
+`platform.state`(dict)를 준다 — 정상 종료(SIGTERM 정지 포함)와 30초마다
+`DATA_DIR/platform-state.json`에 쓰고, 다음 시작 때 앱 코드보다 먼저 되읽는다. 앱이
+메모리에만 두던 것 중 다시 필요한 것은 거기 넣는다. DB에 쓴 것은 원래 남는다.
+
 ## 격리: 실제로 무엇을 쓰는가 (2026-09-06 갱신)
 
 배포 서버에서 `unshare -Ur true`가 `write failed /proc/self/uid_map: Operation

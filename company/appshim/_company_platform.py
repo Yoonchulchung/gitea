@@ -63,10 +63,70 @@ def _wrap(connect):
     return wrapper
 
 
+# state: what an app keeps in memory that it wants back after a stop. The
+# platform stops apps — over a limit, under memory pressure, for a deploy —
+# and SIGTERM lets uvicorn finish its requests but nothing in the process
+# outlives it. Anything put here is written to the data directory when the
+# process exits normally (which a SIGTERM stop is) and every 30 seconds
+# in between, and is loaded before the app's own code runs:
+#
+#     import _company_platform as platform
+#     platform.state["cache"] = compute()      # survives a stop
+#     platform.state.get("cache")              # there again after a start
+#
+# Values must be JSON: this is a saved dictionary, not a memory image.
+state = {}
+_STATE_PATH = None
+
+
+def _save_state():
+    if _STATE_PATH is None or (not state and not os.path.exists(_STATE_PATH)):
+        return  # nothing kept, nothing to write
+    try:
+        import json
+        tmp = _STATE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False)
+        os.replace(tmp, _STATE_PATH)
+    except Exception as e:  # never take an app down over its keepsakes
+        print(f"[platform] state was not saved: {e}", flush=True)
+
+
+def _load_state():
+    try:
+        import json
+        with open(_STATE_PATH, encoding="utf-8") as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            state.update(loaded)
+            print(f"[platform] state restored from {_STATE_PATH} ({len(loaded)} keys)", flush=True)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print(f"[platform] state was not restored: {e}", flush=True)
+
+
+def _autosave():
+    import threading
+    import time
+
+    def loop():
+        while True:
+            time.sleep(30)
+            _save_state()
+
+    threading.Thread(target=loop, name="platform-state-autosave", daemon=True).start()
+
+
 if _DB_PATH and _APP_DIR:
+    import atexit
     import sqlite3
     import sqlite3.dbapi2
 
     _DATA_DIR = os.path.realpath(os.path.dirname(_DB_PATH))
     _CODE_DIR = os.path.realpath(_APP_DIR)
     sqlite3.connect = sqlite3.dbapi2.connect = _wrap(sqlite3.dbapi2.connect)
+    _STATE_PATH = os.path.join(_DATA_DIR, "platform-state.json")
+    _load_state()
+    atexit.register(_save_state)  # after uvicorn's own graceful shutdown, on the way out
+    _autosave()

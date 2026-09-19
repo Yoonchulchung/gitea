@@ -29,7 +29,13 @@
 			{{if .Fleet.HostAvailable}}
 				<div class="company-kpi"><b>{{.Fleet.HostAvailMB}}<small>MB</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_host_free"}}</span></div>
 			{{end}}
+			{{if .Fleet.HostKnown}}
+				<div class="company-kpi{{if eq .Fleet.RoomApps 0}} warn{{end}}"><b>{{.Fleet.RoomApps}}<small> · {{.Fleet.RoomMB}}MB</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_room" .Fleet.DefaultMemMB}}</span></div>
+			{{end}}
 		</div>
+		{{/* Which wall holds the limits: the kernel (a systemd scope) or the
+		     watchdog alone. An operator sizing limits has to know which. */}}
+		<p class="text-grey tw-text-12 tw-mt-2">{{if .CgroupOK}}{{svg "octicon-shield-check" 12}}{{else}}{{svg "octicon-shield" 12}}{{end}} {{ctx.Locale.Tr "company.admin.limits_enforced_by"}} {{.CgroupDetail}}</p>
 		{{if .Fleet.CommitWarn}}
 			<div class="ui {{if .Fleet.CommitOver}}negative{{else}}warning{{end}} message">
 				{{ctx.Locale.Tr "company.admin.commit_warning" .Fleet.CommittedMB .Fleet.HostTotalMB .Fleet.CommitPct}}

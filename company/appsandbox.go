@@ -328,7 +328,8 @@ func buildSandboxCommand(release string, p appPaths, settings AppSettings, dataD
 		return landlockCommand(release, p, settings, interpreter, args, dataDir, snapshotDir)
 	default:
 		log.Warn("company: starting an app WITHOUT a sandbox: %s", detail)
-		return exec.Command(interpreter, args[1:]...), nil //nolint:gosec // args come from admin-owned apps.yml
+		argv := cgroupArgs(settings.Limits, append([]string{interpreter}, args[1:]...))
+		return exec.Command(argv[0], argv[1:]...), nil //nolint:gosec // args come from admin-owned apps.yml
 	}
 }
 
@@ -381,6 +382,7 @@ func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, a
 	// inherited across exec, so setting them outside means everything inside
 	// the sandbox — including anything the app spawns — is covered.
 	argv := append(prlimitArgs(settings.Limits), append([]string{bwrapPath}, bwrapArgs...)...)
+	argv = cgroupArgs(settings.Limits, argv)  // outermost: the scope holds everything below it
 	return exec.Command(argv[0], argv[1:]...) //nolint:gosec // argv[0] is resolved from PATH, the rest is admin-owned apps.yml
 }
 
@@ -437,6 +439,7 @@ func landlockCommand(release string, p appPaths, settings AppSettings, interpret
 	}
 	argv = append(argv, "--", interpreter)
 	argv = append(argv, args[1:]...)
+	argv = cgroupArgs(settings.Limits, argv)
 
 	return exec.Command(argv[0], argv[1:]...), nil //nolint:gosec // argv[0] is this binary; the rest is admin-owned apps.yml
 }
