@@ -17,6 +17,11 @@
 -->
 <div id="activity-feed" class="flex-divided-list items-with-main" data-ref-issue-container>
 	{{range .Feeds}}
+		{{/* The platform's own doings on the central repository — branches
+		     made and deleted, snapshots pushed, requests opened under the
+		     owner's account — are the deploy requests listed above, seen
+		     from the wrong side. See company/dashboard_deploys.go. */}}
+		{{if and $.CompanyCentralRepoPath (eq (.GetRepoPath ctx) $.CompanyCentralRepoPath)}}{{continue}}{{end}}
 		{{$isSimpleAdd := false}}
 		{{$isSimpleEdit := false}}
 		{{$simpleCommitLink := ""}}

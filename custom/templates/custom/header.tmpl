@@ -146,6 +146,15 @@
    otherwise make it 35% *of* the column. */
 .company-dashboard-sidebar > #dashboard-repo-list { width: 100%; }
 .company-dashboard-apps { margin-top: 1em; }
+.company-dashboard-deploys { margin-bottom: 1em; }
+.company-dashboard-deploy {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+.company-dashboard-deploy-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.company-dashboard-deploy-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .company-dashboard-apps-head {
 	display: flex;
 	align-items: center;

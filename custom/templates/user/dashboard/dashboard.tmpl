@@ -5,6 +5,7 @@
 		<div class="flex-container-main">
 			{{template "base/alert" .}}
 			{{template "user/heatmap" .}}
+			{{template "company/dashboard_deploys" .}}
 			{{if .Page.Paginator.TotalPages}}
 				{{template "user/dashboard/feeds" .}}
 			{{else}}

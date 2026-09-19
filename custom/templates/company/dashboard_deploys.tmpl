@@ -1,0 +1,28 @@
+{{/* Recent deploy requests on an administrator's dashboard: who asked to
+     deploy what, and how it went. Set by company.SetDashboardDeploys
+     (company/dashboard_deploys.go); rendered only when there is something
+     to show, like the apps panel. */}}
+{{with .DashboardDeploys}}
+	<div class="ui segments company-dashboard-deploys">
+		<div class="ui segment company-dashboard-apps-head">
+			<strong>{{ctx.Locale.Tr "company.dashboard.deploys"}}</strong>
+			<a class="muted tw-text-12" href="{{AppSubUrl}}/-/admin/company-deploys">{{ctx.Locale.Tr "company.dashboard.deploys_all"}}</a>
+		</div>
+		{{range .}}
+			<div class="ui segment company-dashboard-deploy">
+				<div class="company-dashboard-deploy-main">
+					<a class="company-dashboard-app-name" href="{{.AppLink}}">{{.Owner}}/{{.Repo}}</a>
+					<a class="company-dashboard-deploy-title" href="{{.Link}}">{{.Title}}</a>
+					<div class="text-grey tw-text-12">
+						{{if .Requester}}{{ctx.Locale.Tr "company.dashboard.requested_by" .Requester.Name}}{{else}}{{ctx.Locale.Tr "company.activity.who_gone"}}{{end}}
+						{{if .Approver}} · {{ctx.Locale.Tr "company.dashboard.approved_by" .Approver.Name}}{{end}}
+						· <span title="{{DateUtils.FullTime .At}}">{{DateUtils.TimeSince .At}}</span>
+					</div>
+				</div>
+				{{with .Status}}
+					<span class="ui {{if eq .Status "approved" "deployed"}}green{{else if eq .Status "rejected" "deploy_failed"}}red{{else if eq .Status "cancelled"}}grey{{else}}yellow{{end}} tiny label">{{ctx.Locale.Tr (printf "company.deploy_status.%s" .Status)}}</span>
+				{{end}}
+			</div>
+		{{end}}
+	</div>
+{{end}}
