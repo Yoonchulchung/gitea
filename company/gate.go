@@ -10,6 +10,7 @@ import (
 
 	"gitea.dev/models/organization"
 	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/htmlutil"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
 	"gitea.dev/modules/templates"
@@ -177,11 +178,15 @@ func redirectToDepartment(ctx *context.Context, orgs []*organization.MinimalOrg)
 		ctx.Redirect(setting.AppSubURL + "/org/" + orgs[0].Name + "/dashboard")
 	case 0:
 		ctx.Data["Title"] = string(ctx.Locale.Tr("company.gate.no_department_title"))
-		ctx.Data["Message"] = string(ctx.Locale.Tr("company.gate.no_department"))
 		// Whoever is currently responsible, not a name baked into a template:
 		// the person who adds people to departments changes, and a page that
 		// still names the one who left is worse than one that names nobody.
-		ctx.Data["SupportEmail"] = SupportEmail(ctx)
+		// In the sentence itself, as a link: the one thing to do from here.
+		if email := SupportEmail(ctx); email != "" {
+			ctx.Data["Message"] = ctx.Locale.Tr("company.gate.no_department", htmlutil.HTMLFormat(`<a href="mailto:%s">%s</a>`, email, email))
+		} else {
+			ctx.Data["Message"] = ctx.Locale.Tr("company.gate.no_department_nocontact")
+		}
 		ctx.HTML(http.StatusOK, tplNoDepartment)
 	default:
 		ctx.Data["Title"] = string(ctx.Locale.Tr("company.gate.multiple_departments_title"))
