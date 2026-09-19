@@ -22,7 +22,7 @@ keywords: 네트워크, network, 외부, outbound, api 호출, requests, httpx, 
 - `network: open`(제한 없음)은 관리자 설정(`APP_NETWORK_ALLOW_OPEN`)이 허용할 때만 가능하며, 사실상 쓰지 않는다.
 
 ## 인바운드 — 누가 앱을 열 수 있는가
-- 접근 모드는 세 가지다. `public`(기본: 서버에 닿는 누구나), `login`(Gitea에 로그인한 사용자), `org`(앱을 소유한 조직의 구성원과 관리자). 부서가 앱 페이지에서 바꿀 수 있고, 관리자 설정 `APP_MAX_ACCESS`가 상한이다.
-- `login`·`org` 모드에서는 플랫폼이 요청 헤더 `X-Gitea-User`에 로그인 사용자 이름을 넣어 준다. 앱은 이 값을 화면 표시나 기록에 쓸 수 있다: `request.headers.get("x-gitea-user")`. `public` 모드에서는 이 헤더가 오지 않으며, 앱이 스스로 인증을 구현할 필요는 없다.
+- 접근 모드는 세 가지다. `public`(기본: 서버에 닿는 누구나), `login`(플랫폼에 로그인한 사용자), `org`(앱을 소유한 조직의 구성원과 관리자). 부서가 앱 페이지에서 바꿀 수 있고, 관리자 설정 `APP_MAX_ACCESS`가 상한이다.
+- `login`·`org` 모드에서는 플랫폼이 로그인 사용자 헤더(`X-Gitea-User`)에 사용자 이름을 넣어 준다. 앱은 이 값을 화면 표시나 기록에 쓸 수 있다: `request.headers.get("x-gitea-user")`. `public` 모드에서는 이 헤더가 오지 않으며, 앱이 스스로 인증을 구현할 필요는 없다.
 - 브라우저가 보낸 `X-Forwarded-*`, `X-Gitea-*` 헤더는 프록시가 모두 제거하므로 위조되지 않는다.
 - 앱은 포트를 열어 사내망에 직접 노출될 수 없다. 프록시를 통해서만 접근된다.

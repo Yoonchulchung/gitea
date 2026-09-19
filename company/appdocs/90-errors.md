@@ -17,7 +17,7 @@ keywords: 오류, error, 에러, traceback, exception, 실패, fail, 안돼, 502
 - `sqlite3.OperationalError: database is locked`: 연결을 오래 열어 두었거나 트랜잭션을 닫지 않았다. 요청마다 열고 `with`로 닫으며, `timeout=10`을 준다.
 - `ConnectionError`, `Name or service not known`, `Network is unreachable`: 외부 접속이 허용되지 않았다. 네트워크 문서 참고 — 승인을 요청하고 `BROKER_SOCKET`을 통해 나간다.
 - 브라우저에 "This app is not allowed to send files": 다운로드 정책이 차단이다. 배포 요청에서 다운로드 허용을 요청한다. 화면에 표시하는 것으로 바꿀 수도 있다.
-- 페이지 이동 시 404 또는 Gitea 로그인 화면이 뜸: 절대 경로 링크(`/index.html`, `/api/...`) 때문이다. URL 문서 참고 — 상대 경로로 바꾼다.
+- 페이지 이동 시 404 또는 플랫폼의 로그인 화면이 뜸: 절대 경로 링크(`/index.html`, `/api/...`) 때문이다. URL 문서 참고 — 상대 경로로 바꾼다.
 - 앱이 갑자기 중지되고 앱 페이지에 "메모리 한도"·"CPU 한도": 한도 문서 참고. 데이터를 나눠 처리하고 캐시한다.
 - 502 또는 "app is not running": 앱이 죽었거나 중지 상태다. 앱 페이지의 로그에서 마지막 traceback을 보고, 시작/재시작 버튼으로 다시 올린다.
 - `RuntimeError: can't start new thread`: 프로세스·스레드 한도(64)를 넘었다. 스레드풀 크기를 줄이거나 작업을 순차로 처리한다.

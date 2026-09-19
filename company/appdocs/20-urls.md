@@ -7,7 +7,7 @@ keywords: url, 경로, 링크, 정적, static, css, js, 이미지, index.html, 4
 - uvicorn에 `--root-path`가 전달되므로 FastAPI/Starlette가 스스로 만드는 URL(`url_for`, `/docs`, `request.url_for`)은 프리픽스가 붙어 나온다.
 
 ## 링크는 상대 경로로
-- HTML이나 JavaScript에 `/index.html`, `/static/app.css`, `/api/items` 처럼 `/`로 시작하는 절대 경로를 적으면 앱이 아니라 Gitea의 `/index.html`을 가리키게 된다. 그 결과가 "입력 화면으로 가면 404" 같은 증상이다.
+- HTML이나 JavaScript에 `/index.html`, `/static/app.css`, `/api/items` 처럼 `/`로 시작하는 절대 경로를 적으면 앱이 아니라 플랫폼 서버의 `/index.html`을 가리키게 된다. 그 결과가 "입력 화면으로 가면 404" 같은 증상이다.
 - 플랫폼의 프록시가 HTML 응답 안의 `href`·`src`·`action` 등에 있는 절대 경로와 `Location` 리다이렉트 헤더에는 프리픽스를 다시 붙여 준다. 하지만 JavaScript 문자열 안의 `fetch("/api/...")`, `window.location = "/..."`, CSS `url(/...)` 은 고쳐 주지 못한다.
 - 그래서 규칙은 하나다: **상대 경로를 쓴다.** `fetch("api/items")`, `<a href="stats.html">`, `<link href="static/app.css">`. 하위 경로 페이지에서는 `../`로 올라간다.
 - 파이썬 쪽에서 절대 URL이 필요하면 `request.scope["root_path"]` 또는 `os.environ["ROOT_PATH"]`를 앞에 붙인다: `f"{request.scope['root_path']}/api/items"`.

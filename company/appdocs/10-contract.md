@@ -18,7 +18,7 @@ always: yes
 - 헬스 체크 요청에는 `platform-health-check=1` 쿼리가 붙고 로그에서 제외된다.
 
 ## 환경 변수
-플랫폼이 앱 프로세스에 주는 값. Gitea 자체의 환경은 전혀 상속되지 않는다.
+플랫폼이 앱 프로세스에 주는 값. 플랫폼 서버 자체의 환경은 전혀 상속되지 않는다.
 - `SOCKET`: 앱이 바인드하는 유닉스 소켓 (uvicorn이 사용). 직접 쓸 일 없음.
 - `ROOT_PATH`: 앱이 마운트된 경로 `/apps/{부서}/{저장소}`. uvicorn `--root-path`로도 전달된다.
 - `DATA_DIR`, `DB_PATH`: 영속 데이터 디렉터리와 그 안의 SQLite 파일 경로 (데이터 문서 참고).
@@ -28,7 +28,7 @@ always: yes
 - `PYTHONDONTWRITEBYTECODE=1`, `PYTHONUNBUFFERED=1`이 설정된다. `print()`는 즉시 앱 로그에 남는다.
 
 ## 프로세스와 격리
-- 앱은 샌드박스(운영 서버에서는 bubblewrap 또는 Landlock) 안에서 Gitea의 자식 프로세스로 돈다. 다른 앱, Gitea 데이터, 서버의 다른 파일은 보이지 않는다.
+- 앱은 샌드박스(운영 서버에서는 bubblewrap 또는 Landlock) 안에서 플랫폼의 자식 프로세스로 돈다. 다른 앱, 플랫폼의 데이터, 서버의 다른 파일은 보이지 않는다.
 - Landlock 환경에서는 `/proc`, `/tmp`, 홈 디렉터리가 없다. 앱 디렉터리·`DATA_DIR`·`TMPDIR`·시스템 라이브러리 밖의 경로를 열면 `PermissionError`가 난다. 이는 앱 버그가 아니라 격리 규칙이다.
 - `subprocess`로 다른 프로그램을 실행할 수는 있지만 같은 샌드박스 안에서 돌고, 프로세스 수 상한(기본 64)에 포함된다.
 - 앱이 죽으면 플랫폼이 다시 시작한다. 연속으로 여러 번 죽으면 자동 재시작을 멈추고 앱 페이지에 이유를 표시한다.
