@@ -101,7 +101,7 @@ type AppSidebarData struct {
 //
 // Registered as one more middleware on the existing repo-home chain, the
 // same way this fork already injects RedirectToWorkspaceIfEmpty and
-// SetDeployRequestAIReviewData (docs/company/patches.md).
+// SetDeployRequestPageData (docs/company/patches.md).
 //
 // Everything it needs is already in memory — app state, parsed policy, the
 // latest memory reading — so this adds neither a database query nor a file

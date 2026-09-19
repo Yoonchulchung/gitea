@@ -1,6 +1,7 @@
 import {POST} from '../modules/fetch.ts';
 import {createElementFromHTML} from '../utils/dom.ts';
 import {svg} from '../svg.ts';
+import {ANTHROPIC_MODEL_SUGGESTIONS} from './company-settings-ai.ts';
 
 // Shared chat-sidebar module for both AI surfaces (docs/company/ai-agent.md):
 // the workspace editor's "Ask AI" panel (web_src/js/features/company-workspace.ts)
@@ -32,7 +33,40 @@ export type ChatContext = {
   // switch tabs before saving and the AI would silently read stale,
   // already-committed content for whatever you'd just been editing.
   openFiles: OpenFile[];
+  // The model picked for this one request, when the panel has a picker.
+  model?: string;
 };
+
+// The picker's options. Anthropic publishes no unauthenticated list, so
+// those are the same hardcoded suggestions the settings page shows; an
+// OpenAI-compatible gateway's models are deployment-specific and only it
+// knows them, so they are asked for — with no api_key in the body, so the
+// endpoint falls back to this person's saved one.
+export async function fillModelOptions(modelSelect: HTMLSelectElement): Promise<void> {
+  const saved = modelSelect.value;
+  let models: string[] = [];
+  if (modelSelect.getAttribute('data-provider') === 'anthropic') {
+    models = ANTHROPIC_MODEL_SUGGESTIONS;
+  } else {
+    try {
+      const resp = await POST(modelSelect.getAttribute('data-models-url')!, {data: {}});
+      if (resp.ok) ({models} = await resp.json() as {models: string[]});
+    } catch {
+      // A gateway that cannot be reached leaves the saved model as the
+      // only option, which still works — the picker is a convenience,
+      // and failing it must not take the assistant down with it.
+    }
+  }
+  const ids = saved && !models.includes(saved) ? [saved, ...models] : models;
+  if (!ids.length) return;
+  modelSelect.replaceChildren(...ids.map((id) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    opt.selected = id === saved;
+    return opt;
+  }));
+}
 
 export type ChatPanelOptions = {
   sendUrl: string;

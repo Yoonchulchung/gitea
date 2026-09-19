@@ -41,6 +41,7 @@ func RegisterRoutes(m *web.Router) {
 		m.Post("/repo-description/{owner}/{repo}", UpdateDescription)
 		m.Post("/deploy-request/{id}/cancel", CancelDeployRequest)
 		m.Post("/deploy-request/{id}/ai-review", TriggerDeployRequestAIReview)
+		m.Post("/deploy-request/{id}/chat", DeployRequestChat) // read-only assistant on the request page, see company/deploy_review.go
 	}, RequireSignIn)
 	// DeployRequests, DeployRequestFiles, and RepoCreateRedirect are NOT
 	// registered here — all three mount inside Gitea's own org route group

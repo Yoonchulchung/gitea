@@ -189,9 +189,18 @@ central-deploy PR로 한정(아래 두 항목 모두 확정, 더 이상 미해�
 - [x] 비어드민/비-Deploy-Request PR/AI 미설정 각각에서 버튼 미노출 +
       엔드포인트 직접 POST도 404로 막히는 것까지 검증
 
-원래 계획했던 인터랙티브 사이드바(읽기 전용 도구셋 `read_file`/`get_diff`,
-Phase 2와 스트리밍 프로토콜 공유 등)는 착수하지 않음 — 필요해지면 별도로
-다시 논의.
+원래 계획했던 인터랙티브 사이드바는 2026-09-19에 추가됨 — 승인자가
+비개발자라 "이 변경이 뭘 하는지" 물어볼 곳이 필요했다:
+
+- [x] Deploy Request PR의 오른쪽 컬럼을 통째로 교체
+      (`custom/templates/company/deploy_review_sidebar.tmpl`): 요청 앱·요청자·
+      상태, 요청된 권한, requirements.txt의 패키지(허용됨/승인 필요), 그리고
+      읽기 전용 채팅. 리뷰어·마일스톤·담당자·마감일·의존성은 보이지 않음
+- [x] `DeployRequestChat` (`company/deploy_review.go`, `POST
+      /company/deploy-request/{id}/chat`): 도구는 `list_files`/`read_file`/
+      `get_diff` 뿐이고 아무것도 쓰지 않음. 시스템 프롬프트에 요청 제목·본문·
+      권한 항목·diff(앞 30k자)가 들어감. 스트리밍 프로토콜과 프론트 모듈
+      (`company-ai-chat.ts`)은 워크스페이스와 공유
 
 ### Phase 4 — 다듬기
 - [ ] 로딩/에러 상태 UI 통일

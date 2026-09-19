@@ -302,6 +302,231 @@
 </style>
 
 <style>
+/* The AI chat panel, shared by the workspace editor
+   (custom/templates/company/workspace.tmpl) and the deploy request
+   sidebar (custom/templates/company/deploy_review_sidebar.tmpl) —
+   web_src/js/features/company-ai-chat.ts drives both. */
+.company-ai-chat-header {
+	display: flex;
+	align-items: center;
+	padding: .7rem 1rem;
+	border-bottom: 1px solid var(--color-secondary);
+	font-weight: 600;
+	font-size: .95rem;
+	flex-shrink: 0;
+	color: var(--color-text-light-1);
+	letter-spacing: .02em;
+}
+.company-ai-chat-messages {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: .9rem .75rem;
+	display: flex;
+	flex-direction: column;
+	gap: .7rem;
+}
+/* Empty-state hint shown once, before the first message — points at the
+   input bar rather than leaving a blank panel with no explanation. */
+.company-ai-chat-empty {
+	margin: auto 0;
+	text-align: center;
+	color: var(--color-text-light-2);
+	font-size: .92rem;
+	padding: 1.5rem 1rem;
+}
+.company-ai-chat-empty a {
+	display: block;
+	margin-top: .4rem;
+}
+.company-ai-chat-message {
+	font-size: .98rem;
+	line-height: 1.6;
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-width: 100%;
+}
+.company-ai-chat-message-user {
+	align-self: flex-end;
+	max-width: 85%;
+	background: var(--color-primary);
+	color: var(--color-primary-contrast, #fff);
+	padding: .55rem .9rem;
+	border-radius: 14px 14px 3px 14px;
+}
+.company-ai-chat-message-assistant {
+	align-self: stretch;
+}
+.company-ai-chat-message-status {
+	align-self: flex-start;
+	font-size: .85rem;
+	color: var(--color-text-light-1);
+	background: var(--color-active);
+	border-radius: 999px;
+	padding: .3rem .8rem;
+}
+.company-ai-chat-message-error {
+	align-self: stretch;
+	background: var(--color-error-bg);
+	color: var(--color-error-text);
+	border: 1px solid color-mix(in srgb, var(--color-error-text) 35%, transparent);
+	border-radius: 10px;
+	padding: .55rem .75rem;
+	font-size: .82rem;
+}
+.company-ai-chat-inputbar {
+	padding: .65rem .75rem .8rem;
+	border-top: 1px solid var(--color-secondary);
+	flex-shrink: 0;
+}
+.company-ai-chat-queue {
+	font-size: .8rem;
+	color: var(--color-text-light-2);
+	padding-bottom: .4rem;
+}
+/* Stacked (textarea on top, its own toolbar row below) rather than a
+   single row with the send button beside the text — a single row either
+   has to keep the button vertically anchored (awkward once the textarea
+   grows past one line) or drags it down the right edge as the box grows.
+   Stacking keeps the button's row pinned to the bottom of the whole
+   control regardless of how many lines the message grows to. */
+.company-ai-chat-inputwrap {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--color-secondary);
+	border-radius: 18px;
+	background: var(--color-input-background);
+	padding: .7rem .6rem .55rem .9rem;
+	transition: border-color .15s ease, box-shadow .15s ease;
+}
+.company-ai-chat-inputwrap:focus-within {
+	border-color: var(--color-primary);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+.company-ai-chat-input {
+	resize: none;
+	min-height: 1.6rem;
+	max-height: 220px;
+	border: none;
+	background: none;
+	padding: 0 0 .5rem;
+	font-size: .95rem;
+	line-height: 1.45;
+	color: var(--color-text);
+}
+.company-ai-chat-input:focus {
+	outline: none;
+}
+.company-ai-chat-input::placeholder {
+	color: var(--color-text-light-3, var(--color-text-light-2));
+}
+.company-ai-chat-input:disabled {
+	cursor: not-allowed;
+}
+.company-ai-chat-inputtoolbar {
+	display: flex;
+	align-items: center;
+	gap: .5rem;
+}
+.company-ai-chat-send {
+	/* space-between only works while the context chip beside it is also
+	   visible — it's tw-hidden until a tab is active (setActiveFilePath),
+	   which otherwise collapses this to the left as the lone flex child. */
+	margin-left: auto;
+	flex-shrink: 0;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	padding: 0;
+	background: var(--color-primary);
+	color: var(--color-primary-contrast, #fff);
+	cursor: pointer;
+	transition: background-color .15s ease, opacity .15s ease, transform .1s ease;
+}
+.company-ai-chat-send:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--color-primary) 85%, black);
+}
+.company-ai-chat-send:active:not(:disabled) {
+	transform: scale(.92);
+}
+.company-ai-chat-send:disabled {
+	opacity: .35;
+	cursor: not-allowed;
+}
+.company-ai-chat-send.sending {
+	background: var(--color-red, #d1383d);
+}
+/* The active-tab filename chip — Claude-Code-style ambient context, shows
+   what file a plain "이거 고쳐줘" would apply to. See
+   web_src/js/features/company-ai-chat.ts's setActiveFilePath. */
+.company-ai-chat-context {
+	display: inline-flex;
+	align-items: center;
+	gap: .3rem;
+	font-size: .76rem;
+	color: var(--color-text-light-1);
+	background: var(--color-active);
+	border-radius: 999px;
+	padding: .2rem .55rem .2rem .45rem;
+	max-width: 65%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.company-ai-chat-context svg {
+	flex-shrink: 0;
+	color: var(--color-text-light-2);
+}
+</style>
+
+<style>
+/* A Deploy Request PR's own right column (custom/templates/company/
+   deploy_review_sidebar.tmpl): wider than Gitea's, since it holds a chat. */
+.issue-content.company-deploy-review-page .issue-content-left { width: calc(100% - 436px); }
+.issue-content.company-deploy-review-page .issue-content-right { width: 420px; }
+@media (max-width: 767.98px) {
+	.issue-content.company-deploy-review-page .issue-content-left,
+	.issue-content.company-deploy-review-page .issue-content-right { width: 100%; }
+}
+/* Command-line instructions are for a developer with a clone; this page
+   is approved from the button above them. */
+.issue-content.company-deploy-review-page .pull-merge-box details { display: none; }
+.company-deploy-review { display: flex; flex-direction: column; gap: 12px; }
+.company-deploy-review-panel.ui.segment { margin: 0; }
+.company-deploy-review-facts {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 6px 12px;
+	align-items: center;
+	font-size: 13px;
+}
+.company-deploy-review-package {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--color-secondary);
+}
+.company-deploy-review-package:last-of-type { border-bottom: 0; }
+.company-deploy-review-chat {
+	display: flex;
+	flex-direction: column;
+	height: 560px;
+	border: 1px solid var(--color-secondary);
+	border-radius: var(--border-radius);
+	background: var(--color-box-body);
+	position: sticky;
+	top: 12px;
+}
+</style>
+
+<style>
 /* Permission review block on the admin's deploy-request screen. */
 .company-perm-review-header { background: var(--color-warning-bg) !important; }
 .company-perm-review-item {

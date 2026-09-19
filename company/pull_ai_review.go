@@ -19,7 +19,7 @@ import (
 // currently configured central deploy repo — same-repo PR, deploy/-shaped
 // branch, and the repo it's really on matches [company] CENTRAL_DEPLOY_REPO
 // — and returns the department repo (owner/name) it came from. Shared by
-// SetDeployRequestAIReviewData (decides whether to show the button) and
+// SetDeployRequestPageData (decides whether to show the button) and
 // TriggerDeployRequestAIReview (re-verifies before actually acting on a
 // click) so both apply exactly the same rule.
 func verifyDeployRequestPR(ctx *context.Context, pr *issues_model.PullRequest) (deptOwner, deptName string, ok bool) {
@@ -52,7 +52,7 @@ func verifyDeployRequestPR(ctx *context.Context, pr *issues_model.PullRequest) (
 	return deptOwner, deptName, true
 }
 
-// SetDeployRequestAIReviewData runs ahead of Gitea's native repo.ViewIssue
+// SetDeployRequestPageData runs ahead of Gitea's native repo.ViewIssue
 // on every /{owner}/{repo}/pulls/{index} view (routers/web/web.go) — cheap
 // on the vast majority of PRs it'll see (bails on the first check that
 // fails), and only ever adds data for the template to conditionally render
@@ -63,7 +63,7 @@ func verifyDeployRequestPR(ctx *context.Context, pr *issues_model.PullRequest) (
 // set up yet changes what shows, not whether anything does — an admin who
 // hasn't configured AI still sees a prompt pointing at Settings instead of
 // the review button silently not being there with no explanation.
-func SetDeployRequestAIReviewData(ctx *context.Context) {
+func SetDeployRequestPageData(ctx *context.Context) {
 	if ctx.Doer == nil || !ctx.Doer.IsAdmin || ctx.Repo.Repository == nil {
 		return
 	}
@@ -72,12 +72,14 @@ func SetDeployRequestAIReviewData(ctx *context.Context) {
 	if err != nil {
 		return // not a PR, or doesn't exist — repo.ViewIssue itself will 404 as usual
 	}
-	if _, _, ok := verifyDeployRequestPR(ctx, pr); !ok {
+	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr)
+	if !ok {
 		return
 	}
+	setDeployReviewData(ctx, pr, deptOwner, deptName) // the sidebar built for this decision — company/deploy_review.go
 	if !AIConfiguredFor(ctx, ctx.Doer.ID) {
 		ctx.Data["ShowDeployAIReviewSetup"] = true
-		ctx.Data["DeployAIReviewSetupURL"] = fmt.Sprintf("%s/user/settings/ai", setting.AppSubURL)
+		ctx.Data["DeployAIReviewSetupURL"] = setting.AppSubURL + "/user/settings/ai"
 		return
 	}
 	ctx.Data["ShowDeployAIReview"] = true
@@ -88,7 +90,7 @@ func SetDeployRequestAIReviewData(ctx *context.Context) {
 // run as whoever clicked the button (their own AI settings, not
 // centralOwner's the way the automatic on-submit review is) — see
 // generateAIReview (company/deploy.go) for the shared prompt/diff logic.
-// Re-verifies everything SetDeployRequestAIReviewData already checked
+// Re-verifies everything SetDeployRequestPageData already checked
 // before showing the button: a hidden button is not the same as an
 // unauthorized action, and this is reachable directly by URL regardless of
 // what any page happened to render. Mounted at

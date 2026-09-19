@@ -1,4 +1,4 @@
-<div class="issue-content">
+<div class="issue-content{{if .IsDeployRequest}} company-deploy-review-page{{end}}">
 	{{$createdStr:= DateUtils.TimeSince .Issue.CreatedUnix}}
 	<div class="issue-content-left">
 		<div class="comment-list">
@@ -81,7 +81,7 @@
 					<div class="content">
 						{{if or .ShowDeployAIReview .ShowDeployAIReviewSetup}}
 							{{/* Deploy Request PRs on the central deploy repo only — see
-							company/pull_ai_review.go's SetDeployRequestAIReviewData, which is
+							company/pull_ai_review.go's SetDeployRequestPageData, which is
 							also what decides which of these two (if either) gets set. A
 							structural sibling of #comment-form below, not nested inside it —
 							HTML forms can't nest, and #comment-form's own form-fetch-action JS
@@ -162,7 +162,16 @@
 		</div>
 	</div>
 
-	{{template "repo/issue/view_content/sidebar" .}}
+	{{/* A Deploy Request is approved by someone who is not a developer:
+	     the native sidebar's reviewers/milestone/assignees/due date are
+	     noise to them, and what they need — the request, its permissions,
+	     its packages, a way to ask — is in the company one. See
+	     company/deploy_review.go. */}}
+	{{if .IsDeployRequest}}
+		{{template "company/deploy_review_sidebar" .}}
+	{{else}}
+		{{template "repo/issue/view_content/sidebar" .}}
+	{{end}}
 </div>
 
 <template id="issue-comment-editor-template">

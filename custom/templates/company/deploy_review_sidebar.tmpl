@@ -1,0 +1,104 @@
+{{/* The right column of a Deploy Request PR, in place of Gitea's own
+     (reviewers, milestone, assignees, due date, dependencies — none of
+     which decide whether an app goes live). What does: who asked, what
+     the app wants to be allowed, which packages it installs, and an
+     assistant that has read the change. Set up by
+     company.SetDeployRequestPageData (company/deploy_review.go). */}}
+<div class="issue-content-right company-deploy-review">
+	<div class="ui segment company-deploy-review-panel">
+		<h4 class="tw-mb-3">{{svg "octicon-rocket" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.title"}}</h4>
+		<div class="company-deploy-review-facts">
+			<span class="text-grey">{{ctx.Locale.Tr "company.review.department"}}</span>
+			<a href="{{.DeployDeptLink}}">{{.DeployDeptOwner}}/{{.DeployDeptName}}</a>
+			<span class="text-grey">{{ctx.Locale.Tr "company.review.requester"}}</span>
+			<span>{{if .DeployRequester}}{{ctx.AvatarUtils.Avatar .DeployRequester 18 "tw-mr-1"}}{{.DeployRequester.Name}}{{else}}{{.Issue.Poster.Name}}{{end}}</span>
+			<span class="text-grey">{{ctx.Locale.Tr "company.review.submitted"}}</span>
+			<span>{{DateUtils.AbsoluteShort .Issue.CreatedUnix}}</span>
+		</div>
+		{{with .DeployRequestStatus}}
+			<div class="ui {{if eq .Status "approved" "deployed"}}green{{else if eq .Status "rejected" "deploy_failed"}}red{{else if eq .Status "cancelled"}}grey{{else}}yellow{{end}} label tw-mt-3">
+				{{ctx.Locale.Tr (printf "company.deploy_status.%s" .Status)}}
+			</div>
+		{{end}}
+		<div class="tw-mt-3">
+			<a class="ui basic tiny fluid button" href="{{.DeployFilesURL}}">{{svg "octicon-file-diff" 14 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.files"}}</a>
+		</div>
+		{{if not .Issue.IsClosed}}
+			<p class="text-grey tw-text-12 tw-mt-3 tw-mb-0">{{ctx.Locale.Tr "company.review.decide"}}</p>
+		{{end}}
+	</div>
+
+	{{/* Merging is the approval — the items are applied with it
+	     (company/permissions_commit.go), and there is no second button. */}}
+	<div class="ui segment company-deploy-review-panel">
+		<h4 class="tw-mb-2">{{svg "octicon-shield-lock" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.deploy.requested_perms" (len .PermissionRequests)}}</h4>
+		{{range .PermissionRequests}}
+			<div class="company-perm-review-item">
+				<div>
+					<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{if .DetailKey}}{{ctx.Locale.Tr .DetailKey}}{{else}}{{.Detail}}{{end}}
+					{{if .Evidence}}<div class="text-grey tw-text-12">{{if not (ctx.Locale.HasKey .Evidence)}}{{.Evidence}}{{else if .EvidenceArg}}{{ctx.Locale.Tr .Evidence .EvidenceArg}}{{else}}{{ctx.Locale.Tr .Evidence}}{{end}}</div>{{end}}
+					{{if .Reason}}<div class="tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.deploy.perm_reason" .Reason}}</div>{{end}}
+				</div>
+			</div>
+		{{else}}
+			<p class="text-grey tw-text-13 tw-mb-0">{{ctx.Locale.Tr "company.review.perms_none"}}</p>
+		{{end}}
+		{{if and .PermissionRequests (not .Issue.IsClosed)}}
+			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.deploy.perm_merge_note"}}</p>
+		{{end}}
+	</div>
+
+	{{/* Every package the snapshot installs, not only the new ones: what
+	     is already allowed is part of the picture too. */}}
+	<div class="ui segment company-deploy-review-panel">
+		<h4 class="tw-mb-2">{{svg "octicon-package" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.packages" (len .DeployPackages)}}</h4>
+		{{range .DeployPackages}}
+			<div class="company-deploy-review-package">
+				<span class="tw-font-mono tw-text-13">{{.Name}}{{if .Version}} <span class="text-grey">{{.Version}}</span>{{end}}</span>
+				{{if .Allowed}}
+					<span class="ui basic tiny label">{{ctx.Locale.Tr "company.review.pkg_allowed"}}</span>
+				{{else}}
+					<span class="ui yellow tiny label">{{ctx.Locale.Tr "company.review.pkg_needs_approval"}}</span>
+				{{end}}
+			</div>
+		{{else}}
+			<p class="text-grey tw-text-13 tw-mb-0">{{if .Issue.IsClosed}}{{ctx.Locale.Tr "company.review.packages_unavailable"}}{{else}}{{ctx.Locale.Tr "company.review.packages_none"}}{{end}}</p>
+		{{end}}
+	</div>
+
+	{{if .CompanyAIOffered}}
+		<div class="company-deploy-review-chat" data-global-init="initCompanyDeployReview" data-ai-ready="{{.AIEnabled}}"
+			data-send-url="{{.DeployChatURL}}"
+			data-ai-empty-state="{{ctx.Locale.Tr "company.review.ai_empty_state"}}"
+			data-ai-not-configured="{{ctx.Locale.Tr "company.workspace.ai_not_configured"}}"
+			data-ai-not-configured-link="{{ctx.Locale.Tr "company.workspace.ai_not_configured_link"}}"
+			data-ai-not-configured-url="{{printf "%s/user/settings/ai" AppSubUrl}}"
+			data-ai-not-configured-placeholder="{{ctx.Locale.Tr "company.workspace.ai_not_configured_placeholder"}}"
+			data-ai-stop="{{ctx.Locale.Tr "company.workspace.ai_stop"}}"
+			data-ai-request-failed="{{ctx.Locale.Tr "company.workspace.ai_request_failed"}}"
+			data-ai-read-status="{{ctx.Locale.Tr "company.workspace.ai_read_status" "%s"}}"
+			data-ai-edit-status="{{ctx.Locale.Tr "company.workspace.ai_edit_status" "%s"}}"
+			data-ai-delete-status="{{ctx.Locale.Tr "company.workspace.ai_delete_status" "%s"}}"
+			data-ai-rename-status="{{ctx.Locale.Tr "company.workspace.ai_rename_status" "%s" "%s"}}"
+			data-ai-queued="{{ctx.Locale.Tr "company.workspace.ai_queued" "%s"}}"
+		>
+			<div class="company-ai-chat-header">{{svg "octicon-sparkle-fill" 14 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.ai_title"}}</div>
+			<div class="company-ai-chat-messages"></div>
+			<div class="company-ai-chat-inputbar">
+				<div class="company-ai-chat-queue tw-hidden"></div>
+				<div class="company-ai-chat-inputwrap">
+					<textarea class="company-ai-chat-input" rows="1" placeholder="{{ctx.Locale.Tr "company.review.ai_placeholder"}}"></textarea>
+					<div class="company-ai-chat-inputtoolbar">
+						<span class="company-ai-chat-context tw-hidden"></span>
+						<select class="company-ai-chat-model" aria-label="{{ctx.Locale.Tr "company.workspace.ai_model"}}"
+						        data-models-url="{{printf "%s/user/settings/ai/models" AppSubUrl}}"
+						        data-provider="{{.AIProvider}}">
+							{{if .AIModel}}<option value="{{.AIModel}}" selected>{{.AIModel}}</option>{{end}}
+						</select>
+						<button type="button" class="company-ai-chat-send" aria-label="{{ctx.Locale.Tr "company.workspace.ai_send"}}"></button>
+					</div>
+				</div>
+			</div>
+		</div>
+	{{end}}
+</div>

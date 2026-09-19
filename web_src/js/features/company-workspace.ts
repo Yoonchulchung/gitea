@@ -5,8 +5,7 @@ import {createElementFromHTML} from '../utils/dom.ts';
 import {showErrorToast} from '../modules/toast.ts';
 import {GET, POST} from '../modules/fetch.ts';
 import {svg} from '../svg.ts';
-import {initChatPanel} from './company-ai-chat.ts';
-import {ANTHROPIC_MODEL_SUGGESTIONS} from './company-settings-ai.ts';
+import {fillModelOptions, initChatPanel} from './company-ai-chat.ts';
 import type {ChatPanelHandle} from './company-ai-chat.ts';
 import {formatDatetime} from '../utils/time.ts';
 import {attachConflictUI, buildConflictText, conflictMarkerPattern} from './company-conflict.ts';
@@ -471,38 +470,6 @@ export function initCompanyWorkspace() {
         e.preventDefault();
       }
     });
-
-    // The picker's options. Anthropic publishes no unauthenticated list, so
-    // those are the same hardcoded suggestions the settings page shows;
-    // an OpenAI-compatible gateway's models are deployment-specific and only
-    // it knows them, so they are asked for — with no api_key in the body, so
-    // the endpoint falls back to this person's saved one.
-    async function fillModelOptions(): Promise<void> {
-      if (!modelSelect) return;
-      const saved = modelSelect.value;
-      let models: string[] = [];
-      if (modelSelect.getAttribute('data-provider') === 'anthropic') {
-        models = ANTHROPIC_MODEL_SUGGESTIONS;
-      } else {
-        try {
-          const resp = await POST(modelSelect.getAttribute('data-models-url')!, {data: {}});
-          if (resp.ok) ({models} = await resp.json() as {models: string[]});
-        } catch {
-          // A gateway that cannot be reached leaves the saved model as the
-          // only option, which still works — the picker is a convenience,
-          // and failing it must not take the assistant down with it.
-        }
-      }
-      const ids = saved && !models.includes(saved) ? [saved, ...models] : models;
-      if (!ids.length) return;
-      modelSelect.replaceChildren(...ids.map((id) => {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = id;
-        opt.selected = id === saved;
-        return opt;
-      }));
-    }
 
     function activateTab(path: string) {
       activePath = path;
@@ -1513,7 +1480,7 @@ export function initCompanyWorkspace() {
         }),
       });
       if (activePath) chatHandle.setActiveFilePath(activePath);
-      fillModelOptions(); // its own failures are handled inside; the picker is a convenience
+      if (modelSelect) fillModelOptions(modelSelect); // its own failures are handled inside; the picker is a convenience
     }
 
     newFolderButton.addEventListener('click', () => {
