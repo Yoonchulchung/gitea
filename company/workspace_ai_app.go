@@ -59,6 +59,7 @@ func clampLogLines(n int) int {
 // addAppInsightTools gives the workspace server the app's own facts.
 func addAppInsightTools(server *mcp.Server, ctx *gitea_context.Context, repo *repo_model.Repository) {
 	owner, name := repo.OwnerName, repo.Name
+	logAccess := AILogAccess()
 
 	server.AddTool(&mcp.Tool{
 		Name:        "app_status",
@@ -68,47 +69,59 @@ func addAppInsightTools(server *mcp.Server, ctx *gitea_context.Context, repo *re
 		return textResult(appStatusForAI(ctx, repo)), nil
 	})
 
-	server.AddTool(&mcp.Tool{
-		Name:        "app_logs",
-		Description: "The app's own output, newest last: print() lines, uvicorn's log, tracebacks. `lines` is how many (default 80, at most 300); `search` keeps only lines containing that text.",
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"lines":  map[string]any{"type": "integer"},
-				"search": map[string]any{"type": "string"},
+	logsDescription := "The app's own output, newest last: print() lines, uvicorn's log, tracebacks. `lines` is how many (default 80, at most 300); `search` keeps only lines containing that text."
+	if logAccess == AILogAccessErrors {
+		logsDescription = "The failures in the app's own output, newest last: tracebacks and error lines only (policy: ordinary output stays on the server). `lines` is how many lines to scan (default 80, at most 300); `search` keeps only lines containing that text."
+	}
+	if logAccess != AILogAccessOff {
+		server.AddTool(&mcp.Tool{
+			Name:        "app_logs",
+			Description: logsDescription,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"lines":  map[string]any{"type": "integer"},
+					"search": map[string]any{"type": "string"},
+				},
 			},
-		},
-	}, func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var args struct {
-			Lines  int    `json:"lines"`
-			Search string `json:"search"`
-		}
-		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
-			return errorResult(err), nil
-		}
-		lines, truncated, err := ReadAppLogs(owner, name, LogQuery{Text: args.Search, Limit: clampLogLines(args.Lines)})
-		if err != nil {
-			return errorResult(err), nil
-		}
-		if len(lines) == 0 {
-			return textResult("The app has not written anything yet (or has never been started)."), nil
-		}
-		var b strings.Builder
-		for _, l := range lines {
-			if l.At > 0 {
-				b.WriteString(time.Unix(l.At, 0).Format("01-02 15:04:05 "))
+		}, func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args struct {
+				Lines  int    `json:"lines"`
+				Search string `json:"search"`
 			}
-			if l.Build {
-				b.WriteString("[build] ")
+			if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+				return errorResult(err), nil
 			}
-			b.WriteString(RedactServerPaths(l.Text))
-			b.WriteString("\n")
-		}
-		if truncated {
-			b.WriteString("(older lines not shown)\n")
-		}
-		return textResult(b.String()), nil
-	})
+			lines, truncated, err := ReadAppLogs(owner, name, LogQuery{Text: args.Search, Limit: clampLogLines(args.Lines)})
+			if err != nil {
+				return errorResult(err), nil
+			}
+			if len(lines) == 0 {
+				return textResult("The app has not written anything yet (or has never been started)."), nil
+			}
+			// The policy decides which lines leave, and masks what does
+			// (company/ailogpolicy.go).
+			kept := aiLogLines(owner, name, lines)
+			if len(kept) == 0 {
+				return textResult("No failures in the lines scanned. (Ordinary output is not shared with the assistant on this server.)"), nil
+			}
+			var b strings.Builder
+			for _, l := range kept {
+				if l.At > 0 {
+					b.WriteString(time.Unix(l.At, 0).Format("01-02 15:04:05 "))
+				}
+				if l.Build {
+					b.WriteString("[build] ")
+				}
+				b.WriteString(l.Text)
+				b.WriteString("\n")
+			}
+			if truncated {
+				b.WriteString("(older lines not shown)\n")
+			}
+			return textResult(b.String()), nil
+		})
+	}
 
 	server.AddTool(&mcp.Tool{
 		Name:        "deploy_checks",
@@ -130,8 +143,20 @@ func addAppInsightTools(server *mcp.Server, ctx *gitea_context.Context, repo *re
 		if !ok {
 			return textResult("Nothing to run: the repository has no commits yet."), nil
 		}
-		return textResult("Started on commit " + shortSHA(check.SHA) + ". " + startupCheckForAI(check)), nil
+		return textResult("Started on commit " + shortSHA(check.SHA) + ". " + startupCheckForAI(forAIPolicy(check))), nil
 	})
+}
+
+// forAIPolicy is a check's record with its app output under the policy:
+// the traceback is an error and may go where errors go, the output only
+// where everything may.
+func forAIPolicy(c StartupCheck) StartupCheck {
+	c.Error = aiErrorText(c.Owner, c.Repo, c.Error)
+	c.Output = aiOutputText(c.Owner, c.Repo, c.Output)
+	if AILogAccess() == AILogAccessOff && c.State == "failed" {
+		c.Error = "(the app's output is withheld by policy; the stage says where it stopped)"
+	}
+	return c
 }
 
 func shortSHA(sha string) string {
@@ -163,7 +188,7 @@ func appStatusForAI(ctx *gitea_context.Context, repo *repo_model.Repository) str
 		case st.UserMessageKey != "":
 			fmt.Fprintf(&b, "Message shown to the department: %s\n", tr(st.UserMessageKey))
 		case st.UserMessage != "":
-			fmt.Fprintf(&b, "Message shown to the department: %s\n", RedactServerPaths(st.UserMessage))
+			fmt.Fprintf(&b, "Message shown to the department: %s\n", aiErrorText(owner, name, st.UserMessage))
 		}
 		if st.FailedAt > 0 {
 			fmt.Fprintf(&b, "Failed at: %s.\n", time.Unix(st.FailedAt, 0).Format(time.RFC3339))
@@ -176,11 +201,17 @@ func appStatusForAI(ctx *gitea_context.Context, repo *repo_model.Repository) str
 			case cause.Detail != "":
 				fmt.Fprintf(&b, " — %s", tr(cause.Detail))
 			case cause.DetailText != "":
-				fmt.Fprintf(&b, " — %s", RedactServerPaths(cause.DetailText))
+				fmt.Fprintf(&b, " — %s", aiErrorText(owner, name, cause.DetailText))
 			}
 			b.WriteString("\n")
 			if finding := LogFindingFor(st, cause); finding != nil && finding.Exception != "" {
-				fmt.Fprintf(&b, "Last exception: %s", RedactServerPaths(finding.Exception))
+				// Under "off" the exception's words stay on the server; the
+				// place in the code still helps.
+				if text := aiErrorText(owner, name, finding.Exception); text != "" {
+					fmt.Fprintf(&b, "Last exception: %s", text)
+				} else {
+					b.WriteString("Last exception: (withheld by policy)")
+				}
 				if finding.File != "" {
 					fmt.Fprintf(&b, " (in %s line %d, %s)", finding.File, finding.Line, finding.Func)
 				}
@@ -225,7 +256,7 @@ func deployChecksForAI(ctx *gitea_context.Context, repo *repo_model.Repository) 
 	pre := runPreflight(ctx, repo)
 	fmt.Fprintf(&b, "\nPreflight: %s\n", pre.Summary)
 	for _, c := range pre.Checks {
-		fmt.Fprintf(&b, "- [%s] %s: %s\n", c.Status, c.Label, RedactServerPaths(c.Detail))
+		fmt.Fprintf(&b, "- [%s] %s: %s\n", c.Status, c.Label, aiErrorText(repo.OwnerName, repo.Name, c.Detail))
 	}
 	if len(pre.NeedsApproval) > 0 {
 		fmt.Fprintf(&b, "Packages waiting for an administrator's approval: %s\n", strings.Join(pre.NeedsApproval, ", "))
@@ -233,7 +264,7 @@ func deployChecksForAI(ctx *gitea_context.Context, repo *repo_model.Repository) 
 
 	b.WriteString("\nStartup check: ")
 	if check, ok := EnsureStartupCheck(ctx, repo, false); ok {
-		b.WriteString(startupCheckForAI(check))
+		b.WriteString(startupCheckForAI(forAIPolicy(check)))
 	} else {
 		b.WriteString("nothing to run yet.")
 	}

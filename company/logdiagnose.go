@@ -306,6 +306,12 @@ Rules:
 // The caller's own AI settings and their own key — the same ones every other
 // AI feature here uses, so there is no second credential and no shared one.
 func DiagnoseLog(ctx context.Context, userID int64, owner, repo string, lines []LogLine) (string, error) {
+	if AILogAccess() == AILogAccessOff {
+		return "", userKeyError("company.logs.diagnose_off")
+	}
+	// The same policy as the assistant's: which lines may leave, masked,
+	// with the host's paths gone (company/ailogpolicy.go).
+	lines = aiLogLines(owner, repo, lines)
 	if len(lines) == 0 {
 		return "", userKeyError("company.logs.diagnose_nothing")
 	}
@@ -315,13 +321,7 @@ func DiagnoseLog(ctx context.Context, userID int64, owner, repo string, lines []
 		b.WriteString(strings.TrimRight(line.Text, "\r\n"))
 		b.WriteByte('\n')
 	}
-	// Tracebacks name absolute paths inside this instance — the data
-	// directory, the release hash, the shared virtualenv. None of it helps
-	// the explanation, all of it describes the host, and this text is about
-	// to leave for somebody else's API. Redacted with the same helper the
-	// platform already uses before showing an error to a department
-	// (company/usererror.go).
-	return aiChat(ctx, userID, logDiagnosePrompt, RedactServerPaths(b.String()))
+	return aiChat(ctx, userID, logDiagnosePrompt, b.String())
 }
 
 // AdminAppLogDiagnose answers the button on the admin log page.

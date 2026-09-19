@@ -5167,5 +5167,6 @@
   "company.logs.diagnose": "Explain the error",
   "company.logs.diagnose_note": "Sends the error lines above to your own AI account and answers in plain language.",
   "company.logs.diagnose_off": "Available once AI is switched on and you have entered your API key.",
+  "company.logs.diagnose_off": "Sending app output to the AI is switched off on this server ([company] AI_LOG_ACCESS = off).",
   "company.logs.diagnose_nothing": "There is nothing that looks like an error in this log."
 }
