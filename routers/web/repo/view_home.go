@@ -44,6 +44,14 @@ func checkOutdatedBranch(ctx *context.Context) {
 	}
 
 	if dbBranch.CommitID != ctx.Repo.CommitID {
+		// company: the branch table is what is stale, and git is right in front
+		// of us — bring the table back in line rather than ask a department
+		// to "follow the documentation and push" (docs/company/patches.md).
+		if _, err := repo_module.SyncRepoBranches(ctx, ctx.Repo.Repository.ID, ctx.Doer.ID); err == nil {
+			log.Warn("company: %s: branch %s was recorded at %s but is at %s; the branch table was resynced from git",
+				ctx.Repo.Repository.FullName(), dbBranch.Name, dbBranch.CommitID, ctx.Repo.CommitID)
+			return
+		}
 		ctx.Flash.Warning(ctx.Tr("repo.error.broken_git_hook", "https://docs.gitea.com/help/faq#push-hook--webhook--actions-arent-running"), true)
 	}
 }
