@@ -355,6 +355,11 @@
 	white-space: pre-wrap;
 	word-break: break-word;
 	max-width: 100%;
+	/* The list is a flex column that scrolls. A rendered reply carries
+	   Gitea's .markup, whose overflow:hidden lets a flex item shrink below
+	   its content — once the list was taller than the panel, replies were
+	   squeezed to a few pixels and cut. Nothing here may shrink. */
+	flex-shrink: 0;
 }
 .company-ai-chat-message-user {
 	align-self: flex-end;

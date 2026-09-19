@@ -92,7 +92,12 @@ func AppPage(ctx *context.Context) {
 	// The same rows the repository sidebar shows. "What is my app allowed to
 	// do" is asked at least as often from this screen, and answering it in one
 	// place and not the other is how someone concludes the two disagree.
-	ctx.Data["PermissionRows"] = permissionRows(settings, st)
+	// The row names a few and points at the section below, which lists them
+	// by where they come from — the same split the admin page uses.
+	ctx.Data["PermissionRows"] = trimPackagesRow(permissionRows(settings, st), sidebarPackageLimit)
+	ctx.Data["BasePackages"] = settings.BasePackages
+	ctx.Data["SharedAllow"] = settings.Dependencies.Allow
+	ctx.Data["ApprovedExtra"] = settings.Dependencies.AllowExtra
 	ctx.Data["PendingRequests"] = pendingPermissionRequests(ctx, owner, name)
 	ctx.HTML(http.StatusOK, tplApp)
 }

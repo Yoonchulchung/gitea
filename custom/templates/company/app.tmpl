@@ -253,13 +253,33 @@
 								{{else}}<span class="company-app-state failed">{{ctx.Locale.Tr "company.app.perm_denied"}}</span>{{end}}
 							</td>
 							<td>
-								{{if .Value}}{{ctx.Locale.Tr .Value}}{{end}}{{.ValueText}}
+								{{if .Value}}{{ctx.Locale.Tr .Value}}{{end}}{{.ValueText}}{{if .More}} <a href="#app-packages">{{ctx.Locale.Tr "company.perm.more" .More}}</a>{{end}}
 								{{if or .Reason .ReasonText}}<span class="text-grey tw-text-12 tw-block">{{if .Reason}}{{ctx.Locale.Tr .Reason}}{{end}} {{.ReasonText}}</span>{{end}}
 							</td>
 						</tr>
 					{{end}}
 				</tbody>
 			</table>
+
+			{{/* Every package the app may install, by where it comes from: the
+			     platform's own stack is everyone's, the approvals are this app's. */}}
+			<h4 class="ui top attached header tw-mt-4" id="app-packages">{{svg "octicon-package" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.adminapp.packages_header"}}</h4>
+			<div class="ui attached segment">
+				<div class="tw-mb-2">
+					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_base"}}</span>
+					<div class="tw-mt-1">{{range .BasePackages}}<span class="ui basic label tw-mr-1 tw-mb-1">{{.}}</span>{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_none"}}</span>{{end}}</div>
+				</div>
+				{{if .SharedAllow}}
+					<div class="tw-mb-2">
+						<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_shared"}}</span>
+						<div class="tw-mt-1">{{range .SharedAllow}}<span class="ui basic label tw-mr-1 tw-mb-1">{{.}}</span>{{end}}</div>
+					</div>
+				{{end}}
+				<div>
+					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_approved"}}</span>
+					<div class="tw-mt-1">{{range .ApprovedExtra}}<span class="ui green basic label tw-mr-1 tw-mb-1">{{.}}</span>{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_approved_empty"}}</span>{{end}}</div>
+				</div>
+			</div>
 
 			{{if .PendingRequests}}
 				{{/* "Nobody asked" and "somebody asked and an admin has not decided"
