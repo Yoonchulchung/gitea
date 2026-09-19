@@ -334,6 +334,35 @@ func ApproveAppPackages(ctx context.Context, doer *user_model.User, owner, repo 
 	return lastErr
 }
 
+// RevokeAppPackage takes one package back off an app's own approved list.
+// The next build refuses it, which is the point: what was approved by
+// mistake, or is no longer wanted, stops being installable. Same commit
+// path as approving, so the record of who removed what is in git too.
+func RevokeAppPackage(ctx context.Context, doer *user_model.User, owner, repo, name string) error {
+	want := normalizePackageName(name)
+	if want == "" {
+		return userKeyError("company.err.package_not_approved")
+	}
+	found := false
+	err := setAppPolicy(ctx, doer, owner, repo, "revoke package "+name, func(s *AppSettings) {
+		s.Dependencies.AllowExtra, found = withoutPackage(s.Dependencies.AllowExtra, want)
+	})
+	if err != nil {
+		return err
+	}
+	if !found {
+		return userKeyError("company.err.package_not_approved")
+	}
+	return nil
+}
+
+// withoutPackage drops every spelling of one package from a list, and says
+// whether there was one to drop.
+func withoutPackage(list []string, normalized string) ([]string, bool) {
+	kept := slices.DeleteFunc(slices.Clone(list), func(p string) bool { return normalizePackageName(p) == normalized })
+	return kept, len(kept) != len(list)
+}
+
 // clearMissingPackages drops the names that have just been approved.
 func clearMissingPackages(owner, repo string, approved []string) {
 	granted := make(map[string]bool, len(approved))

@@ -401,6 +401,18 @@ func AdminApprovePackages(ctx *context.Context) {
 	ctx.Redirect(setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo)
 }
 
+// AdminRevokePackage removes one approved package from this app.
+func AdminRevokePackage(ctx *context.Context) {
+	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")
+	name := ctx.FormString("package")
+	if err := RevokeAppPackage(ctx, ctx.Doer, owner, repo, name); err != nil {
+		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
+	} else {
+		ctx.Flash.Success(ctx.Locale.TrString("company.flash.revoked", name))
+	}
+	ctx.Redirect(ctx.FormString("redirect_to", setting.AppSubURL+"/-/admin/company-deploys/"+owner+"/"+repo))
+}
+
 // AdminDeployVersion builds and activates a commit chosen from the history.
 func AdminDeployVersion(ctx *context.Context) {
 	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")

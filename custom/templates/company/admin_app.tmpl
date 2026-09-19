@@ -359,7 +359,16 @@
 			<div>
 				<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_approved"}}</span>
 				<div class="tw-mt-1">
-					{{range .ApprovedExtra}}<span class="ui green basic label tw-mr-1">{{.}}</span>{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_approved_empty"}}</span>{{end}}
+					{{/* Each approval can be taken back where it is shown; the next
+					     build then refuses the package, which the label's tooltip
+					     says. */}}
+					{{range .ApprovedExtra}}
+						<form method="post" action="{{$.AdminAppLink}}/revoke-package" class="tw-inline-block tw-mr-1 tw-mb-1" data-company-confirm="{{ctx.Locale.Tr "company.adminapp.revoke_confirm" .}}">
+							{{$.CsrfTokenHtml}}
+							<input type="hidden" name="package" value="{{.}}">
+							<span class="ui green basic label">{{.}} <button type="submit" class="company-label-remove" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.revoke"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.revoke"}}">{{svg "octicon-x" 12}}</button></span>
+						</form>
+					{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_approved_empty"}}</span>{{end}}
 				</div>
 			</div>
 			{{/* The case this exists for: a dependency the build resolved that

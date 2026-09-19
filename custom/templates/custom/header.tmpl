@@ -550,6 +550,20 @@
 </style>
 
 <style>
+/* The × on an approved-package label (admin app page, packages page). */
+.company-label-remove {
+	display: inline-flex;
+	align-items: center;
+	border: 0;
+	background: none;
+	padding: 0 0 0 4px;
+	margin-left: 2px;
+	color: inherit;
+	opacity: .6;
+	cursor: pointer;
+	vertical-align: middle;
+}
+.company-label-remove:hover { opacity: 1; color: var(--color-red); }
 /* Permission review block on the admin's deploy-request screen. */
 .company-perm-review-header { background: var(--color-warning-bg) !important; }
 .company-perm-review-item {

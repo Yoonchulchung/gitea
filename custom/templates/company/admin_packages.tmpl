@@ -80,7 +80,17 @@
 					{{range .AppPackages}}
 						<tr>
 							<td><a href="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .Owner}}/{{PathEscape .Repo}}">{{.Owner}}/{{.Repo}}</a></td>
-							<td>{{range .Packages}}<span class="ui label tw-mr-1 tw-mb-1">{{.}}</span>{{end}}</td>
+							<td>
+								{{$row := .}}
+								{{range .Packages}}
+									<form method="post" action="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape $row.Owner}}/{{PathEscape $row.Repo}}/revoke-package" class="tw-inline-block tw-mr-1 tw-mb-1" data-company-confirm="{{ctx.Locale.Tr "company.adminapp.revoke_confirm" .}}">
+										{{$.CsrfTokenHtml}}
+										<input type="hidden" name="package" value="{{.}}">
+										<input type="hidden" name="redirect_to" value="{{AppSubUrl}}/-/admin/company-packages">
+										<span class="ui label">{{.}} <button type="submit" class="company-label-remove" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.revoke"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.revoke"}}">{{svg "octicon-x" 12}}</button></span>
+									</form>
+								{{end}}
+							</td>
 						</tr>
 					{{else}}
 						{{/* The normal state early on, and worth saying plainly: nothing

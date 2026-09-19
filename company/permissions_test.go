@@ -237,6 +237,16 @@ func TestRequestLogKeepsRecentEntriesNewestFirst(t *testing.T) {
 // An admin has to be able to unblock an app without talking a department
 // through a form: a dependency the build discovered is not something they can
 // request, because it appears in no file they wrote.
+// Taking an approval back removes the package however it was spelt, and
+// says so when there was nothing to remove.
+func TestWithoutPackageMatchesAnySpelling(t *testing.T) {
+	kept, found := withoutPackage([]string{"Pandas", "python_multipart", "numpy"}, normalizePackageName("python-multipart"))
+	assert.True(t, found)
+	assert.Equal(t, []string{"Pandas", "numpy"}, kept)
+	_, found = withoutPackage([]string{"numpy"}, "pandas")
+	assert.False(t, found)
+}
+
 func TestClearMissingPackagesDropsOnlyWhatWasApproved(t *testing.T) {
 	withTempAppData(t)
 	require.NoError(t, MutateAppState("PO", "app", func(st *AppState) bool {
