@@ -343,12 +343,14 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
         }
       }
       if (buffer.trim()) onEvent(buffer);
-      if (replyTarget) renderMarkdown(replyTarget, segmentText);
 
       if (replyText) history.push({role: 'assistant', content: replyText});
     } catch (err) {
       if ((err as Error).name !== 'AbortError') addMessage('error', requestFailedText);
     } finally {
+      // Whatever ended the stream — done, Stop, a dropped connection — the
+      // last segment is rendered too; only a segment still streaming stays text.
+      if (replyTarget) renderMarkdown(replyTarget, segmentText);
       abortController = null;
       setSending(false);
       inputEl.focus();
