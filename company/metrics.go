@@ -393,6 +393,7 @@ type MetricsSummary struct {
 	ErrorRate float64 // percent
 	P95       int     // milliseconds
 	MemMaxMB  int
+	CPUMaxPct int // percent of one core, the highest sample in the window
 	Blocked   int
 	Restarts  int
 	// ResourcesMeasured is false when nothing in the window sampled memory or
@@ -419,6 +420,7 @@ func SummarizeMetrics(buckets []MetricsBucket) MetricsSummary {
 		if b.ResourceSamples > 0 {
 			s.ResourcesMeasured = true
 			s.MemMaxMB = max(s.MemMaxMB, int(b.Mem.Max)>>20)
+			s.CPUMaxPct = max(s.CPUMaxPct, int(b.CPU.Max))
 		}
 		if b.RT.P95 > 0 {
 			p95Sum += b.RT.P95

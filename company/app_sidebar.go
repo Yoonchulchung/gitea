@@ -4,6 +4,7 @@
 package company
 
 import (
+	"strconv"
 	"strings"
 
 	issues_model "gitea.dev/models/issues"
@@ -65,7 +66,8 @@ const sidebarPackageLimit = 5
 // trimPackagesRow shortens the packages row to its first few names. The
 // list is the platform's whole stack plus every approval, and on a sidebar
 // it pushed everything below it out of sight.
-func trimPackagesRow(rows []PermissionRow, keep int) []PermissionRow {
+func trimPackagesRow(rows []PermissionRow) []PermissionRow {
+	keep := sidebarPackageLimit
 	for i := range rows {
 		if rows[i].Label != "company.perm.packages" || rows[i].ValueText == "" {
 			continue
@@ -176,7 +178,7 @@ func SetAppPermissionData(ctx *context.Context) {
 		StatusLabel:    departmentStatusLabel(st),
 		Status:         st.Actual,
 		Cause:          DepartmentCause(st),
-		Rows:           trimPackagesRow(permissionRows(settings, st), sidebarPackageLimit),
+		Rows:           trimPackagesRow(permissionRows(settings, st)),
 		MemoryLimit:    settings.Limits.MemoryMB,
 		MemoryUsed:     CurrentMemoryMB(owner, name),
 		MemoryMeasured: memoryMeasured,
@@ -245,6 +247,10 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 			Label: "company.perm.packages", ValueText: strings.Join(st.MissingPackages, ", "), State: PermPending,
 			Reason: "company.perm.packages_missing.reason",
 		})
+	}
+
+	if settings.Limits.CPUPercent > 0 {
+		rows = append(rows, PermissionRow{Label: "company.perm.cpu", ValueText: strconv.Itoa(settings.Limits.CPUPercent) + "%", State: PermAllowed, Reason: "company.perm.cpu.reason"})
 	}
 
 	if settings.Download.Policy == "allow" {

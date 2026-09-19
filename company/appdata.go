@@ -792,28 +792,27 @@ func checkDataLimit(owner, repo string, settings AppSettings) {
 	if !usage.Full() {
 		return
 	}
+	// Full is full: the limit is the room this app was given, and an app
+	// past it is stopped — the same rule as memory — rather than left
+	// writing into whatever the volume has left for everyone else. The
+	// department frees space in the data console or asks for more, and
+	// starts it again.
 	free, known := freeBytesOn(appDataRoot())
-	floor := int64(companySettingPositiveInt("APP_DATA_HOST_FLOOR_MB", appDataHostFloorMBDefault)) << 20
-	if !known || free >= floor {
-		log.Warn("company: %s/%s is at its data limit (%d MB); new deploys are refused",
-			owner, repo, usage.QuotaBytes>>20)
-		return
-	}
-
-	// Over its own limit *and* the volume is nearly gone. Stopping the app
-	// that overran is the only move that does not punish a department for
-	// somebody else's data.
-	log.Error("company: %s/%s is over its data limit and the volume has %d MB left; stopping it",
-		owner, repo, free>>20)
+	log.Warn("company: %s/%s is over its data limit (%d MB, volume has %d MB left); stopping it",
+		owner, repo, usage.QuotaBytes>>20, free>>20)
 	if err := supervisorFor(owner, repo).Stop("platform", AppStateFailed, ReasonDataFull); err != nil {
-		log.Error("company: stopping %s/%s after the disk filled: %v", owner, repo, err)
+		log.Error("company: stopping %s/%s after its data filled: %v", owner, repo, err)
 	}
 	_ = MutateAppState(owner, repo, func(st *AppState) bool {
 		st.FailedAt = time.Now().Unix()
 		st.Reason = ReasonDataFull
-		st.Message = "the app was stopped: it is over its " + strconv.FormatInt(usage.QuotaBytes>>20, 10) +
-			" MB data limit and the server is running out of disk"
+		st.Message = "the app was stopped: its data storage is full (" + strconv.FormatInt(usage.QuotaBytes>>20, 10) + " MB limit)"
+		if known && free < int64(companySettingPositiveInt("APP_DATA_HOST_FLOOR_MB", appDataHostFloorMBDefault))<<20 {
+			st.Message += "; the server is also running out of disk"
+		}
 		st.UserMessageKey = "company.app.data_full"
+		st.UserMessageArg = usage.QuotaBytes >> 20
+		st.Desired = AppStateRunning
 		return true
 	})
 }

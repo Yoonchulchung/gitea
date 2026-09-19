@@ -135,6 +135,15 @@ func departmentCause(st *AppState) *AppCause {
 			Action:      "deploy",
 			ActionLabel: "company.app.cause.migration_failed.action",
 		}
+	case ReasonCPU:
+		return &AppCause{
+			Summary:    "company.app.cause.cpu",
+			AdminHint:  "company.app.cause.cpu.admin",
+			Detail:     st.UserMessageKey,
+			DetailArg:  st.UserMessageArg,
+			DetailText: st.UserMessage,
+			Action:     "app", ActionLabel: "company.app.cause.cpu.action",
+		}
 	case ReasonOOM:
 		return &AppCause{
 			Summary:   "company.app.cause.oom",

@@ -150,6 +150,18 @@
 						<button type="button" class="ui tiny basic button company-kpi-cancel">{{ctx.Locale.Tr "cancel"}}</button>
 					</div>
 				</form>
+				<form method="post" action="{{.AdminAppLink}}/limits" class="company-kpi company-kpi-edit">
+					{{.CsrfTokenHtml}}
+					<b{{if not .Summary.ResourcesMeasured}} class="text-grey"{{end}}>{{if .Summary.ResourcesMeasured}}{{.Summary.CPUMaxPct}}%{{else}}—{{end}}<small>/{{.CPUPercent}}%</small>
+						<button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button></b>
+					<span>{{ctx.Locale.Tr "company.adminapp.kpi_cpu"}}</span>
+					<div class="company-kpi-editor tw-hidden">
+						<input type="number" name="cpu_percent" min="0" max="3200" step="1" value="{{if .Settings.Limits.CPUPercent}}{{.Settings.Limits.CPUPercent}}{{end}}" placeholder="{{.CPUPercent}}" disabled>
+						<span class="tw-text-12">%</span>
+						<button class="ui tiny primary button">{{ctx.Locale.Tr "save"}}</button>
+						<button type="button" class="ui tiny basic button company-kpi-cancel">{{ctx.Locale.Tr "cancel"}}</button>
+					</div>
+				</form>
 				{{if .DataUsage}}
 					{{/* Coloured from the warning threshold, not from full: a quota
 					     that is already full has stopped deploys, and the point of

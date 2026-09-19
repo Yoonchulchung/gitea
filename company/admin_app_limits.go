@@ -19,6 +19,9 @@ import (
 //
 // Raising it is deliberately per-app. The instance default is what every app
 // gets, and moving that to suit one department would move it for thirty.
+// maxCPUPercent is the most a card accepts: thirty-two cores' worth.
+const maxCPUPercent = 3200
+
 // parseLimitMB reads a limit typed into a card: empty is the instance
 // default (0), anything else a whole number of MB up to maxMB. Parsed
 // rather than taken from FormInt, which reads a typo as 0 — and 0 here
@@ -66,6 +69,26 @@ func AdminSetLimits(ctx *context.Context) {
 			// The limit is set on the process as it starts (company/appsandbox.go),
 			// so a running app keeps its old one until it is restarted.
 			ctx.Flash.Success(ctx.Locale.TrString("company.flash.memory_changed"))
+		}
+		ctx.Redirect(back)
+		return
+	}
+
+	if _, sent := ctx.Req.Form["cpu_percent"]; sent {
+		pct, ok := parseLimitMB(ctx.FormString("cpu_percent"), maxCPUPercent) // a whole number too, in percent
+		if !ok {
+			ctx.Flash.Error(ctx.Locale.TrString("company.err.bad_cpu_limit", maxCPUPercent))
+			ctx.Redirect(back)
+			return
+		}
+		subject := "set the CPU limit to the default"
+		if pct > 0 {
+			subject = "set the CPU limit"
+		}
+		if err := SetAppLimits(ctx, ctx.Doer, st.Owner, st.Repo, subject, func(s *AppSettings) { s.Limits.CPUPercent = pct }); err != nil {
+			ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
+		} else {
+			ctx.Flash.Success(ctx.Locale.TrString("company.flash.cpu_changed"))
 		}
 		ctx.Redirect(back)
 		return

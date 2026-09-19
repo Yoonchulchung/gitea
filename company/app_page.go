@@ -94,7 +94,7 @@ func AppPage(ctx *context.Context) {
 	// place and not the other is how someone concludes the two disagree.
 	// The row names a few and points at the section below, which lists them
 	// by where they come from — the same split the admin page uses.
-	ctx.Data["PermissionRows"] = trimPackagesRow(permissionRows(settings, st), sidebarPackageLimit)
+	ctx.Data["PermissionRows"] = trimPackagesRow(permissionRows(settings, st))
 	ctx.Data["BasePackages"] = settings.BasePackages
 	ctx.Data["SharedAllow"] = settings.Dependencies.Allow
 	ctx.Data["ApprovedExtra"] = settings.Dependencies.AllowExtra

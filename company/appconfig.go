@@ -61,10 +61,16 @@ type AppLimits struct {
 	// the kernel picks which one dies rather than the platform. Raising it is
 	// a per-app decision an admin makes from the recorded peak, which is why
 	// the dashboard shows peak next to limit.
-	MemoryMB  int `yaml:"memoryMB"`
-	Processes int `yaml:"processes"`
-	OpenFiles int `yaml:"openFiles"`
-	TmpMB     int `yaml:"tmpMB"` // tmpfs size; unbounded /tmp would eat RAM
+	MemoryMB int `yaml:"memoryMB"`
+	// CPUPercent caps sustained CPU use, in percent of one core: 100 is a
+	// whole core. There is no rlimit for a rate and no cgroup for a
+	// process the platform runs as itself, so it is enforced by the
+	// watchdog (company/appsample.go): an app over it for a minute is
+	// stopped, so one department's loop cannot slow every other app.
+	CPUPercent int `yaml:"cpuPercent"`
+	Processes  int `yaml:"processes"`
+	OpenFiles  int `yaml:"openFiles"`
+	TmpMB      int `yaml:"tmpMB"` // tmpfs size; unbounded /tmp would eat RAM
 	// DataMB overrides the instance-wide app data quota for this app. Zero
 	// means "whatever [company] APP_DATA_QUOTA_MB says", so raising one
 	// department's limit does not pin every other app to today's default.
@@ -155,7 +161,7 @@ func builtinDefaults() AppSettings {
 		Install:      []string{"pip install --only-binary=:all: -r requirements.txt"},
 		Start:        "uvicorn main:app --uds ${SOCKET} --root-path ${ROOT_PATH}",
 		HealthPath:   "/health",
-		Limits:       AppLimits{MemoryMB: 192, Processes: 64, OpenFiles: 4096, TmpMB: 64},
+		Limits:       AppLimits{MemoryMB: 192, CPUPercent: 100, Processes: 64, OpenFiles: 4096, TmpMB: 64},
 		Network:      AppNetwork{Mode: NetworkNone},
 		Download:     AppDownload{Policy: "block", MaxResponseBytes: 5 << 20},
 	}
@@ -198,6 +204,9 @@ func (c *AppsConfig) EffectiveSettings(owner, repo string) AppSettings {
 		}
 		if s.Limits.MemoryMB > 0 {
 			out.Limits.MemoryMB = s.Limits.MemoryMB
+		}
+		if s.Limits.CPUPercent > 0 {
+			out.Limits.CPUPercent = s.Limits.CPUPercent
 		}
 		if s.Limits.Processes > 0 {
 			out.Limits.Processes = s.Limits.Processes

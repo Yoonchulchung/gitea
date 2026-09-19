@@ -222,7 +222,9 @@ seccomp는 **스칼라 인자만** 본다 — 포인터를 역참조하지 않�
 
 | 항목 | 기본값 | 근거 |
 |---|---|---|
-| 메모리 (`RLIMIT_DATA`, 힙) | **192MB** | 평범한 FastAPI 앱은 인터프리터·uvicorn·pydantic·starlette 합쳐 **RSS 약 90MB**다. 2배 여유 |
+| 메모리 (`RLIMIT_DATA`, 힙) | **192MB** | 평범한 FastAPI 앱은 인터프리터·uvicorn·pydantic·starlette 합쳐 **RSS 약 90MB**다. 2배 여유. 한도의 1.5배를 3회 연속 넘으면 watchdog이 **앱을 세운다** |
+| CPU (`cpuPercent`, 코어 1개 = 100) | **100%** | 비율에는 rlimit이 없고, 플랫폼 자신으로 실행하는 프로세스에 cgroup도 없다. 모든 앱은 `nice 10`으로 Gitea 뒤에 서고, watchdog이 **1분(샘플 12회) 연속 초과**하면 세운다(`ReasonCPU`). 다른 앱을 느리게 하지 않기 위한 장치다 |
+| 데이터 저장소 (`dataMB`) | 128MB | 80%에서 경고, **100%에서 앱을 세운다**(`ReasonDataFull`). 부서가 데이터 콘솔에서 지우거나 한도를 올린 뒤 다시 시작한다 |
 | 프로세스 (`RLIMIT_NPROC`) | 64 | 포크 폭탄 차단 |
 | 열린 파일 (`RLIMIT_NOFILE`) | 4096 | |
 | `/tmp` (bubblewrap 경로만) | 64MB | tmpfs는 RAM을 먹는다 |

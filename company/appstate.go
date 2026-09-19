@@ -54,6 +54,7 @@ const (
 	ReasonInstallFailed      = "install_failed"
 	ReasonPackageDenied      = "package_denied"
 	ReasonOOM                = "oom"
+	ReasonCPU                = "cpu" // over its CPU limit for a sustained stretch
 	ReasonHealthTimeout      = "health_timeout"
 	ReasonCrashLoop          = "crash_loop"
 	ReasonSuspended          = "suspended"

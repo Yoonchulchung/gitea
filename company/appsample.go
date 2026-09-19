@@ -35,6 +35,10 @@ const (
 	// garbage collection that has not run yet — is not a reason to kill an
 	// app someone is using.
 	memoryBreachesBeforeStop = 3
+	// cpuBreachesBeforeStop is a minute of samples: a burst of work is
+	// what CPUs are for, and only an app that stays over its share for that
+	// long is taking it from every other app on the host.
+	cpuBreachesBeforeStop = 12
 )
 
 // StartMetricsFlusher runs the periodic bucket flush and resource sampling.
@@ -79,6 +83,7 @@ var (
 	sampleStateMu sync.Mutex
 	cpuTrackers   = map[string]cpuTracker{}
 	memBreaches   = map[string]int{}
+	cpuBreaches   = map[string]int{}
 )
 
 func sampleAllApps() {
@@ -125,6 +130,9 @@ func sampleApp(owner, repo string) {
 		float64(usage.threads), usage.fds, diskUsageMB(appPathsFor(owner, repo)))
 
 	checkMemoryLimit(owner, repo, usage.rssBytes, settings)
+	if hadPrev {
+		checkCPULimit(owner, repo, cpuPercent, settings)
+	}
 	checkDataLimit(owner, repo, settings)
 	checkTmpLimit(owner, repo, settings)
 	checkListeners(owner, repo, pid)
@@ -195,6 +203,49 @@ func checkMemoryLimit(owner, repo string, rssBytes int64, settings AppSettings) 
 		// platform did, and they should be able to start it again after
 		// fixing the cause or getting the limit raised.
 		st.Desired = AppStateRunning
+		return true
+	})
+}
+
+// cpuOverLimit counts consecutive samples over the limit and reports when
+// there have been enough of them to act; a sample within the limit ends the
+// streak. Separate from the acting so the counting can be tested.
+func cpuOverLimit(key string, cpuPercent float64, limitPercent int) bool {
+	sampleStateMu.Lock()
+	defer sampleStateMu.Unlock()
+	if limitPercent <= 0 || cpuPercent <= float64(limitPercent) {
+		delete(cpuBreaches, key)
+		return false
+	}
+	cpuBreaches[key]++
+	if cpuBreaches[key] < cpuBreachesBeforeStop {
+		return false
+	}
+	delete(cpuBreaches, key)
+	return true
+}
+
+// checkCPULimit stops an app that has stayed over its CPU limit. The limit
+// is a share of the host, not a hard cap the kernel could apply for a
+// process the platform runs as itself; what keeps it from other apps is
+// their lower scheduling priority (deprioritizeAndProtect) and this.
+func checkCPULimit(owner, repo string, cpuPercent float64, settings AppSettings) {
+	if !cpuOverLimit(appKey(owner, repo), cpuPercent, settings.Limits.CPUPercent) {
+		return
+	}
+	log.Warn("company: %s/%s used %.0f%% CPU against a %d%% limit for %d consecutive samples; stopping it",
+		owner, repo, cpuPercent, settings.Limits.CPUPercent, cpuBreachesBeforeStop)
+	if err := supervisorFor(owner, repo).Stop("platform", AppStateFailed, ReasonCPU); err != nil {
+		log.Error("company: stopping %s/%s after CPU limit: %v", owner, repo, err)
+	}
+	_ = MutateAppState(owner, repo, func(st *AppState) bool {
+		st.FailedAt = time.Now().Unix()
+		st.Message = "the app was stopped for using more than its " +
+			strconv.Itoa(settings.Limits.CPUPercent) + "% CPU limit for a minute"
+		st.UserMessage = ""
+		st.UserMessageKey = "company.sample.cpu_stopped"
+		st.UserMessageArg = settings.Limits.CPUPercent
+		st.Desired = AppStateRunning // the platform stopped it, not the department
 		return true
 	})
 }
