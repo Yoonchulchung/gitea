@@ -860,6 +860,18 @@ func appSnapshotDirForApp(dataDir string) string {
 	return filepath.Join(setting.AppDataPath, appSnapshotDirName, filepath.Base(dataDir))
 }
 
+// appSnapshotDirForProcess is the snapshot directory as a runner sees it —
+// the same split as the data directory. Handed the bubblewrap name on every
+// host, the runners wrote to a "/snapshots" that only existed under
+// bubblewrap, and on a Landlock host no snapshot, migration backup or export
+// ever succeeded.
+func appSnapshotDirForProcess(dataDir string) string {
+	if mode, _ := sandboxMode(); mode == SandboxBubblewrap {
+		return sandboxSnapshotPath
+	}
+	return appSnapshotDirForApp(dataDir)
+}
+
 // appCtlForProcess is the control directory as a runner sees it.
 func appCtlForProcess(p appPaths) string {
 	if mode, _ := sandboxMode(); mode == SandboxBubblewrap {

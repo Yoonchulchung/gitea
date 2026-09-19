@@ -149,7 +149,7 @@ func runDataTool(ctx context.Context, owner, repo string, payload map[string]any
 	if payload["db"] == nil {
 		payload["db"] = filepath.Join(inSandbox, appDataDBName)
 	}
-	payload["snapshotDir"] = sandboxSnapshotPath
+	payload["snapshotDir"] = appSnapshotDirForProcess(dataDir)
 
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -424,8 +424,8 @@ func WriteExportBundle(ctx context.Context, owner, repo string, w io.Writer) err
 	// earlier — a bundle that contradicts its own manifest.
 	result, err := runDataTool(ctx, owner, repo, map[string]any{
 		"mode": "export",
-		"out":  sandboxSnapshotPath + "/.export",
-		"db":   sandboxSnapshotPath + "/" + snapshot,
+		"out":  appSnapshotDirForProcess(dataDir) + "/.export",
+		"db":   appSnapshotDirForProcess(dataDir) + "/" + snapshot,
 	})
 	if err != nil {
 		return err

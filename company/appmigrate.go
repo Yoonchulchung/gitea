@@ -288,7 +288,7 @@ func runMigrations(ctx context.Context, owner, repo, release, dataDir string, se
 	inSandbox := appDataDirForProcess(dataDir)
 	payload, err := json.Marshal(map[string]any{
 		"db":          filepath.Join(inSandbox, appDataDBName),
-		"snapshotDir": sandboxSnapshotPath,
+		"snapshotDir": appSnapshotDirForProcess(dataDir),
 		"journalMode": DataJournalMode(),
 		"migrations":  files,
 		"sha":         sha,

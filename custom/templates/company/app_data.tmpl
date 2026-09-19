@@ -2,6 +2,7 @@
 <div role="main" class="page-content repository company-app-page">
 	{{template "repo/header" .}}
 	<div class="ui container">
+		{{template "base/alert" .}}
 		<h4 class="ui top attached header">
 			<a href="{{.AppLink}}">{{.App.Owner}}/{{.App.Repo}}</a>
 			<span class="text-grey tw-mx-2">/</span>{{ctx.Locale.Tr "company.data.title"}}

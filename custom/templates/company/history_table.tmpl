@@ -21,13 +21,13 @@
 				{{/* HasKey before Tr on any non-constant key: Tr returns an unknown
 				     key verbatim as template.HTML, which turns "render this code as
 				     itself" into "render this code as markup". */}}
-				<td>{{if ctx.Locale.HasKey .What}}{{ctx.Locale.Tr .What}}{{else}}{{.What}}{{end}}{{if $.Raw}}{{if .Status}} <span class="text-grey tw-text-12">{{.Status}}</span>{{end}}{{end}}</td>
+				<td {{if and $.Raw .Status}}data-tooltip-content="{{.Status}}"{{end}}>{{if ctx.Locale.HasKey .What}}{{ctx.Locale.Tr .What}}{{else}}{{.What}}{{end}}</td>
 				<td>
 					{{/* Detail is a locale key for a known reason and the raw code for an
 					     unknown one — an unfamiliar code is still a clue. HasKey tells
 					     the two apart. */}}
 					{{if .Detail}}{{if ctx.Locale.HasKey .Detail}}{{ctx.Locale.Tr .Detail}}{{else}}{{.Detail}}{{end}}{{else}}<span class="text-grey">—</span>{{end}}
-					{{if $.Raw}}{{if .Reason}}<span class="text-grey tw-text-12 tw-ml-1">{{.Reason}}</span>{{end}}{{end}}
+					{{if and $.Raw .Reason (ne .Reason .Detail) (ctx.Locale.HasKey .Detail)}}<span class="text-grey tw-text-12 tw-ml-1" data-tooltip-content="{{ctx.Locale.Tr "company.app.history.raw_code"}}">{{.Reason}}</span>{{end}}
 				</td>
 				{{/* Blank when the platform did it rather than a person; saying so
 				     is clearer than an empty cell. */}}

@@ -4318,6 +4318,7 @@
   "company.app.status.failed": "Problem",
   "company.app.status.stopped": "Stopped",
   "company.app.history.started": "Started",
+  "company.app.history.raw_code": "The code as it appears in the logs",
   "company.app.history.stopped": "Stopped",
   "company.app.history.suspended": "Admin stop",
   "company.app.history.failed": "Failed",
