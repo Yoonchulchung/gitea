@@ -42,8 +42,8 @@
 		<h4 class="ui attached header">{{ctx.Locale.Tr "company.adminnetwork.outbound_rows"}}</h4>
 		<div class="ui attached segment">
 			{{if .Outbound}}
-				<pre class="company-log tw-text-13">{{range .Outbound}}{{.}}
-{{end}}</pre>
+				<pre class="company-log tw-text-13"><span class="company-log-body">{{range .Outbound}}{{.}}
+{{end}}</span></pre>
 			{{else}}
 				<p class="text-grey">{{ctx.Locale.Tr "company.adminnetwork.no_outbound"}}</p>
 			{{end}}

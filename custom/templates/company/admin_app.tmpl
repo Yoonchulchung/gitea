@@ -117,7 +117,7 @@
 					     absolute paths and build output (company/usererror.go). */}}
 					<details class="tw-mt-2">
 						<summary class="tw-cursor-pointer tw-text-13">{{ctx.Locale.Tr "company.adminapp.raw_detail"}}</summary>
-						<pre class="company-log tw-mt-1">{{.App.Message}}</pre>
+						<pre class="company-log tw-mt-1"><span class="company-log-body">{{.App.Message}}</span></pre>
 					</details>
 				{{end}}
 				<a class="ui tiny basic button tw-mt-2" href="{{.AdminAppLink}}/logs">{{svg "octicon-log" 14}} {{ctx.Locale.Tr "company.adminapp.full_logs"}}</a>

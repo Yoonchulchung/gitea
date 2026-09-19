@@ -201,6 +201,7 @@
 .company-preflight-warn { color: var(--color-warning-text); }
 .company-preflight-error { color: var(--color-error-text); }
 .company-attempt-live > td { background: var(--color-warning-bg); }
+.company-log-body { display: block; white-space: pre; min-width: 0; }
 .company-log-time {
 	color: var(--color-text-light-3);
 	user-select: none;
@@ -277,6 +278,12 @@
 	overflow: auto;
 	margin: 0;
 	font-size: 12px;
+	/* Opens at its end without a script: a column-reverse flex box starts
+	   scrolled to the bottom, where the newest line is, instead of painting
+	   at the top and being scrolled down afterwards. Its one child keeps the
+	   lines in order. */
+	display: flex;
+	flex-direction: column-reverse;
 	line-height: 1.45;
 	white-space: pre-wrap;
 	word-break: break-all;

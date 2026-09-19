@@ -47,8 +47,8 @@
 			{{/* Text nodes, never innerHTML: a log line contains whatever was
 			     logged, including a request path somebody chose. Go templates
 			     escape this by default — do not add a `safeHTML` here. */}}
-			<pre class="company-log">{{range .Lines}}{{if .At}}<span class="company-log-time">{{DateUtils.AbsoluteShort .At}}</span> {{end}}{{if .Level}}<span class="company-log-level company-log-{{.Level}}">{{.Level}}</span> {{end}}{{.Text}}
-{{else}}{{ctx.Locale.Tr "company.serverlogs.empty"}}{{end}}</pre>
+			<pre class="company-log"><span class="company-log-body">{{range .Lines}}{{if .At}}<span class="company-log-time">{{DateUtils.AbsoluteShort .At}}</span> {{end}}{{if .Level}}<span class="company-log-level company-log-{{.Level}}">{{.Level}}</span> {{end}}{{.Text}}
+{{else}}{{ctx.Locale.Tr "company.serverlogs.empty"}}{{end}}</span></pre>
 			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">
 				{{ctx.Locale.Tr "company.serverlogs.source" .LogMode .LogLevel .LogRootPath}}
 			</p>
