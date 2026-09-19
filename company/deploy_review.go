@@ -114,6 +114,9 @@ func setDeployReviewData(ctx *gitea_context.Context, pr *issues_model.PullReques
 	// of an unset value stops the template half-way down the page.
 	requests := LoadPermissionRequests(deptOwner, deptName, pr.ID)
 	ctx.Data["PermissionRequests"] = requests
+	if !pr.Issue.IsClosed && !isRemovalRequest(pr) {
+		ctx.Data["Capacity"] = capacityCheck(ctx.Locale, deptOwner, deptName, requests) // company/deploy_capacity.go
+	}
 	ctx.Data["DeployPackages"] = []reviewPackage{}
 	if gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, ctx.Repo.Repository); err == nil {
 		requirements := deployRequestFile(ctx, gitRepo, pr.HeadBranch, deployPathPrefix(deptOwner, deptName), "requirements.txt")

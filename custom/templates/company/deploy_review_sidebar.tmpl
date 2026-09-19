@@ -93,6 +93,21 @@
 		{{end}}
 	{{end}}
 
+	{{/* Can the server carry it: the memory this app would hold against
+	     what the running apps commit, the storage it asks for against the
+	     volume. Numbers for the approver, not a gate. See company/deploy_capacity.go. */}}
+	{{with .Capacity}}
+		<div class="ui segment company-deploy-review-panel">
+			<h4 class="tw-mb-2">{{svg "octicon-server" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.capacity_header"}}</h4>
+			{{range .}}
+				<div class="company-capacity-row {{.State}}">
+					{{if eq .State "ok"}}{{svg "octicon-check-circle" 14}}{{else if eq .State "warn"}}{{svg "octicon-alert" 14}}{{else}}{{svg "octicon-x-circle" 14}}{{end}}
+					<span class="tw-text-13">{{.Text}}</span>
+				</div>
+			{{end}}
+		</div>
+	{{end}}
+
 	{{/* Every package the snapshot installs, not only the new ones: what
 	     is already allowed is part of the picture too. */}}
 	{{if not .DeployRemoval}}

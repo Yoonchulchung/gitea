@@ -560,6 +560,12 @@
 	align-items: center;
 	font-size: 13px;
 }
+.company-capacity-row { display: flex; gap: 6px; align-items: flex-start; padding: 4px 0; }
+.company-capacity-row svg { flex-shrink: 0; margin-top: 2px; }
+.company-capacity-row.ok svg { color: var(--color-green); }
+.company-capacity-row.warn svg { color: var(--color-yellow); }
+.company-capacity-row.no svg { color: var(--color-red); }
+.company-capacity-row.no { color: var(--color-red); }
 .company-deploy-review-package {
 	display: flex;
 	justify-content: space-between;
