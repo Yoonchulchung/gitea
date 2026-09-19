@@ -580,7 +580,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 		m.Get("/search", repo.SearchIssues)
 	}, reqSignIn)
 
-	m.Get("/pulls", reqSignIn, user.Pulls)
+	m.Get("/pulls", reqSignIn, company.RedirectPullsToCentral, user.Pulls) // see docs/company/patches.md
 	m.Get("/milestones", reqSignIn, reqMilestonesDashboardPageEnabled, user.Milestones)
 
 	// ***** START: User *****

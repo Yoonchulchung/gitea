@@ -4046,6 +4046,7 @@
   "company.workspace.ai_rename_status": "Renamed: %s → %s",
   "company.workspace.ai_queued": "%s message(s) waiting to send",
   "company.pulls.ai_review": "AI Code Review",
+  "company.nav.deploy_approvals": "Deploy approvals",
   "company.pulls.ai_review_setup": "AI key not set up — register one",
   "company.review.title": "Deploy request",
   "company.review.department": "App",

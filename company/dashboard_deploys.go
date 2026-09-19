@@ -38,6 +38,23 @@ type dashboardDeploy struct {
 	At        timeutil.TimeStamp // when it was last touched: asked, decided, or deployed
 }
 
+// RedirectPullsToCentral sends an administrator's "Deploy approvals" menu
+// entry (/pulls) to the central repository's own pull request list. The
+// global list only shows repositories a person is a member of, and an
+// administrator is not a member of the central repository — every deploy
+// request was missing from the one page named after them. Mounted ahead
+// of user.Pulls on /pulls (routers/web/web.go).
+func RedirectPullsToCentral(ctx *context.Context) {
+	if ctx.Doer == nil || !ctx.Doer.IsAdmin {
+		return
+	}
+	central, err := centralDeployRepo(ctx)
+	if err != nil {
+		return // no central repository yet: the plain list is all there is
+	}
+	ctx.Redirect(central.Link() + "/pulls")
+}
+
 // SetDashboardDeploys attaches the recent deploy requests to an
 // administrator's dashboard. Mounted ahead of Home on "/" (routers/web/web.go).
 // Best-effort, like the apps panel: the dashboard renders without it.
