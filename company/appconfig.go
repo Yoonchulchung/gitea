@@ -421,6 +421,9 @@ func AppsConfigSnapshot() (*AppsConfig, time.Time, error) {
 
 // SettingsFor is the hot-path lookup: effective policy for one app, no I/O.
 func SettingsFor(owner, repo string) AppSettings {
+	// A preview borrows the app's name with a suffix (company/apppreview.go)
+	// and must run under the app's policy, not the defaults.
+	repo = strings.TrimSuffix(repo, previewSuffix)
 	appsConfigCache.mu.RLock()
 	cfg := appsConfigCache.cfg
 	appsConfigCache.mu.RUnlock()

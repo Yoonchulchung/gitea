@@ -49,6 +49,10 @@ func InitAppPlatform(ctx context.Context) {
 	// directory the platform owns, and an instance that starts without this
 	// finds its apps with no releases and no secrets (company/appkeymigrate.go).
 	migrateAppKeyLength()
+	// Previews are not in any state file: what a previous Gitea left of them
+	// is removed here, and the idle ones are stopped from here on
+	// (company/apppreview.go).
+	StartPreviewSweeper()
 
 	// The proxy answers "is this a real app?" from memory, so the registry has
 	// to know about everything deployed before the first request arrives.

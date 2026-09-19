@@ -185,6 +185,12 @@ func TestAppRelativePathStripsMountPrefix(t *testing.T) {
 	for in, want := range cases {
 		assert.Equal(t, want, appRelativePath(in), in)
 	}
+	// A preview is mounted one segment deeper (company/apppreview.go).
+	assert.Equal(t, "/health", stripSegments("/apps/_preview/PO/app/health", previewMountSegments))
+	assert.Equal(t, "/", stripSegments("/apps/_preview/PO/app", previewMountSegments))
+	got, ok := rootRedirect("/apps/_preview/PO/app", "", previewMountSegments)
+	assert.True(t, ok)
+	assert.Equal(t, "app/", got)
 }
 
 // --root-path covers the URLs an app builds for itself, which is why its own

@@ -1,6 +1,32 @@
 import {registerGlobalInitFunc} from '../modules/observer.ts';
 import {fillModelOptions, initChatPanel} from './company-ai-chat.ts';
 import {svg} from '../svg.ts';
+import {GET} from '../modules/fetch.ts';
+
+// A preview build takes as long as a deploy's. While it runs, the panel
+// asks every few seconds and reloads the page when the answer changes
+// (company/apppreview.go).
+export function initCompanyDeployPreview() {
+  registerGlobalInitFunc('initCompanyDeployPreview', (el: HTMLElement) => {
+    if (el.getAttribute('data-state') !== 'building') return;
+    const url = el.getAttribute('data-status-url')!;
+    const poll = async () => {
+      try {
+        const resp = await GET(url);
+        if (!resp.ok) return;
+        const {state} = await resp.json() as {state: string};
+        if (state !== 'building') {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // a missed poll only delays the reload
+      }
+      setTimeout(poll, 3000);
+    };
+    setTimeout(poll, 3000);
+  });
+}
 
 // Every review the platform posts starts with this (company/deploy.go's
 // aiReviewCommentMarker). It is posted by an administrator's account, since

@@ -34,6 +34,10 @@ func RegisterRoutes(m *web.Router) {
 	//
 	// MarkLongPolling keeps a slow app from being logged and treated as a slow
 	// Gitea request; apps stream and hold connections open.
+	// Before the app routes: "_preview" is a literal segment where those have
+	// an owner. Administrators only, enforced inside (company/apppreview.go).
+	m.Any("/apps/_preview/{owner}/{repo}", routing.MarkLongPolling(), AppPreviewProxy)
+	m.Any("/apps/_preview/{owner}/{repo}/*", routing.MarkLongPolling(), AppPreviewProxy)
 	m.Any("/apps/{owner}/{repo}", routing.MarkLongPolling(), AppProxy)
 	m.Any("/apps/{owner}/{repo}/*", routing.MarkLongPolling(), AppProxy)
 
@@ -41,7 +45,11 @@ func RegisterRoutes(m *web.Router) {
 		m.Post("/repo-description/{owner}/{repo}", UpdateDescription)
 		m.Post("/deploy-request/{id}/cancel", CancelDeployRequest)
 		m.Post("/deploy-request/{id}/ai-review", TriggerDeployRequestAIReview)
-		m.Post("/deploy-request/{id}/chat", DeployRequestChat) // read-only assistant on the request page, see company/deploy_review.go
+		m.Post("/deploy-request/{id}/chat", DeployRequestChat)       // read-only assistant on the request page, see company/deploy_review.go
+		m.Post("/deploy-request/{id}/preview", DeployRequestPreview) // the requested version, run on its own — company/apppreview.go
+		m.Post("/deploy-request/{id}/preview/stop", DeployRequestPreviewStop)
+		m.Get("/deploy-request/{id}/preview/status", DeployRequestPreviewStatus)
+		m.Post("/deploy-request/{id}/rebase", DeployRequestRebase) // a conflicting request, put on today's main — company/deploy_rebase.go
 	}, RequireSignIn)
 	// DeployRequests, DeployRequestFiles, and RepoCreateRedirect are NOT
 	// registered here — all three mount inside Gitea's own org route group

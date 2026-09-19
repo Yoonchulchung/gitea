@@ -153,6 +153,13 @@ func releaseDir(p appPaths, sha string) string {
 type appSupervisor struct {
 	owner, repo string
 	paths       appPaths
+	// preview is a copy run for an administrator to look at
+	// (company/apppreview.go): it records no state and is never restarted,
+	// so a crash of the copy cannot make the platform believe in an app that
+	// was never deployed. rootPath is where it is mounted, when not the
+	// app's own place.
+	preview  bool
+	rootPath string
 
 	// mu guards everything below and is held across whole lifecycle
 	// transitions, not just field writes. That is the point: a stop must not
@@ -285,8 +292,8 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	// Against what is recorded now, under the lock: every stop records its
 	// intent before it begins, so a start that raced one stands down here
 	// rather than bringing back an app someone has just stopped.
-	if LoadAppState(s.owner, s.repo).Desired == AppStateStopped {
-		return errStartSuperseded
+	if !s.preview && LoadAppState(s.owner, s.repo).Desired == AppStateStopped {
+		return errStartSuperseded // a preview has no record, and no stop to respect
 	}
 	target, err := os.Readlink(s.paths.current)
 	if err != nil {
@@ -359,7 +366,10 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 		return err
 	}
 
-	rootPath := "/apps/" + s.owner + "/" + s.repo
+	rootPath := s.rootPath
+	if rootPath == "" {
+		rootPath = "/apps/" + s.owner + "/" + s.repo
+	}
 	cmd, err := buildAppCommand(target, s.paths, settings, rootPath, dataDir)
 	if err != nil {
 		return err
@@ -478,6 +488,10 @@ func (s *appSupervisor) watchExit(cmd *exec.Cmd, logFile io.Closer) {
 		s.crashes = 0
 		s.mu.Unlock()
 		return
+	}
+	if s.preview {
+		log.Warn("company: preview %s/%s exited: %v", s.owner, s.repo, err)
+		return // an administrator rebuilds it; nothing is recorded
 	}
 
 	log.Warn("company: %s/%s exited unexpectedly (attempt %d): %v", s.owner, s.repo, crashes, err)

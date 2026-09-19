@@ -23,6 +23,18 @@
 		{{if not .Issue.IsClosed}}
 			<p class="text-grey tw-text-12 tw-mt-3 tw-mb-0">{{ctx.Locale.Tr "company.review.decide"}}</p>
 		{{end}}
+		{{/* Main moved on since the request was made and git cannot apply it.
+		     The files are known, so the way through is one press: the same
+		     files on today's main, as a new request. See company/deploy_rebase.go. */}}
+		{{if and .DeployConflict (not .Issue.IsClosed)}}
+			<div class="ui warning message tw-mt-3 tw-mb-0">
+				<div class="header">{{ctx.Locale.Tr "company.review.conflict_header"}}</div>
+				<p class="tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.review.conflict_explain"}}</p>
+				<form method="post" action="{{.DeployRebaseURL}}">{{.CsrfTokenHtml}}
+					<button class="ui primary tiny button">{{ctx.Locale.Tr "company.review.conflict_fix"}}</button>
+				</form>
+			</div>
+		{{end}}
 	</div>
 
 	{{/* Merging is the approval — the items are applied with it
@@ -44,6 +56,35 @@
 			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.deploy.perm_merge_note"}}</p>
 		{{end}}
 	</div>
+
+	{{/* The requested version, run on its own for a look before deciding —
+	     its own process and a copy of today's data, never the live app.
+	     See company/apppreview.go. */}}
+	{{if not .Issue.IsClosed}}
+		{{with .DeployPreview}}
+			<div class="ui segment company-deploy-review-panel company-deploy-preview" data-global-init="initCompanyDeployPreview" data-state="{{.State}}" data-status-url="{{$.DeployPreviewURL}}/status">
+				<h4 class="tw-mb-2">{{svg "octicon-eye" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.preview.title"}}</h4>
+				<p class="text-grey tw-text-12">{{ctx.Locale.Tr "company.preview.explain"}}</p>
+				{{if eq .State "building"}}
+					<div class="tw-flex tw-items-center tw-gap-2"><span class="ui yellow tiny label">{{ctx.Locale.Tr "company.preview.building"}}</span><span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.preview.building_note"}}</span></div>
+				{{else if eq .State "running"}}
+					<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
+						<a class="ui primary tiny button" href="{{.URL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} {{ctx.Locale.Tr "company.preview.open"}}</a>
+						<form method="post" action="{{$.DeployPreviewURL}}/stop" class="tw-inline">{{$.CsrfTokenHtml}}<button class="ui basic tiny button">{{ctx.Locale.Tr "company.preview.stop"}}</button></form>
+					</div>
+					<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{if eq .DataNote "copied"}}{{ctx.Locale.Tr "company.preview.data_copied"}}{{else}}{{ctx.Locale.Tr "company.preview.data_empty"}}{{end}}</p>
+				{{else if eq .State "failed"}}
+					<div class="ui negative message tw-mt-0"><div class="header">{{ctx.Locale.Tr "company.preview.failed"}}</div><p class="tw-text-13">{{.Error}}</p></div>
+				{{end}}
+				{{if ne .State "building"}}
+					<form method="post" action="{{$.DeployPreviewURL}}" class="tw-mt-2">{{$.CsrfTokenHtml}}
+						<button class="ui tiny button">{{if eq .State "stopped"}}{{ctx.Locale.Tr "company.preview.build"}}{{else}}{{ctx.Locale.Tr "company.preview.rebuild"}}{{end}}</button>
+					</form>
+				{{end}}
+				<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.preview.idle_note"}}</p>
+			</div>
+		{{end}}
+	{{end}}
 
 	{{/* Every package the snapshot installs, not only the new ones: what
 	     is already allowed is part of the picture too. */}}

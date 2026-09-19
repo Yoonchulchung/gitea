@@ -92,6 +92,10 @@ func setDeployReviewData(ctx *gitea_context.Context, pr *issues_model.PullReques
 	ctx.Data["DeployDeptLink"] = fmt.Sprintf("%s/%s/%s", setting.AppSubURL, deptOwner, deptName)
 	ctx.Data["DeployChatURL"] = fmt.Sprintf("%s/company/deploy-request/%d/chat", setting.AppSubURL, pr.ID)
 	ctx.Data["DeployRequestMessage"] = deployRequestMessage(pr.Issue.Content)
+	ctx.Data["DeployPreview"] = PreviewStatusOf(deptOwner, deptName)
+	ctx.Data["DeployConflict"] = pr.Status == issues_model.PullRequestStatusConflict || pr.Status == issues_model.PullRequestStatusError
+	ctx.Data["DeployRebaseURL"] = fmt.Sprintf("%s/company/deploy-request/%d/rebase", setting.AppSubURL, pr.ID)
+	ctx.Data["DeployPreviewURL"] = fmt.Sprintf("%s/company/deploy-request/%d/preview", setting.AppSubURL, pr.ID)
 	ctx.Data["DeployCentralOwnerLink"] = ctx.Repo.Repository.Owner.HomeLink()
 	ctx.Data["CompanyMergeLabel"] = ctx.Locale.Tr("company.review.approve_deploy")
 	if _, _, requesterID, ok := parseDeployBranchName(pr.HeadBranch); ok {

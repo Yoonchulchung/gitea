@@ -57,15 +57,18 @@ func (*deployBranchCleanupNotifier) IssueChangeStatus(ctx context.Context, _ *us
 		log.Error("company: deployBranchCleanupNotifier: LoadPullRequest: %v", err)
 		return
 	}
+	stopPreviewForPR(issue.PullRequest)
 	cleanupDeployBranch(ctx, issue.PullRequest)
 }
 
 func (*deployBranchCleanupNotifier) MergePullRequest(ctx context.Context, doer *user_model.User, pr *issues_model.PullRequest) {
+	stopPreviewForPR(pr) // before the deploy builds, so the two never share a moment
 	queueDeployOnMerge(ctx, doer, pr)
 	cleanupDeployBranch(ctx, pr)
 }
 
 func (*deployBranchCleanupNotifier) AutoMergePullRequest(ctx context.Context, doer *user_model.User, pr *issues_model.PullRequest) {
+	stopPreviewForPR(pr)
 	queueDeployOnMerge(ctx, doer, pr)
 	cleanupDeployBranch(ctx, pr)
 }

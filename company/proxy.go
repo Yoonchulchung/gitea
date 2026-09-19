@@ -104,7 +104,7 @@ func AppProxy(ctx *gitea_context.Context) {
 	}
 	// After the access check, so the redirect says nothing about a private
 	// app to someone who may not see it.
-	if location, ok := appRootRedirect(requestPath(ctx.Req), ctx.Req.URL.RawQuery); ok {
+	if location, ok := rootRedirect(requestPath(ctx.Req), ctx.Req.URL.RawQuery, appMountSegments); ok {
 		ctx.Resp.Header().Set("Location", location)
 		ctx.Resp.WriteHeader(http.StatusPermanentRedirect) // 308, so a POST stays a POST
 		return
@@ -261,15 +261,19 @@ var proxyCache sync.Map // appKey -> *httputil.ReverseProxy
 // the process. Every closure below re-reads SettingsFor, which is an
 // in-memory lookup precisely so this is affordable per request.
 func appProxyFor(ref AppRef) *httputil.ReverseProxy {
-	key := appKey(ref.Owner, ref.Repo)
+	return appProxyWith(appKey(ref.Owner, ref.Repo), ref, AppSocketPath(ref.Owner, ref.Repo),
+		appProxyPrefix+"/"+ref.Owner+"/"+ref.Repo, appMountSegments)
+}
+
+// appProxyWith is the proxy for one socket mounted at one prefix. ref names
+// the app whose policy applies; a preview (company/apppreview.go) passes the
+// live app's, with its own socket, prefix and cache key.
+func appProxyWith(key string, ref AppRef, socket, prefix string, segments int) *httputil.ReverseProxy {
 	if p, ok := proxyCache.Load(key); ok {
 		if proxy, ok := p.(*httputil.ReverseProxy); ok {
 			return proxy
 		}
 	}
-
-	socket := AppSocketPath(ref.Owner, ref.Repo)
-	prefix := appProxyPrefix + "/" + ref.Owner + "/" + ref.Repo
 
 	proxy := &httputil.ReverseProxy{
 		Transport: &http.Transport{
@@ -292,7 +296,7 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 			// --root-path tells the app what prefix to *build* URLs with; it
 			// does not remove that prefix from what arrives. Forwarding the
 			// mounted path unchanged makes every app answer its own 404.
-			r.Out.URL.Path = appRelativePath(requestPath(r.In))
+			r.Out.URL.Path = stripSegments(requestPath(r.In), segments)
 			r.Out.URL.RawPath = ""
 			// Strip first, then set: whatever the client sent is a claim, and
 			// the app must only ever see what we assert.
@@ -360,7 +364,11 @@ func appProxyFor(ref AppRef) *httputil.ReverseProxy {
 // server treats a directory (see appURL). Relative, so it holds under a
 // sub-path.
 func appRootRedirect(reqPath, rawQuery string) (string, bool) {
-	if strings.HasSuffix(reqPath, "/") || appRelativePath(reqPath) != "/" {
+	return rootRedirect(reqPath, rawQuery, appMountSegments)
+}
+
+func rootRedirect(reqPath, rawQuery string, segments int) (string, bool) {
+	if strings.HasSuffix(reqPath, "/") || stripSegments(reqPath, segments) != "/" {
 		return "", false
 	}
 	location := path.Base(reqPath) + "/"
@@ -388,8 +396,13 @@ func requestPath(r *http.Request) string {
 // Counted in segments rather than trimmed as a string because the URL that
 // matched the route may differ in case from the registered app name, and a
 // failed trim would forward the whole path as if nothing were wrong.
-func appRelativePath(p string) string {
-	for range 3 { // "apps", owner, repo
+func appRelativePath(p string) string { return stripSegments(p, appMountSegments) }
+
+// appMountSegments is "apps", owner, repo.
+const appMountSegments = 3
+
+func stripSegments(p string, segments int) string {
+	for range segments {
 		p = strings.TrimPrefix(p, "/")
 		i := strings.IndexByte(p, '/')
 		if i < 0 {
