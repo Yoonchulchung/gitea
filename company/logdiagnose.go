@@ -307,7 +307,7 @@ Rules:
 // AI feature here uses, so there is no second credential and no shared one.
 func DiagnoseLog(ctx context.Context, userID int64, owner, repo string, lines []LogLine) (string, error) {
 	if AILogAccess() == AILogAccessOff {
-		return "", userKeyError("company.logs.diagnose_off")
+		return "", userKeyError("company.logs.diagnose_policy_off")
 	}
 	// The same policy as the assistant's: which lines may leave, masked,
 	// with the host's paths gone (company/ailogpolicy.go).
