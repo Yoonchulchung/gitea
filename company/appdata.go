@@ -817,6 +817,14 @@ func checkDataLimit(owner, repo string, settings AppSettings) {
 	})
 }
 
+// cachedDataUsage is the last measurement, without taking one.
+func cachedDataUsage(owner, repo string) (AppDataUsage, bool) {
+	dataUsageMu.Lock()
+	defer dataUsageMu.Unlock()
+	usage, ok := dataUsageCache[appKey(owner, repo)]
+	return usage, ok && !usage.MeasuredAt.IsZero()
+}
+
 // RefuseDeployIfDataFull blocks a deploy that has nowhere to put a snapshot.
 //
 // Checked before the build rather than after: a migration takes a copy of

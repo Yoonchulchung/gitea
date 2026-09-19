@@ -135,6 +135,9 @@ func sampleApp(owner, repo string) {
 		checkCPULimit(owner, repo, cpuPercent, settings)
 	}
 	checkDataLimit(owner, repo, settings)
+	if usage, ok := cachedDataUsage(owner, repo); ok {
+		RecordDataSample(owner, repo, usage.Bytes)
+	}
 	checkTmpLimit(owner, repo, settings)
 	checkListeners(owner, repo, pid)
 }

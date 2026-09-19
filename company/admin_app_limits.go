@@ -6,6 +6,7 @@ package company
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"gitea.dev/modules/setting"
 	"gitea.dev/services/context"
@@ -62,6 +63,16 @@ func AdminSetLimits(ctx *context.Context) {
 		subject := "set the memory limit to the default"
 		if mb > 0 {
 			subject = "set the memory limit"
+		}
+		// Against what this app has actually used: a limit under the day's
+		// peak stops the app the first time it does what it did yesterday.
+		if mb > 0 {
+			summary := SummarizeMetrics(LoadMetrics(st.Owner, st.Repo, time.Now().Add(-24*time.Hour)))
+			if summary.ResourcesMeasured && mb < summary.MemMaxMB {
+				ctx.Flash.Error(ctx.Locale.TrString("company.err.memory_below_usage", summary.MemMaxMB, summary.MemAvgMB, summary.MemMaxMB))
+				ctx.Redirect(back)
+				return
+			}
 		}
 		// Against the machine, with every other running app's limit: a limit
 		// that cannot be honoured alongside the others is refused, and one

@@ -32,6 +32,7 @@ type Point = {
   p95: number;
   memMB: number;
   cpu: number;
+  dataMB: number;
   users: number;
 };
 
@@ -182,6 +183,7 @@ export function initCompanyAppCharts() {
       datasets: [
         {label: text('memory'), data: at('memMB'), borderColor: chartJsColors.deletions, tension: 0.3, pointRadius: 0},
         {label: text('cpu'), data: at('cpu'), borderColor: chartJsColors.commits, tension: 0.3, pointRadius: 0},
+        {label: text('data'), data: at('dataMB'), borderColor: chartJsColors.text, borderDash: [3, 3], tension: 0.3, pointRadius: 0},
       ],
     },
     latency: {

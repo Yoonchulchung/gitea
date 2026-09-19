@@ -52,6 +52,9 @@ type MetricsBucket struct {
 	Mem     MinMaxAvg    `json:"mem"` // bytes, VmRSS summed over the process tree
 	CPU     MinMaxAvg    `json:"cpu"` // percent of one core
 	Threads MinMaxAvg    `json:"threads"`
+	// DataBytes is the app's stored data at the end of the window, so a
+	// database that grows is a line on the chart and not a surprise at 100%.
+	DataBytes int64 `json:"data,omitempty"`
 	// ResourceSamples is how many times memory, CPU and threads were actually
 	// read in this window. Zero means they were never measured — not that
 	// they measured zero. A bucket exists as soon as a request arrives, so
@@ -105,6 +108,7 @@ type liveBucket struct {
 	resourceSamples      int
 	fdMax                int
 	diskMB               int
+	dataBytes            int64
 }
 
 var (
@@ -193,6 +197,14 @@ func RecordResourceSample(owner, repo string, rssBytes, cpuPercent, threads floa
 	}
 }
 
+// RecordDataSample notes how much the app has stored, as of now.
+func RecordDataSample(owner, repo string, bytes int64) {
+	b := liveBucketFor(owner, repo)
+	b.mu.Lock()
+	b.dataBytes = bytes
+	b.mu.Unlock()
+}
+
 // snapshotAndReset turns the accumulated window into a bucket and starts a
 // new one. Returns false if nothing happened in this window, so idle apps
 // don't fill the file with empty buckets.
@@ -202,13 +214,14 @@ func (b *liveBucket) snapshotAndReset(now int64) (MetricsBucket, bool) {
 
 	empty := b.counts.Total == 0 && b.resourceSamples == 0 && b.restarts == 0 && b.blocked == 0
 	bucket := MetricsBucket{
-		T:        b.start,
-		Req:      b.counts,
-		Users:    len(b.visitors),
-		Restarts: b.restarts,
-		Blocked:  b.blocked,
-		FDs:      b.fdMax,
-		DiskMB:   b.diskMB,
+		T:         b.start,
+		Req:       b.counts,
+		Users:     len(b.visitors),
+		Restarts:  b.restarts,
+		Blocked:   b.blocked,
+		FDs:       b.fdMax,
+		DiskMB:    b.diskMB,
+		DataBytes: b.dataBytes,
 	}
 	if b.rtCount > 0 {
 		bucket.RT = ResponseTime{Avg: int(b.rtSum / b.rtCount), P95: percentile(b.samples, 95)}
@@ -393,7 +406,10 @@ type MetricsSummary struct {
 	ErrorRate float64 // percent
 	P95       int     // milliseconds
 	MemMaxMB  int
+	MemAvgMB  int // over every sample in the window, so a limit is sized against the usual, not only the spike
 	CPUMaxPct int // percent of one core, the highest sample in the window
+	CPUAvgPct int
+	DataMaxMB int // the most the app had stored in the window
 	Blocked   int
 	Restarts  int
 	// ResourcesMeasured is false when nothing in the window sampled memory or
@@ -406,7 +422,15 @@ type MetricsSummary struct {
 func SummarizeMetrics(buckets []MetricsBucket) MetricsSummary {
 	var s MetricsSummary
 	var errors, p95Sum, p95Count int
+	var memWeighted, cpuWeighted float64
+	samples := 0
 	for _, b := range buckets {
+		if b.ResourceSamples > 0 {
+			memWeighted += b.Mem.Avg * float64(b.ResourceSamples)
+			cpuWeighted += b.CPU.Avg * float64(b.ResourceSamples)
+			samples += b.ResourceSamples
+		}
+		s.DataMaxMB = max(s.DataMaxMB, int(b.DataBytes>>20))
 		s.Requests += b.Req.Total
 		// Distinct-visitor counts cannot be summed across buckets without
 		// double-counting someone who came back. The maximum in any one
@@ -432,6 +456,10 @@ func SummarizeMetrics(buckets []MetricsBucket) MetricsSummary {
 	}
 	if p95Count > 0 {
 		s.P95 = p95Sum / p95Count
+	}
+	if samples > 0 {
+		s.MemAvgMB = int(memWeighted / float64(samples) / (1 << 20))
+		s.CPUAvgPct = int(cpuWeighted / float64(samples))
 	}
 	return s
 }

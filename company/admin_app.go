@@ -49,6 +49,7 @@ type chartPoint struct {
 	P95      int     `json:"p95"`
 	MemMB    float64 `json:"memMB"`
 	CPU      float64 `json:"cpu"`
+	DataMB   float64 `json:"dataMB"`
 	Users    int     `json:"users"`
 }
 
@@ -85,6 +86,7 @@ func buildChartPayload(ctx *context.Context, buckets []MetricsBucket, st *AppSta
 			P95:      b.RT.P95,
 			MemMB:    b.Mem.Max / (1 << 20),
 			CPU:      b.CPU.Avg,
+			DataMB:   float64(b.DataBytes) / (1 << 20),
 			Users:    b.Users,
 		})
 	}
@@ -110,6 +112,12 @@ func historyLabel(h AppHistoryEntry) (string, bool) {
 		return "company.chart.event.rolled_back", true
 	case h.Reason == ReasonOOM:
 		return "company.chart.event.oom", true
+	case h.Reason == ReasonCPU:
+		return "company.chart.event.cpu", true
+	case h.Reason == ReasonHostMemory:
+		return "company.chart.event.host_memory", true
+	case h.Reason == ReasonDataFull:
+		return "company.chart.event.data_full", true
 	case h.Status == AppStateFailed:
 		return "company.chart.event.failed", true
 	case h.Status == AppStateSuspended:
@@ -179,6 +187,10 @@ func AdminApp(ctx *context.Context) {
 	// The same reading the repository sidebar shows, so the two screens
 	// agree; the peak over the chart's window sits beside it, labelled.
 	ctx.Data["MemoryNowMB"] = CurrentMemoryMB(st.Owner, st.Repo)
+	// A stop the platform made itself: the sentence with the numbers is
+	// what the operator opened this page for, so it is in the open rather
+	// than behind the raw-detail fold.
+	ctx.Data["PlatformStop"] = slices.Contains([]string{ReasonOOM, ReasonCPU, ReasonHostMemory, ReasonDataFull, ReasonTmpFull, ReasonCrashLoop}, st.Reason)
 	ctx.Data["CPUPercent"] = settings.Limits.CPUPercent
 	if usage, ok := AppDataUsageFor(ctx, st.Owner, st.Repo); ok {
 		ctx.Data["DataUsage"] = usage

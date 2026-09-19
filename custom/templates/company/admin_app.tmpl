@@ -112,6 +112,9 @@
 						{{if .AdminHint}}<div class="tw-mt-1">{{ctx.Locale.Tr .AdminHint}}</div>{{end}}
 					</div>
 				{{end}}
+				{{if and .PlatformStop .App.Message}}
+					<div class="tw-mt-2 tw-text-13"><strong>{{ctx.Locale.Tr "company.adminapp.platform_stop"}}</strong> {{.App.Message}}</div>
+				{{end}}
 				{{if .App.Message}}
 					{{/* Admin-only by definition — this is the half that can carry
 					     absolute paths and build output (company/usererror.go). */}}
@@ -144,12 +147,12 @@
 				<form method="post" action="{{.AdminAppLink}}/limits" class="company-kpi company-kpi-edit">
 					{{.CsrfTokenHtml}}
 					<b{{if not .Summary.ResourcesMeasured}} class="text-grey"{{end}}>{{if .Summary.ResourcesMeasured}}{{.MemoryNowMB}}{{else}}—{{end}}<small>/<span class="company-kpi-limit"><span class="company-kpi-limit-text">{{.MemoryLimitMB}}</span><input type="number" name="memory_mb" class="company-kpi-limit-input tw-hidden" min="0" max="16384" step="1" value="{{if .Settings.Limits.MemoryMB}}{{.Settings.Limits.MemoryMB}}{{end}}" placeholder="{{.MemoryLimitMB}}" disabled>MB</span><button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button><span class="company-kpi-limit-actions tw-hidden"><button class="company-kpi-ok" aria-label="{{ctx.Locale.Tr "save"}}" data-tooltip-content="{{ctx.Locale.Tr "save"}}">{{svg "octicon-check" 12}}</button><button type="button" class="company-kpi-cancel" aria-label="{{ctx.Locale.Tr "cancel"}}" data-tooltip-content="{{ctx.Locale.Tr "cancel"}}">{{svg "octicon-x" 12}}</button></span>{{if .Summary.ResourcesMeasured}} · {{ctx.Locale.Tr "company.adminapp.kpi_memory_peak" .Summary.MemMaxMB}}{{end}}</small></b>
-					<span>{{ctx.Locale.Tr "company.adminapp.kpi_memory"}}</span>
+					<span>{{ctx.Locale.Tr "company.adminapp.kpi_memory"}}{{if .Summary.ResourcesMeasured}} · {{ctx.Locale.Tr "company.adminapp.kpi_avg" .Summary.MemAvgMB}}MB{{end}}</span>
 				</form>
 				<form method="post" action="{{.AdminAppLink}}/limits" class="company-kpi company-kpi-edit">
 					{{.CsrfTokenHtml}}
 					<b{{if not .Summary.ResourcesMeasured}} class="text-grey"{{end}}>{{if .Summary.ResourcesMeasured}}{{.Summary.CPUMaxPct}}%{{else}}—{{end}}<small>/<span class="company-kpi-limit"><span class="company-kpi-limit-text">{{.CPUPercent}}</span><input type="number" name="cpu_percent" class="company-kpi-limit-input tw-hidden" min="0" max="3200" step="1" value="{{if .Settings.Limits.CPUPercent}}{{.Settings.Limits.CPUPercent}}{{end}}" placeholder="{{.CPUPercent}}" disabled>%</span><button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button><span class="company-kpi-limit-actions tw-hidden"><button class="company-kpi-ok" aria-label="{{ctx.Locale.Tr "save"}}" data-tooltip-content="{{ctx.Locale.Tr "save"}}">{{svg "octicon-check" 12}}</button><button type="button" class="company-kpi-cancel" aria-label="{{ctx.Locale.Tr "cancel"}}" data-tooltip-content="{{ctx.Locale.Tr "cancel"}}">{{svg "octicon-x" 12}}</button></span></small></b>
-					<span>{{ctx.Locale.Tr "company.adminapp.kpi_cpu"}}</span>
+					<span>{{ctx.Locale.Tr "company.adminapp.kpi_cpu"}}{{if .Summary.ResourcesMeasured}} · {{ctx.Locale.Tr "company.adminapp.kpi_avg" .Summary.CPUAvgPct}}%{{end}}</span>
 				</form>
 				{{if .DataUsage}}
 					{{/* Coloured from the warning threshold, not from full: a quota
@@ -160,7 +163,7 @@
 					<form method="post" action="{{.AdminAppLink}}/limits" class="company-kpi company-kpi-edit{{if .DataUsage.Full}} full{{else if .DataUsage.Warning}} warn{{end}}">
 						{{.CsrfTokenHtml}}
 						<b>{{FormatByteSize .DataUsage.Bytes}}<small>/<span class="company-kpi-limit"><span class="company-kpi-limit-text">{{FormatByteSize .DataUsage.QuotaBytes}}</span><input type="number" name="data_mb" class="company-kpi-limit-input tw-hidden" min="0" max="{{.MaxDataQuotaMB}}" step="1" value="{{if .Settings.Limits.DataMB}}{{.Settings.Limits.DataMB}}{{end}}" placeholder="{{.DefaultDataQuotaMB}}" disabled><span class="company-kpi-limit-unit tw-hidden">MB</span></span><button type="button" class="company-kpi-pencil" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}" aria-label="{{ctx.Locale.Tr "company.adminapp.kpi_edit"}}">{{svg "octicon-pencil" 12}}</button><span class="company-kpi-limit-actions tw-hidden"><button class="company-kpi-ok" aria-label="{{ctx.Locale.Tr "save"}}" data-tooltip-content="{{ctx.Locale.Tr "save"}}">{{svg "octicon-check" 12}}</button><button type="button" class="company-kpi-cancel" aria-label="{{ctx.Locale.Tr "cancel"}}" data-tooltip-content="{{ctx.Locale.Tr "cancel"}}">{{svg "octicon-x" 12}}</button></span></small></b>
-						<span>{{ctx.Locale.Tr "company.adminapp.kpi_data"}} {{if .DataUsage.QuotaBytes}}<small>{{.DataUsage.Percent}}%</small>{{end}}</span>
+						<span>{{ctx.Locale.Tr "company.adminapp.kpi_data"}} {{if .DataUsage.QuotaBytes}}<small>{{.DataUsage.Percent}}%</small>{{end}}{{if .Summary.DataMaxMB}} · {{ctx.Locale.Tr "company.adminapp.kpi_memory_peak" .Summary.DataMaxMB}}{{end}}</span>
 					</form>
 				{{end}}
 				{{if .Summary.Blocked}}<div class="company-kpi bad"><b>{{.Summary.Blocked}}</b><span>{{ctx.Locale.Tr "company.adminapp.kpi_blocked"}}</span></div>{{end}}
@@ -197,6 +200,7 @@
 			data-i18n-errors="{{ctx.Locale.Tr "company.chart.errors"}}"
 			data-i18n-memory="{{ctx.Locale.Tr "company.chart.memory"}}"
 			data-i18n-cpu="{{ctx.Locale.Tr "company.chart.cpu"}}"
+			data-i18n-data="{{ctx.Locale.Tr "company.chart.data"}}"
 			data-i18n-p95="{{ctx.Locale.Tr "company.chart.p95"}}">
 			<div class="company-chart"><h5>{{ctx.Locale.Tr "company.adminapp.chart_requests"}}</h5><div class="company-chart-canvas"><canvas data-chart="requests"></canvas></div></div>
 			<div class="company-chart"><h5>{{ctx.Locale.Tr "company.adminapp.chart_resources"}}</h5><div class="company-chart-canvas"><canvas data-chart="resources"></canvas></div></div>
