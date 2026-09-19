@@ -75,6 +75,12 @@ func SetDeployRequestPageData(ctx *context.Context) {
 	if err != nil {
 		return // not a PR, or doesn't exist — repo.ViewIssue itself will 404 as usual
 	}
+	if isCentralDeployRepo(ctx.Repo.Repository) {
+		// Every pull request on the central repository is approved the same
+		// way, including one opened by hand: the button says what it does
+		// (routers/web/repo/pull_merge_form.go).
+		ctx.Data["CompanyMergeLabel"] = ctx.Locale.Tr("company.review.approve_deploy")
+	}
 	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, true)
 	if !ok {
 		return
