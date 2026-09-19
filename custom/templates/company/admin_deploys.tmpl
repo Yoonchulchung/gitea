@@ -14,23 +14,27 @@
 
 		{{/* "Is the platform all right" — the question the list below cannot
 		     answer without reading every row. */}}
-		<div class="company-kpis">
-			<div class="company-kpi"><b>{{.CountTotal}}</b><span>{{ctx.Locale.Tr "company.admin.kpi_apps"}}</span></div>
-			<div class="company-kpi"><b>{{.CountRunning}}</b><span>{{ctx.Locale.Tr "company.admin.kpi_running"}}</span></div>
-			<div class="company-kpi"><b>{{printf "%.1f" .Fleet.ErrorRate}}%</b><span>{{ctx.Locale.Tr "company.admin.kpi_error_rate"}}</span></div>
-			<div class="company-kpi"><b>{{.Fleet.P95}}<small>ms</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_p95"}}</span></div>
+		{{/* Title first, then the figure, then one line saying what the
+		     figure is made of: a number with its meaning underneath was read
+		     twice before it was understood. */}}
+		<div class="company-kpis company-kpis-titled">
+			<div class="company-kpi"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_apps"}}</span><b>{{.CountTotal}}</b></div>
+			<div class="company-kpi"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_running"}}</span><b>{{.CountRunning}}</b></div>
+			<div class="company-kpi"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_error_rate"}}</span><b>{{printf "%.1f" .Fleet.ErrorRate}}%</b><span>{{ctx.Locale.Tr "company.admin.kpi_error_rate_note"}}</span></div>
+			<div class="company-kpi"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_p95"}}</span><b>{{.Fleet.P95}}<small>ms</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_p95_note"}}</span></div>
 			{{/* The limits added up against the machine: thirty modest apps, or
 			     one generous one, can promise more memory than exists, and this
 			     is where that shows before the kernel decides who finds out. */}}
 			<div class="company-kpi{{if .Fleet.CommitOver}} full{{else if .Fleet.CommitWarn}} warn{{end}}">
-				<b>{{.Fleet.CommittedMB}}<small>MB{{if .Fleet.HostKnown}}/{{.Fleet.HostTotalMB}}MB · {{.Fleet.CommitPct}}%{{end}}</small></b>
-				<span>{{ctx.Locale.Tr "company.admin.kpi_committed"}}</span>
+				<span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_committed"}}</span>
+				<b>{{.Fleet.CommittedMB}}<small>MB{{if .Fleet.HostKnown}} / {{.Fleet.HostTotalMB}}MB{{end}}</small></b>
+				<span>{{if .Fleet.HostKnown}}{{ctx.Locale.Tr "company.admin.kpi_committed_note" .Fleet.CommitPct}}{{else}}{{ctx.Locale.Tr "company.admin.kpi_committed_note_nohost"}}{{end}}</span>
 			</div>
 			{{if .Fleet.HostAvailable}}
-				<div class="company-kpi"><b>{{.Fleet.HostAvailMB}}<small>MB</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_host_free"}}</span></div>
+				<div class="company-kpi"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_host_free"}}</span><b>{{.Fleet.HostAvailMB}}<small>MB</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_host_free_note"}}</span></div>
 			{{end}}
 			{{if .Fleet.HostKnown}}
-				<div class="company-kpi{{if eq .Fleet.RoomApps 0}} warn{{end}}"><b>{{.Fleet.RoomApps}}<small> · {{.Fleet.RoomMB}}MB</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_room" .Fleet.DefaultMemMB}}</span></div>
+				<div class="company-kpi{{if eq .Fleet.RoomApps 0}} warn{{end}}"><span class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_room"}}</span><b>{{.Fleet.RoomApps}}<small> {{ctx.Locale.Tr "company.admin.kpi_room_unit"}}</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_room_note" .Fleet.DefaultMemMB .Fleet.RoomMB}}</span></div>
 			{{end}}
 		</div>
 		{{/* Which wall holds the limits: the kernel (a systemd scope) or the

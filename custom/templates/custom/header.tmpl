@@ -289,6 +289,11 @@
 .company-kpi-limit-input:focus { outline: none; }
 .company-kpi b small { font-size: .8rem; font-weight: 400; color: var(--color-text-light-2); }
 .company-kpi span { font-size: .75rem; color: var(--color-text-light-2); }
+/* A titled card: what it is on top, the figure, then what the figure is
+   made of. The title is the one line read first, so it is the dark one. */
+.company-kpi-title { font-size: .8rem; font-weight: 600; color: var(--color-text); }
+.company-kpis-titled .company-kpi { gap: 4px; }
+.company-kpis-titled .company-kpi b { margin-top: 2px; }
 .company-kpi.bad b { color: var(--color-error-text); }
 
 /* A bar rather than a number alone: "412 MB of 512 MB" needs arithmetic to
