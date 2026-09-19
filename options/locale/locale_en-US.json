@@ -4827,6 +4827,8 @@
   "company.evidence.internal_bare": "This looks like an internal address (no domain)",
   "company.evidence.external": "This looks like an internet address — approving lets this app send data outside the company",
   "company.admin.kpi_apps": "Apps",
+  "company.admin.kpi_memory_used": "Memory in use (apps / server)",
+  "company.admin.kpi_memory_used_note": "the running apps' limits add up to %d MB",
   "company.admin.tab_all": "All",
   "company.admin.tab_undeployed": "Not deployed",
   "company.admin.filter_owner": "Owner",
@@ -5174,6 +5176,5 @@
   "company.logs.diagnose_note": "Sends the error lines above to your own AI account and answers in plain language.",
   "company.logs.diagnose_off": "Available once AI is switched on and you have entered your API key.",
   "company.logs.diagnose_policy_off": "Sending app output to the AI is switched off on this server ([company] AI_LOG_ACCESS = off).",
-  "company.logs.diagnose_nothing": "There is nothing that looks like an error in this log.",
-  "company.admin.kpi_committed": "Memory promised (now / limit)"
+  "company.logs.diagnose_nothing": "There is nothing that looks like an error in this log."
 }

@@ -26,8 +26,9 @@
 			     one generous one, can promise more memory than exists, and this
 			     is where that shows before the kernel decides who finds out. */}}
 			<div class="company-kpi{{if .Fleet.CommitOver}} full{{else if .Fleet.CommitWarn}} warn{{end}}">
-				<h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_committed"}}</h3>
-				<b>{{.Fleet.CommittedMB}}<small>MB{{if .Fleet.HostKnown}} / {{.Fleet.HostTotalMB}}MB · {{.Fleet.CommitPct}}%{{end}}</small></b>
+				<h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_memory_used"}}</h3>
+				<b>{{.Fleet.UsedMB}}<small>MB{{if .Fleet.HostKnown}} / {{.Fleet.HostTotalMB}}MB · {{.Fleet.UsedPct}}%{{end}}</small></b>
+				<span>{{ctx.Locale.Tr "company.admin.kpi_memory_used_note" .Fleet.CommittedMB}}</span>
 			</div>
 			{{if .Fleet.HostAvailable}}
 				<div class="company-kpi"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_host_free"}}</h3><b>{{.Fleet.HostAvailMB}}<small>MB</small></b><span>{{ctx.Locale.Tr "company.admin.kpi_host_free_note"}}</span></div>

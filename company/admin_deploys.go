@@ -322,6 +322,10 @@ type fleetSummary struct {
 	// host: the number that says whether the limits can all be honoured at
 	// once. HostKnown is whether this host reports its size at all.
 	CommittedMB int
+	// UsedMB is what the running apps hold right now, added up: the
+	// figure an operator asks for first; the limits say what they may grow to.
+	UsedMB  int
+	UsedPct int
 	// RoomApps is how many more apps, at the default memory limit, fit
 	// before the committed total reaches the warning share of the host.
 	RoomApps      int
@@ -409,6 +413,7 @@ func summarizeFleet(rows []*adminDeployRow, since time.Time) fleetSummary {
 		row.MemLimitMB = SettingsFor(row.State.Owner, row.State.Repo).Limits.MemoryMB
 		if row.State.Actual == AppStateRunning {
 			out.CommittedMB += row.MemLimitMB
+			out.UsedMB += row.MemNowMB
 		}
 	}
 	if host, ok := hostMemory(); ok {
@@ -418,6 +423,7 @@ func summarizeFleet(rows []*adminDeployRow, since time.Time) fleetSummary {
 		out.HostAvailMB = int(host.AvailableBytes >> 20)
 		if out.HostTotalMB > 0 {
 			out.CommitPct = out.CommittedMB * 100 / out.HostTotalMB
+			out.UsedPct = out.UsedMB * 100 / out.HostTotalMB
 			out.DefaultMemMB = builtinDefaults().Limits.MemoryMB
 			out.RoomMB = max(out.HostTotalMB*memoryCommitWarnPct/100-out.CommittedMB, 0)
 			out.RoomApps = out.RoomMB / out.DefaultMemMB
