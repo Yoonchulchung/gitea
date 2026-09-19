@@ -51,6 +51,7 @@
 			</form>
 		{{end}}
 
+		<form id="startup-rerun-form" method="post" action="{{.RepoLink}}/deploy/startup-check">{{.CsrfTokenHtml}}</form>
 		<form class="ui form company-deploy-form" id="deploy-form" method="post">
 			{{/* Two columns: what is being deployed on the left, what is being
 			     asked for on the right. They are separate questions — one is a
@@ -60,6 +61,31 @@
 			     screen (.company-deploy-cols). */}}
 			<div class="company-deploy-cols">
 			<div class="company-deploy-col">
+			{{with .OpenRequest}}
+				{{/* An unanswered request looked like no request, and the only way
+				     to find out was to submit another — which supersedes the first
+				     and starts the wait over. */}}
+				<div class="ui message company-open-request">
+					<div class="header">{{ctx.Locale.Tr "company.deploy.open_request_header"}}</div>
+					<div class="tw-mt-1">{{.Issue.Title}}</div>
+					{{with $.OpenRequestItems}}
+						<div class="tw-text-13 tw-mt-1">
+							{{ctx.Locale.Tr "company.deploy.open_request_items"}}
+							{{range $i, $item := .}}{{if $i}}, {{end}}{{$item.Label}} ({{$item.Detail}}){{end}}
+						</div>
+					{{end}}
+					<div class="tw-text-13 tw-mt-2">
+							{{ctx.Locale.Tr "company.deploy.open_request_note"}}
+					</div>
+					<div class="tw-mt-2 tw-flex tw-gap-2 tw-flex-wrap tw-items-center">
+						{{/* Required by the handler, and worth requiring: the admin
+						     watching this request disappear should be told why. */}}
+						<input type="text" name="reason" form="cancel-request-form" class="tw-flex-1" required autocomplete="off"
+							placeholder="{{ctx.Locale.Tr "company.deploy.cancel_reason_placeholder"}}">
+						<button type="submit" form="cancel-request-form" class="ui basic red button">{{ctx.Locale.Tr "company.deploy.cancel_request"}}</button>
+					</div>
+				</div>
+			{{end}}
 			<div class="company-deploy-section-lbl">{{ctx.Locale.Tr .DeployFormHeadingKey}}</div>
 			<div class="field">
 				<label>{{ctx.Locale.Tr "company.deploy.title_field_label"}}</label>
@@ -101,42 +127,24 @@
 				</div>
 			{{end}}
 
-			{{/* What is already pending and what the check found, in the column
-			     and above the submit button: the two things to read before
-			     pressing it. */}}
-			{{with .OpenRequest}}
-				{{/* An unanswered request looked like no request, and the only way
-				     to find out was to submit another — which supersedes the first
-				     and starts the wait over. */}}
-				<div class="ui warning message">
-					<div class="header">{{ctx.Locale.Tr "company.deploy.open_request_header"}}</div>
-					<div class="tw-mt-1">{{.Issue.Title}}</div>
-					{{with $.OpenRequestItems}}
-						<div class="tw-text-13 tw-mt-1">
-							{{ctx.Locale.Tr "company.deploy.open_request_items"}}
-							{{range $i, $item := .}}{{if $i}}, {{end}}{{$item.Label}} ({{$item.Detail}}){{end}}
-						</div>
-					{{end}}
-					<div class="tw-text-13 tw-mt-2">
-							{{ctx.Locale.Tr "company.deploy.open_request_note"}}
-					</div>
-					<div class="tw-mt-2 tw-flex tw-gap-2 tw-flex-wrap tw-items-center">
-						{{/* Required by the handler, and worth requiring: the admin
-						     watching this request disappear should be told why. */}}
-						<input type="text" name="reason" form="cancel-request-form" class="tw-flex-1" required autocomplete="off"
-							placeholder="{{ctx.Locale.Tr "company.deploy.cancel_reason_placeholder"}}">
-						<button type="submit" form="cancel-request-form" class="ui basic red button">{{ctx.Locale.Tr "company.deploy.cancel_request"}}</button>
-					</div>
-				</div>
-			{{end}}
+			{{/* What the checks found, in the column and above the submit
+			     button, right before pressing it. */}}
 
 			{{/* Not a gate: the request can still be sent, since the checks are
 			     about syntax and a department may be asking for something else.
 			     But a file that does not parse is said here, at the line, before
 			     the deploy says it in a log. See company/deploycheck.go. */}}
+			{{/* Whether this version starts, tried for real: built and run the
+			     way a deploy would, then thrown away (company/deploystartup.go).
+			     Refreshed by web_src/js/features/company-deploy-form.ts while
+			     it runs. A failed or unfinished check holds the request. */}}
+			<div id="startup-check" data-global-init="initCompanyStartupCheck" data-url="{{.RepoLink}}/deploy/startup-check">
+				{{template "company/deploy_startup" .}}
+			</div>
+
 			{{with .DeployChecks}}
 				{{if or .Problems .Checked}}
-					<div class="ui {{if .Problems}}warning{{else}}positive{{end}} message company-deploy-checks">
+					<div class="ui {{if .Problems}}negative{{else}}positive{{end}} message company-deploy-checks">
 						<div class="header">{{svg "octicon-checklist" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.check.header"}}</div>
 						{{if .Problems}}
 							<p class="tw-mt-1">{{ctx.Locale.Tr "company.check.problems" (len .Findings)}}</p>
@@ -245,7 +253,7 @@
 			{{/* The label is wrapped so the loading state can hide it: .is-loading
 			     dims child *elements*, and a bare text node would stay visible
 			     behind the spinner. */}}
-			<button type="submit" id="submit-button" class="ui primary button">
+			<button type="submit" id="submit-button" class="ui primary button tw-mt-4">
 				<span>{{ctx.Locale.Tr "company.deploy.submit_button"}}</span>
 			</button>
 		</form>
