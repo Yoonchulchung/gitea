@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gitea.dev/modules/log"
@@ -92,13 +93,46 @@ func RollbackApp(owner, repo, actor string) error {
 		return fmt.Errorf("the previous version could not be started: %w", err)
 	}
 	RecordRestart(owner, repo)
+	// The code went back; the database did not. Migrations the newer version
+	// applied are still in it, and an older version that does not expect
+	// them can fail in ways that look like anything but this.
+	ahead := migrationsAhead(current, previous)
 	return MutateAppState(owner, repo, func(st *AppState) bool {
 		st.HasRelease = true
 		st.Reason, st.Message, st.UserMessage = "", "", ""
+		if ahead > 0 {
+			st.Reason = ReasonSchemaAhead
+			st.Message = fmt.Sprintf("the database carries %d migration(s) from the version rolled back from; restore the snapshot taken before them if the app misbehaves", ahead)
+			st.UserMessageKey, st.UserMessageArg = "company.app.schema_ahead_detail", ahead
+		}
 		adoptCurrentReleaseSHA(st, owner, repo)
 		st.AppendHistory(AppHistoryEntry{Status: AppStateRunning, SHA: st.SHA, Actor: actor, Reason: ReasonRolledBack})
 		return true
 	})
+}
+
+// migrationsAhead counts the migrations a release carries that an older one
+// does not: what a rollback leaves applied in the database.
+func migrationsAhead(newer, older string) int {
+	if newer == "" || older == "" {
+		return 0
+	}
+	newerFiles, err := loadMigrations(filepath.Join(newer, "app"))
+	if err != nil {
+		return 0
+	}
+	olderFiles, _ := loadMigrations(filepath.Join(older, "app"))
+	highest := 0
+	for _, m := range olderFiles {
+		highest = max(highest, m.Version)
+	}
+	ahead := 0
+	for _, m := range newerFiles {
+		if m.Version > highest {
+			ahead++
+		}
+	}
+	return ahead
 }
 
 // RestartAppAs restarts and records who did it.

@@ -241,6 +241,18 @@ func renderDeployForm(ctx *context.Context) {
 	ctx.Data["MemoryProposed"] = slices.ContainsFunc(detected, func(r PermissionRequest) bool { return r.Kind == PermKindMemory })
 	ctx.Data["SubmittedMemoryMB"] = ctx.FormString("perm_want_memory_mb")
 	ctx.Data["SubmittedDataMB"] = ctx.FormString("perm_want_data_mb")
+	// The rest of what was typed, when the form comes back after a check:
+	// a host name lost to a typo in another field is retyped, or not.
+	resubmitted := ctx.Req.Method == http.MethodPost
+	ctx.Data["Resubmitted"] = resubmitted
+	ctx.Data["SubmittedHost"] = ctx.FormString("perm_want_host")
+	ctx.Data["SubmittedMethods"] = orDefault(ctx.FormString("perm_want_methods"), "GET")
+	ctx.Data["SubmittedDownload"] = ctx.FormString("perm_want_download") != ""
+	ticked := map[string]bool{}
+	for _, item := range detected {
+		ticked[item.Kind+"_"+item.Value] = !resubmitted || ctx.FormString("perm_"+item.Kind+"_"+item.Value) != ""
+	}
+	ctx.Data["TickedPerms"] = ticked
 	// Both computed here rather than with a chain of {{eq .Status "..."}} in
 	// the template — deploy.tmpl uses DeployStatusIcon for both the header
 	// badge and the bigger status box's icon bubble, and the resubmit

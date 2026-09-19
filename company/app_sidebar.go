@@ -107,7 +107,10 @@ type AppSidebarData struct {
 // latest memory reading — so this adds neither a database query nor a file
 // read to the most-visited page in the instance.
 func SetAppPermissionData(ctx *context.Context) {
-	if ctx.Repo == nil || ctx.Repo.Repository == nil || ctx.Repo.Owner == nil {
+	if ctx.Repo == nil || ctx.Repo.Repository == nil || ctx.Repo.Owner == nil || !ctx.IsSigned {
+		// On a public repository an anonymous visitor would otherwise read the
+		// app's failure cause, its memory use and the internal hosts it may
+		// reach — none of which is theirs to act on.
 		return
 	}
 	owner := ctx.Repo.Owner.Name

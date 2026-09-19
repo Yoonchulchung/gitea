@@ -127,7 +127,7 @@
 					<div class="company-deploy-section-lbl">{{ctx.Locale.Tr "company.deploy.approvals_needed"}}</div>
 					{{range .}}
 						<label class="company-perm-request-item">
-							<input type="checkbox" name="perm_{{.Kind}}_{{.Value}}" value="1" checked>
+							<input type="checkbox" name="perm_{{.Kind}}_{{.Value}}" value="1" {{if index $.TickedPerms (print .Kind "_" .Value)}}checked{{end}}>
 							<span>
 								<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{if .DetailKey}}{{ctx.Locale.Tr .DetailKey}}{{else}}{{.Detail}}{{end}}
 								{{if .Evidence}}<span class="text-grey tw-text-12 tw-block">{{if not (ctx.Locale.HasKey .Evidence)}}{{.Evidence}}{{else if .EvidenceArg}}{{ctx.Locale.Tr .Evidence .EvidenceArg}}{{else}}{{ctx.Locale.Tr .Evidence}}{{end}}</span>{{end}}
@@ -143,7 +143,7 @@
 				<div class="company-deploy-section-lbl tw-mt-3">{{ctx.Locale.Tr "company.deploy.anything_else"}}</div>
 				{{if not .DownloadAllowed}}
 					<label class="company-perm-request-item">
-						<input type="checkbox" name="perm_want_download" value="1">
+						<input type="checkbox" name="perm_want_download" value="1" {{if .SubmittedDownload}}checked{{end}}>
 						<span>
 							<strong>{{ctx.Locale.Tr "company.deploy.want_download"}}</strong>
 							<span class="text-grey tw-text-12 tw-block">
@@ -176,12 +176,12 @@
 				<div class="field tw-mt-2">
 					<label>{{ctx.Locale.Tr "company.deploy.want_outbound"}} <span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.deploy.want_outbound_note"}}</span></label>
 					<div class="tw-flex tw-gap-2 tw-flex-wrap">
-						<input type="text" name="perm_want_host" class="tw-flex-1"
+						<input type="text" name="perm_want_host" class="tw-flex-1" value="{{.SubmittedHost}}"
 							placeholder="{{ctx.Locale.Tr "company.deploy.host_placeholder"}}" autocomplete="off">
 						{{/* Fomantic dropdown, as on /user/settings/ai — a bare <select>
 						     is the browser's own widget and looks like nothing else here. */}}
 						<div class="ui selection dropdown">
-							<input type="hidden" name="perm_want_methods" value="GET">
+							<input type="hidden" name="perm_want_methods" value="{{.SubmittedMethods}}">
 							<div class="text"></div> {{svg "octicon-triangle-down" 14 "dropdown icon"}}
 							<div class="menu">
 								<div class="item" data-value="GET">{{ctx.Locale.Tr "company.adminapp.method_get"}}</div>

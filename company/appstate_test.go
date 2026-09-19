@@ -226,8 +226,29 @@ func TestSocketPathFitsInSunPath(t *testing.T) {
 	setting.AppDataPath = "/home/gitea-service-account/production/gitea/data"
 	t.Cleanup(func() { setting.AppDataPath = prev })
 
+	prevToken := setting.InternalToken
+	setting.InternalToken = "not-empty-so-the-name-carries-its-token"
+	t.Cleanup(func() { setting.InternalToken = prevToken })
+
 	socket := appPathsFor("PROCUREMENT", "quarterly-report-generator").socket
 	assert.Less(t, len(socket), maxUnixSocketPath, "socket path: %s", socket)
+}
+
+// Every app's socket sits on one filesystem under one user, and connecting
+// to a unix socket is not an open the sandbox's file rules see — so a name
+// another app can derive is a socket it can reach.
+func TestSocketNamesCannotBeGuessedAcrossApps(t *testing.T) {
+	prev := setting.InternalToken
+	setting.InternalToken = "instance secret"
+	t.Cleanup(func() { setting.InternalToken = prev })
+
+	a, b := appPathsFor("PO", "one"), appPathsFor("PO", "two")
+	assert.NotEqual(t, filepath.Base(a.socket), filepath.Base(b.socket))
+	assert.NotContains(t, a.socket, "app.sock")
+	assert.Equal(t, a.socket, appPathsFor("PO", "one").socket, "stable, or the proxy could not find it")
+
+	setting.InternalToken = "another instance"
+	assert.NotEqual(t, a.socket, appPathsFor("PO", "one").socket, "derived from the instance's own secret")
 }
 
 // A rollback moves the `current` symlink but nothing recovers the commit id

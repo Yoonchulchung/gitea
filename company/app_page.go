@@ -75,7 +75,6 @@ func AppPage(ctx *context.Context) {
 	// The department may narrow access on their own but not widen it —
 	// widening is a Deploy Request, because it exposes their data further.
 	ctx.Data["AccessOptions"] = accessOptionsFor(settings.Access, configuredAccess(owner, name))
-	ctx.Data["BlankEnvRows"] = blankEnvRowIndexes
 	// "이전 버전으로" is irreversible in the sense that matters — it takes the
 	// app off what is working now — so both ends of that swap are named here
 	// rather than left for the person to remember.
@@ -237,12 +236,6 @@ func accessOptionsFor(current, ceiling string) []accessOption {
 	}
 	return options
 }
-
-// blankEnvRowIndexes are the empty rows offered for new variables. An app
-// normally needs several at once — a database URL and its credentials arrive
-// together — and a form with room for one turns that into one save, one
-// restart prompt, and one reload per value.
-var blankEnvRowIndexes = []string{"new0", "new1", "new2", "new3", "new4"}
 
 // historyRow is one line of "최근 이력", written out rather than left as the
 // state machine's own vocabulary. `activating`, `rolled_back` and

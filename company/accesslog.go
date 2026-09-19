@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -110,13 +111,27 @@ func RecordAccess(ctx *gitea_context.Context, ref AppRef, status int, blocked st
 // beyond one log line: a full disk must not turn every request into an
 // error, and the ring still has the record.
 func appendAccessLog(ref AppRef, rec AccessRecord) {
-	p := appPathsFor(ref.Owner, ref.Repo)
-	f, err := openRotatingLog(p.logs, accessLogName)
-	if err != nil {
-		log.Warn("company: access log for %s/%s: %v", ref.Owner, ref.Repo, err)
-		return
+	w := accessLogWriterFor(ref)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	// Opened once and kept, rotated here when it fills: every request used to
+	// stat, open and close the file, and two at the threshold rotated it
+	// twice.
+	if w.f == nil || w.size >= appLogMaxBytes {
+		if w.f != nil {
+			_ = w.f.Close()
+			w.f = nil
+		}
+		f, err := openRotatingLog(appPathsFor(ref.Owner, ref.Repo).logs, accessLogName)
+		if err != nil {
+			log.Warn("company: access log for %s/%s: %v", ref.Owner, ref.Repo, err)
+			return
+		}
+		w.f, w.size = f, 0
+		if fi, err := f.Stat(); err == nil {
+			w.size = fi.Size()
+		}
 	}
-	defer func() { _ = f.Close() }()
 	blocked := "-"
 	if rec.Blocked != "" {
 		blocked = strings.ReplaceAll(rec.Blocked, " ", "_")
@@ -126,8 +141,22 @@ func appendAccessLog(ref AppRef, rec AccessRecord) {
 		user = "-"
 	}
 	// One line, space-separated, no quoting games: what an operator greps.
-	_, _ = fmt.Fprintf(f, "%s %s %s %s %s %d %s\n",
+	n, _ := fmt.Fprintf(w.f, "%s %s %s %s %s %d %s\n",
 		rec.At.UTC().Format(time.RFC3339), rec.IP, user, rec.Method, rec.Path, rec.Status, blocked)
+	w.size += int64(n)
+}
+
+type accessLogWriter struct {
+	mu   sync.Mutex
+	f    *os.File
+	size int64
+}
+
+var accessLogWriters sync.Map // appKey -> *accessLogWriter
+
+func accessLogWriterFor(ref AppRef) *accessLogWriter {
+	w, _ := accessLogWriters.LoadOrStore(appKey(ref.Owner, ref.Repo), &accessLogWriter{})
+	return w.(*accessLogWriter) //nolint:forcetypeassert // only this function stores here
 }
 
 // RecentAccess returns the last records for an app, newest first, and how

@@ -99,7 +99,9 @@ var staticAssetPrefixes = []string{
 // other user, they also happen to hold real membership in one org.
 func GateNonAdminUI(ctx *context.Context) {
 	path := ctx.Req.URL.Path
-	renders := !hasAnyPrefix(path, staticAssetPrefixes) && !isProtocolExempt(path)
+	// An app's own requests render nothing of Gitea's — and there are many of
+	// them, each of which was costing a database query for a navbar link.
+	renders := !hasAnyPrefix(path, staticAssetPrefixes) && !isProtocolExempt(path) && !strings.HasPrefix(path, appProxyPrefix+"/")
 	if renders {
 		// The footer is rendered by a template with no handler of its own, so
 		// there is no per-page place to put its links. This middleware is on

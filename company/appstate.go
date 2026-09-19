@@ -76,6 +76,7 @@ const (
 	ReasonDeployCancelled    = "deploy_cancelled" // an admin cleared a deploy that had stopped moving
 	ReasonTmpFull            = "tmp_full"         // the app filled its temporary space
 	ReasonRenamed            = "renamed"          // the repository was renamed or transferred; the app followed
+	ReasonSchemaAhead        = "schema_ahead"     // rolled back, but the database kept the newer version's migrations
 )
 
 // appHistoryLimit bounds the per-app history. It doubles as the rollback

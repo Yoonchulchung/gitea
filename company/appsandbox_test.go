@@ -36,7 +36,7 @@ func TestSocketPathsAgree(t *testing.T) {
 	assert.Contains(t, env, "SOCKET="+appSocketForProcess(p))
 
 	if available, _ := SandboxStatus(); available {
-		assert.Equal(t, sandboxSocketPath, appSocketForProcess(p),
+		assert.Equal(t, sandboxSocketPath(p), appSocketForProcess(p),
 			"sandboxed: the app's writable dir is mounted at /run")
 	} else {
 		assert.Equal(t, p.socket, appSocketForProcess(p), "unsandboxed: the real host path")

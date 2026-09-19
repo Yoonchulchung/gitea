@@ -31,7 +31,9 @@ import (
 // Inside the sandbox the app's writable directory is always mounted at
 // /run, so its socket is always at this fixed path regardless of where the
 // release actually lives on the host.
-const sandboxSocketPath = "/run/app.sock"
+// sandboxSocketPath is the app's socket as it sees it under bubblewrap: the
+// run directory is mounted at /run, and the file keeps its name.
+func sandboxSocketPath(p appPaths) string { return "/run/" + filepath.Base(p.socket) }
 
 // sandboxCtlPath is where a runner finds its instructions under bubblewrap.
 const sandboxCtlPath = "/ctl"
@@ -72,7 +74,7 @@ var sandboxProbe = sync.OnceValues(func() (string, error) {
 // somewhere the proxy never looks and every request would 502.
 func appSocketForProcess(p appPaths) string {
 	if mode, _ := sandboxMode(); mode == SandboxBubblewrap {
-		return sandboxSocketPath
+		return sandboxSocketPath(p)
 	}
 	// Landlock has no mount namespace, so paths inside the sandbox are the
 	// real ones — the app binds exactly where Gitea connects.

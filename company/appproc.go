@@ -6,6 +6,7 @@ package company
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -99,6 +100,7 @@ type appPaths struct {
 	run      string // the only writable dir bind-mounted into the sandbox
 	ctl      string // the platform's inputs to its runners; read-only in the sandbox
 	socket   string
+	broker   string // the outbound broker's socket, beside the app's
 	logs     string
 }
 
@@ -111,9 +113,29 @@ func appPathsFor(owner, repo string) appPaths {
 		previous: filepath.Join(home, "previous"),
 		run:      filepath.Join(home, "run"),
 		ctl:      filepath.Join(home, "ctl"),
-		socket:   filepath.Join(home, "run", "app.sock"),
-		logs:     filepath.Join(home, "logs"),
+		broker:   filepath.Join(home, "run", "b"+socketToken(owner, repo)+".sock"),
+		// Short: sun_path allows 104 bytes and a deep data directory uses most
+		// of them (TestSocketPathFitsInSunPath).
+		socket: filepath.Join(home, "run", socketToken(owner, repo)+".sock"),
+		logs:   filepath.Join(home, "logs"),
 	}
+}
+
+// socketToken names an app's sockets in a way no other app can guess.
+//
+// Without a mount namespace every app's socket is on the same filesystem,
+// owned by the same user, at a path made of names everyone knows — and
+// connecting to a unix socket is not a file open, so the sandbox's file
+// rules do not stop it. An app cannot list another app's run directory, so
+// a name it cannot derive is one it cannot reach. Keyed by the instance's
+// own secret; a deployment without one (tests) falls back to a fixed name.
+func socketToken(owner, repo string) string {
+	if setting.InternalToken == "" {
+		return "0"
+	}
+	mac := hmac.New(sha256.New, []byte(setting.InternalToken))
+	mac.Write([]byte(appKey(owner, repo)))
+	return hex.EncodeToString(mac.Sum(nil))[:12]
 }
 
 func releaseDir(p appPaths, sha string) string {
@@ -233,7 +255,7 @@ func buildEnv(p appPaths, rootPath, dataDir string, appEnv map[string]string, br
 		// Where the app reaches the outside world, when it may at all. Under
 		// the sandbox this is the corresponding path inside the mount; the
 		// run directory is the one thing bind-mounted read-write either way.
-		env = append(env, "BROKER_SOCKET="+filepath.Join(filepath.Dir(appSocketForProcess(p)), brokerSocketName))
+		env = append(env, "BROKER_SOCKET="+filepath.Join(filepath.Dir(appSocketForProcess(p)), filepath.Base(p.broker)))
 	}
 	for k, v := range appEnv {
 		// Names are validated on the way in (see envstore.go); this is a

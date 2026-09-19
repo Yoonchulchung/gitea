@@ -247,6 +247,13 @@ func departmentCause(st *AppState) *AppCause {
 			Action:      "deploy",
 			ActionLabel: "company.app.cause.no_release.action",
 		}
+	case ReasonSchemaAhead:
+		return &AppCause{
+			Summary:   "company.app.cause.schema_ahead",
+			AdminHint: "company.app.cause.schema_ahead.admin",
+			Detail:    st.UserMessageKey,
+			DetailArg: st.UserMessageArg,
+		}
 	case ReasonRolledBack:
 		return &AppCause{
 			Summary: "company.app.cause.rolled_back",

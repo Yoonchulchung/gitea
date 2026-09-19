@@ -112,7 +112,7 @@ func TestLabelFunctionsReturnKeysOrPlainText(t *testing.T) {
 		ReasonInstallFailed, ReasonPackageDenied, ReasonOOM, ReasonHealthTimeout,
 		ReasonCrashLoop, ReasonSuspended, ReasonNoPython, ReasonSandboxUnavailable,
 		ReasonSecretError, ReasonDeployQueueFull, ReasonNoRelease,
-		ReasonContractViolation, ReasonRolledBack, ReasonUnresponsive, ReasonStopFailed, "something-new",
+		ReasonContractViolation, ReasonRolledBack, ReasonUnresponsive, ReasonStopFailed, ReasonSchemaAhead, ReasonRemoved, ReasonDeployCancelled, ReasonTmpFull, "something-new",
 	} {
 		cause := departmentCause(&AppState{Reason: reason, UserMessage: hostile, Message: hostile})
 		require.NotNil(t, cause, reason)

@@ -72,7 +72,7 @@ func TestBrokerRefusesAndAudits(t *testing.T) {
 	t.Cleanup(func() { stopBroker(owner, repo) })
 
 	client := &http.Client{Transport: &http.Transport{
-		DialContext: unixDialer(p.run + "/" + brokerSocketName),
+		DialContext: unixDialer(p.broker),
 	}}
 
 	// Policy for this app is NetworkNone (nothing configured), so the call is

@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -47,10 +46,6 @@ import (
 // against the broker itself. The broker reads the Host header, checks the
 // allowlist, and makes the real request over https.
 
-// brokerSocketName lives beside app.sock in the one directory the sandbox
-// can write.
-const brokerSocketName = "broker.sock"
-
 // brokerRequestTimeout bounds one outbound call. Generous, because reports
 // against slow internal systems are the normal case here — but bounded,
 // because an app must not be able to hold broker goroutines open forever.
@@ -76,7 +71,7 @@ var (
 func startBroker(owner, repo string, p appPaths) error {
 	stopBroker(owner, repo)
 
-	socket := filepath.Join(p.run, brokerSocketName)
+	socket := p.broker
 	_ = os.Remove(socket) // ours alone; the app only ever dials it
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
