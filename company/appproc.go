@@ -273,6 +273,11 @@ func buildEnv(p appPaths, rootPath, dataDir string, appEnv map[string]string, br
 		}
 		env = append(env, k+"="+v)
 	}
+	// For the cgroup wrapper only; it takes them away again before the app
+	// runs (company/cgroup.go).
+	if cgroupActive() {
+		env = append(env, sessionBusEnv()...)
+	}
 	return env
 }
 
@@ -980,7 +985,7 @@ func isReservedEnvName(name string) bool {
 		return true
 	}
 	switch upper {
-	case "PATH", "HOME", "LANG", "SOCKET", "ROOT_PATH", "IFS", "SHELL", "TMPDIR", "DATA_DIR", "DB_PATH", platformShimEnv:
+	case "PATH", "HOME", "LANG", "SOCKET", "ROOT_PATH", "IFS", "SHELL", "TMPDIR", "DATA_DIR", "DB_PATH", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", platformShimEnv:
 		return true
 	}
 	return false

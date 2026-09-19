@@ -173,7 +173,7 @@ central의 그 앱 prefix 아래 파일을 모두 지운 스냅샷으로 배포 
 
 | 층 | 무엇 | 없으면 |
 |---|---|---|
-| 커널 한도 (`company/cgroup.go`) | `systemd-run --user --scope`로 앱마다 cgroup: `MemoryMax`·`MemoryHigh`(90%)·`CPUQuota`·`TasksMax`. 커널이 막는 벽이다. 부팅 때 한 번 probe, `[company] CGROUP_LIMITS = false`로 끌 수 있다 | 아래 두 층만. 관리자 앱 목록에 "Limits are held by: …"로 어느 쪽인지 적힌다. 필요 조건: systemd 사용자 세션(`loginctl enable-linger <플랫폼 계정>`) |
+| 커널 한도 (`company/cgroup.go`) | `systemd-run --user --scope`로 앱마다 cgroup: `MemoryMax`·`MemoryHigh`(90%)·`CPUQuota`·`TasksMax`. 커널이 막는 벽이다. 부팅 때 한 번 probe, `[company] CGROUP_LIMITS = false`로 끌 수 있다 | 아래 두 층만. 관리자 앱 목록에 "Limits are held by: …"로 어느 쪽인지 적힌다. 필요 조건: systemd 사용자 세션(`loginctl enable-linger <플랫폼 계정>`)이고, 플랫폼 프로세스의 환경에 `XDG_RUNTIME_DIR`(보통 `/run/user/<uid>`)이 있어야 한다. 앱 환경은 비어 있게 만들므로 래퍼에만 이 값을 주고 `env -u`로 앱 전에 걷어 낸다. 시작할 때마다 버스 소켓을 확인해 없으면 래퍼 없이 시작하고 로그에 적는다 — 2026-09-19에 운영 서버에서 "Failed to connect to bus: No medium found"로 앱이 세 번 못 뜨고 멈춘 원인이 이것이었다 |
 | rlimit + watchdog | `RLIMIT_DATA`, 메모리 1.5×·CPU 1분·데이터 100% 초과 시 정지 | — |
 | 호스트 압박 (`company/hostpressure.go`) | 서버 여유 메모리가 `HOST_MEMORY_FLOOR_MB`(기본 512) 아래로 가면 **가장 많이 쓰는 앱 하나**를 SIGTERM으로 세우고 사유를 적는다. 1분에 하나. 커널 OOM 킬러가 SIGKILL로 아무나 고르기 전에 | Linux만(`MemAvailable`) |
 
