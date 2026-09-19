@@ -21,6 +21,30 @@
 			<p class="text-grey tw-text-13 tw-mt-2">{{ctx.Locale.Tr "company.adminnetwork.explain"}}</p>
 		</div>
 
+		{{/* Above every other rule: a destination here is refused for every
+		     app in every mode, so the platform is never a way round the
+		     company's own edge. See company/blocklist.go. */}}
+		<h4 class="ui attached header company-perm-review-header">{{svg "octicon-blocked" 16 "tw-mr-2"}}{{ctx.Locale.Tr "company.adminnetwork.blocked_header" (len .Blocked)}}</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminnetwork.blocked_explain"}}</p>
+			<div class="tw-mb-3">
+				{{range .Blocked}}
+					<form method="post" action="{{$.NetworkLink}}/unblock" class="tw-inline-block tw-mr-1 tw-mb-1" data-company-confirm="{{ctx.Locale.Tr "company.adminnetwork.unblock_confirm" .}}">
+						{{$.CsrfTokenHtml}}
+						<input type="hidden" name="entry" value="{{.}}">
+						<span class="ui red basic label tw-font-mono">{{.}} <button type="submit" class="company-label-remove" data-tooltip-content="{{ctx.Locale.Tr "company.adminnetwork.unblock"}}" aria-label="{{ctx.Locale.Tr "company.adminnetwork.unblock"}}">{{svg "octicon-x" 12}}</button></span>
+					</form>
+				{{else}}
+					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminnetwork.blocked_none"}}</span>
+				{{end}}
+			</div>
+			<form method="post" action="{{.NetworkLink}}/block" class="ui form tw-flex tw-gap-2 tw-items-center tw-flex-wrap">
+				{{.CsrfTokenHtml}}
+				<input type="text" name="entry" class="tw-w-80" placeholder="{{ctx.Locale.Tr "company.adminnetwork.block_placeholder"}}" autocomplete="off" required>
+				<button class="ui red button">{{ctx.Locale.Tr "company.adminnetwork.block"}}</button>
+			</form>
+		</div>
+
 		<h4 class="ui attached header">{{ctx.Locale.Tr "company.adminnetwork.inbound_header"}}</h4>
 		<div class="ui attached segment">
 			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminnetwork.inbound_explain"}}</p>

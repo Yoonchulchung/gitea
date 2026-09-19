@@ -108,6 +108,7 @@ func AdminNetwork(ctx *context.Context) {
 	ctx.Data["AppLinkPrefix"] = setting.AppSubURL + "/-/admin/company-deploys/"
 	ctx.Data["NetworkLink"] = setting.AppSubURL + "/-/admin/company-network"
 	ctx.Data["Inbound"] = CurrentInboundPolicy()
+	ctx.Data["Blocked"] = Blocklist()
 	ctx.Data["Banned"] = ListBannedVisitors()
 	ctx.HTML(http.StatusOK, tplAdminNetwork)
 }
@@ -135,6 +136,30 @@ func AdminNetworkApp(ctx *context.Context) {
 }
 
 // AdminNetworkUnban lifts one ban by hand.
+// AdminNetworkBlock adds a destination to the list every app is refused;
+// AdminNetworkUnblock removes one. Both are commits to apps.yml.
+func AdminNetworkBlock(ctx *context.Context) {
+	back := setting.AppSubURL + "/-/admin/company-network"
+	entry, err := BlockDestination(ctx, ctx.Doer, ctx.FormString("entry"))
+	if err != nil {
+		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
+	} else {
+		ctx.Flash.Success(ctx.Locale.TrString("company.adminnetwork.blocked_added", entry))
+	}
+	ctx.Redirect(back)
+}
+
+func AdminNetworkUnblock(ctx *context.Context) {
+	back := setting.AppSubURL + "/-/admin/company-network"
+	entry := ctx.FormString("entry")
+	if err := UnblockDestination(ctx, ctx.Doer, entry); err != nil {
+		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
+	} else {
+		ctx.Flash.Success(ctx.Locale.TrString("company.adminnetwork.blocked_removed", entry))
+	}
+	ctx.Redirect(back)
+}
+
 func AdminNetworkUnban(ctx *context.Context) {
 	key := ctx.FormString("key")
 	if UnbanVisitor(key, ctx.Doer.Name) {

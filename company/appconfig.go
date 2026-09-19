@@ -144,6 +144,10 @@ type AppsConfig struct {
 	Version  int                     `yaml:"version"`
 	Defaults AppSettings             `yaml:"defaults"`
 	Apps     map[string]*AppSettings `yaml:"apps"`
+	// Blocked is refused for every app in every mode — the rule above every
+	// other, so the platform cannot be a way round the company's own edge
+	// (company/blocklist.go).
+	Blocked []string `yaml:"blocked,omitempty"`
 }
 
 // builtinDefaults is what applies before the file says anything — chosen so

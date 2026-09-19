@@ -91,6 +91,8 @@ func RegisterAdminRoutes(m *web.Router) {
 	// cannot be answered a page at a time.
 	m.Get("/company-network", AdminNetwork)
 	m.Post("/company-network/unban", AdminNetworkUnban)
+	m.Post("/company-network/block", AdminNetworkBlock) // the list every app is refused — company/blocklist.go
+	m.Post("/company-network/unblock", AdminNetworkUnblock)
 	m.Get("/company-network/{owner}/{repo}", AdminNetworkApp)
 	m.Get("/company-packages", AdminPackages)
 	// The instance's own log. Read-only: retention belongs to the server, and

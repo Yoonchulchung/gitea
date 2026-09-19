@@ -131,6 +131,14 @@ func (b *appBroker) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the broker only accepts a plain path", http.StatusBadRequest)
 		return
 	}
+	// The company's block list first, above the app's own policy and above
+	// "open": a destination on it is refused for everyone (company/blocklist.go).
+	_, port := hostAndPort(r.Host)
+	if entry := blockedBy(Blocklist(), host, port); entry != "" {
+		b.audit(r, host, http.StatusForbidden, 0, "blocked for every app by the platform list ("+entry+")")
+		http.Error(w, "the platform blocks "+host+" for every app ("+entry+"); it cannot be approved per app", http.StatusForbidden)
+		return
+	}
 	// Policy is read per request, not captured at listener start, so an
 	// admin's change applies to the next call rather than the next restart.
 	if !outboundRuleFor(SettingsFor(b.owner, b.repo), host, r.Method, r.URL.Path) {
