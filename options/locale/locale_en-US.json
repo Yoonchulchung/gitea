@@ -4082,6 +4082,8 @@
   "company.preview.gate_failed": "The preview is not running. Build it again from the request page.",
   "company.err.preview_building": "A preview is being built for this app already; wait for it to finish",
   "company.dashboard.deploys": "Deploy activity",
+  "company.dashboard.activity_log": "Activity log",
+  "company.dashboard.activity_log_hint": "Every push, branch and request in every repository, newest first.",
   "company.check.header": "Pre-deploy check",
   "company.check.ok": "No problems found: %d Python, %d HTML and %d JavaScript files all parse.",
   "company.check.problems": "%d problems found. Fix them before requesting — the app may not start, or a page may not display.",

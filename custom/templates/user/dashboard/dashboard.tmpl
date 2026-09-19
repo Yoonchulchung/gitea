@@ -1,12 +1,33 @@
 {{template "base/head" .}}
 <div role="main" aria-label="{{.Title}}" class="page-content dashboard feeds">
 	{{template "user/dashboard/navbar" .}}
+	{{/* An administrator's dashboard is about deploys; the feed of every
+	     push in every repository has its own page at /activity, reached from
+	     the button below. Everyone else keeps the feed here — it is their own
+	     work. See company.SetActivityLogPage. */}}
+	{{if .CompanyActivityLog}}
+	<div class="ui container">
+		{{template "base/alert" .}}
+		<div class="tw-flex tw-items-center tw-justify-between tw-mb-3">
+			<h2 class="tw-m-0">{{ctx.Locale.Tr "company.dashboard.activity_log"}}</h2>
+			<a class="muted" href="{{AppSubUrl}}/">&larr; {{ctx.Locale.Tr "dashboard"}}</a>
+		</div>
+		<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.dashboard.activity_log_hint"}}</p>
+		{{if .Page.Paginator.TotalPages}}
+			{{template "user/dashboard/feeds" .}}
+		{{else}}
+			{{template "user/dashboard/guide" .}}
+		{{end}}
+	</div>
+	{{else}}
 	<div class="ui container flex-container">
 		<div class="flex-container-main">
 			{{template "base/alert" .}}
 			{{template "user/heatmap" .}}
 			{{template "company/dashboard_deploys" .}}
-			{{if .Page.Paginator.TotalPages}}
+			{{if .IsAdmin}}
+				<a class="ui basic button" href="{{AppSubUrl}}/activity">{{svg "octicon-history" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.dashboard.activity_log"}}</a>
+			{{else if .Page.Paginator.TotalPages}}
 				{{template "user/dashboard/feeds" .}}
 			{{else}}
 				{{template "user/dashboard/guide" .}}
@@ -28,5 +49,6 @@
 			{{template "company/dashboard_apps" .}}
 		</div>
 	</div>
+	{{end}}
 </div>
 {{template "base/footer" .}}

@@ -38,6 +38,18 @@ type dashboardDeploy struct {
 	At        timeutil.TimeStamp // when it was last touched: asked, decided, or deployed
 }
 
+// SetActivityLogPage marks the dashboard rendered at /activity: the feed of
+// every push and branch, which an administrator's own dashboard no longer
+// carries inline — the deploy activity is what they open it for, and the
+// feed buried it. Mounted ahead of Home on /activity (routers/web/web.go).
+func SetActivityLogPage(ctx *context.Context) {
+	if ctx.Doer == nil || !ctx.Doer.IsAdmin {
+		ctx.NotFound(nil)
+		return
+	}
+	ctx.Data["CompanyActivityLog"] = true
+}
+
 // RedirectPullsToCentral sends an administrator's "Deploy approvals" menu
 // entry (/pulls) to the central repository's own pull request list. The
 // global list only shows repositories a person is a member of, and an
