@@ -135,7 +135,8 @@
 							</form>
 						{{end}}
 					{{end}}
-					{{if and (not .IsEmpty) (not $.IsAdmin) ($.Permission.CanRead ctx.Consts.RepoUnitTypeCode)}}
+					{{/* Administrators too: they make and deploy repositories of their own. */}}
+					{{if and (not .IsEmpty) ($.Permission.CanRead ctx.Consts.RepoUnitTypeCode)}}
 						<a class="ui compact small basic primary button" href="{{$.RepoLink}}/deploy">
 							{{ctx.Locale.Tr "company.deploy.title"}}
 						</a>
