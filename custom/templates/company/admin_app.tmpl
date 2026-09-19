@@ -134,8 +134,11 @@
 				     app's usage at all, and "0MB" would be read as evidence when
 				     sizing a limit. */}}
 				<div class="company-kpi">
+					{{/* Now first, peak second: the sidebar a department sees shows
+					     the current reading, and two screens giving two numbers for
+					     "memory" with no word between them read as a disagreement. */}}
 					{{if .Summary.ResourcesMeasured}}
-						<b>{{.Summary.MemMaxMB}}<small>/{{.MemoryLimitMB}}MB</small></b>
+						<b>{{.MemoryNowMB}}<small>/{{.MemoryLimitMB}}MB · {{ctx.Locale.Tr "company.adminapp.kpi_memory_peak" .Summary.MemMaxMB}}</small></b>
 					{{else}}
 						<b class="text-grey">—<small>/{{.MemoryLimitMB}}MB</small></b>
 					{{end}}

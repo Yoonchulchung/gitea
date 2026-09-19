@@ -176,6 +176,9 @@ func AdminApp(ctx *context.Context) {
 	ctx.Data["ChartPoints"] = points
 	ctx.Data["ChartAnnotations"] = annotations
 	ctx.Data["MemoryLimitMB"] = settings.Limits.MemoryMB
+	// The same reading the repository sidebar shows, so the two screens
+	// agree; the peak over the chart's window sits beside it, labelled.
+	ctx.Data["MemoryNowMB"] = CurrentMemoryMB(owner, repo)
 	if usage, ok := AppDataUsageFor(ctx, st.Owner, st.Repo); ok {
 		ctx.Data["DataUsage"] = usage
 	}
