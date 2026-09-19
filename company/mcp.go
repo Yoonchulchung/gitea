@@ -55,8 +55,32 @@ func fileExistsForAI(ctx context.Context, gitRepo *git.Repository, branch string
 // docs/company/ai-agent.md's safety boundaries), openFiles is every tab
 // currently open in the person's browser, live content included, which
 // read_file checks before falling back to git.
+
+// addPlatformDocsTool lets the model look up a platform rule the prompt did
+// not carry (company/appdocs.go).
+func addPlatformDocsTool(server *mcp.Server) {
+	server.AddTool(&mcp.Tool{
+		Name:        "search_platform_docs",
+		Description: "Search the platform's documentation: what an app may do here (database at DB_PATH, migrations, packages and approval, outbound network through the broker, download policy, URLs and static files, resource limits, deploy flow, common errors). Ask in Korean or English.",
+		InputSchema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"query": map[string]any{"type": "string"}},
+			"required":   []string{"query"},
+		},
+	}, func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args struct {
+			Query string `json:"query"`
+		}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult(err), nil
+		}
+		return textResult(AppDocsSearchText(args.Query)), nil
+	})
+}
+
 func newWorkspaceMCPServer(gitRepo *git.Repository, branch string, edits map[string]*workspaceAIEdit, deletes map[string]bool, renames, openFiles map[string]string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "company-workspace", Version: "1.0.0"}, nil)
+	addPlatformDocsTool(server)
 
 	server.AddTool(&mcp.Tool{
 		Name:        "list_files",

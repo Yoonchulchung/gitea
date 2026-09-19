@@ -1,0 +1,63 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-docs")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">
+			<a href="{{AppSubUrl}}/-/admin/company-deploys">{{ctx.Locale.Tr "company.admin.deploys_nav"}}</a>
+			<span class="text-grey tw-mx-2">/</span>{{ctx.Locale.Tr "company.docs.title"}}
+		</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13 tw-mt-0 tw-mb-3">{{ctx.Locale.Tr "company.docs.explain"}}</p>
+			{{/* Which parts a question brings in: the same search the
+			     assistant's prompt is built from, so an operator can see why an
+			     answer knew — or did not know — a rule. */}}
+			<form method="get" class="ui form tw-flex tw-gap-2 tw-items-center tw-flex-wrap">
+				<input type="text" name="q" value="{{.Query}}" class="tw-flex-1" placeholder="{{ctx.Locale.Tr "company.docs.search_placeholder"}}" autocomplete="off">
+				<button class="ui button">{{ctx.Locale.Tr "company.docs.search"}}</button>
+			</form>
+			{{if .Query}}
+				<div class="tw-mt-3">
+					<div class="tw-text-13 text-grey tw-mb-2">{{ctx.Locale.Tr "company.docs.search_result" (len .Hits) .ContextChars}}</div>
+					{{range .Hits}}
+						<div class="company-docs-hit">
+							<div><a href="?doc={{.DocID}}">{{.DocTitle}}</a> <span class="text-grey">/</span> <b>{{.Heading}}</b> <span class="text-grey tw-text-12 tw-ml-2">{{printf "%.1f" .Score}}</span></div>
+							<div class="text-grey tw-text-13 company-docs-excerpt">{{.Body}}</div>
+						</div>
+					{{else}}
+						<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.docs.search_none"}}</span>
+					{{end}}
+				</div>
+			{{end}}
+		</div>
+
+		<h4 class="ui top attached header tw-mt-5">{{ctx.Locale.Tr "company.docs.list_header" (len .Docs)}}</h4>
+		<div class="ui attached segment">
+			<table class="ui very basic table tw-text-13">
+				<thead>
+					<tr>
+						<th>{{ctx.Locale.Tr "company.docs.col_doc"}}</th>
+						<th>{{ctx.Locale.Tr "company.docs.col_summary"}}</th>
+						<th class="tw-w-1/12">{{ctx.Locale.Tr "company.docs.col_sections"}}</th>
+						<th class="tw-w-1/8">{{ctx.Locale.Tr "company.docs.col_when"}}</th>
+					</tr>
+				</thead>
+				<tbody>
+					{{range .Docs}}
+						<tr>
+							<td><a href="?doc={{.ID}}">{{.Title}}</a><div class="text-grey tw-text-12 tw-font-mono">{{.ID}}.md</div></td>
+							<td>{{.Summary}}<div class="text-grey tw-text-12 tw-mt-1">{{StringUtils.Join .Keywords ", "}}</div></td>
+							<td>{{len .Sections}}</td>
+							<td>{{if .Always}}<span class="ui small label">{{ctx.Locale.Tr "company.docs.always"}}</span>{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.docs.on_match"}}</span>{{end}}</td>
+						</tr>
+					{{end}}
+				</tbody>
+			</table>
+			<p class="text-grey tw-text-12 tw-mb-0">{{ctx.Locale.Tr "company.docs.where"}}</p>
+		</div>
+
+		{{with .Doc}}
+			<h4 class="ui top attached header tw-mt-5" id="doc">{{.Title}} <span class="text-grey tw-text-13 tw-ml-2 tw-font-mono">{{.ID}}.md</span></h4>
+			<div class="ui attached segment">
+				<div class="markup">{{$.DocHTML}}</div>
+			</div>
+		{{end}}
+	</div>
+{{template "admin/layout_footer" .}}

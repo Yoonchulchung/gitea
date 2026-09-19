@@ -96,6 +96,7 @@ func RegisterAdminRoutes(m *web.Router) {
 	m.Post("/company-network/unblock", AdminNetworkUnblock)
 	m.Get("/company-network/{owner}/{repo}", AdminNetworkApp)
 	m.Get("/company-packages", AdminPackages)
+	m.Get("/company-docs", AdminDocs) // what the assistant knows about the platform — company/appdocs.go
 	// The instance's own log. Read-only: retention belongs to the server, and
 	// a screen able to clear the log would defeat why it is written to a file.
 	m.Get("/company-logs", AdminServerLogs)

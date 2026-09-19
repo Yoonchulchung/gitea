@@ -170,8 +170,19 @@ func WorkspaceAI(ctx *context.Context) {
 	// everything the sandbox prevents — and the sandbox does not cover
 	// Gitea's own process. The values come from probes the platform already
 	// ran (company/platformenv.go).
-	if _, deployed := LookupApp(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name); deployed {
+	_, deployed := LookupApp(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name)
+	if deployed {
 		systemPrompt += DescribePlatformEnvironment(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name).AIContext()
+	}
+	// The platform's rules, the parts this request touches (company/appdocs.go):
+	// for a deployed app and for one on its way there — a repository with a
+	// main.py is an app whether or not it has been approved yet.
+	if deployed || readRepoFile(ctx, ctx.Repo.Repository, "main.py") != "" {
+		query := req.Instruction + " " + req.ActivePath
+		if n := len(req.History); n > 0 {
+			query += " " + req.History[n-1].Content
+		}
+		systemPrompt += AppDocsContext(query)
 	}
 
 	if activeContent, ok := openFiles[req.ActivePath]; req.ActivePath != "" && ok {

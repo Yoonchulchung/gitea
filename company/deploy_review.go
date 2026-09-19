@@ -301,6 +301,7 @@ func deployReviewContext(pr *issues_model.PullRequest, deptOwner, deptName, diff
 // here, so the model never sees or escapes it. Nothing writes.
 func newDeployReviewMCPServer(gitRepo *git.Repository, branch, prefix, diff string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "company-deploy-review", Version: "1.0.0"}, nil)
+	addPlatformDocsTool(server)
 
 	server.AddTool(&mcp.Tool{
 		Name:        "list_files",
@@ -429,7 +430,7 @@ func DeployRequestChat(ctx *gitea_context.Context) {
 	ctx.Resp.WriteHeader(http.StatusOK)
 
 	messages := make([]aiChatMessage, 0, len(req.History)+2)
-	messages = append(messages, aiChatMessage{Role: "system", Content: tplDeployReviewSystemPrompt + deployReviewContext(pr, deptOwner, deptName, diff)})
+	messages = append(messages, aiChatMessage{Role: "system", Content: tplDeployReviewSystemPrompt + deployReviewContext(pr, deptOwner, deptName, diff) + AppDocsContext(req.Instruction)})
 	for _, h := range req.History {
 		if h.Role == "user" || h.Role == "assistant" {
 			messages = append(messages, aiChatMessage{Role: h.Role, Content: h.Content})
