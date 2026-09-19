@@ -32,9 +32,9 @@
 			{{if .SearchError}}
 				<div class="ui negative message tw-mt-2">{{ctx.Locale.Tr "company.logs.bad_regexp"}} {{.SearchError}}</div>
 			{{end}}
-			{{if .Truncated}}
-				<div class="ui warning message tw-mt-2">{{ctx.Locale.Tr "company.logs.truncated"}}</div>
-			{{end}}
+			{{/* No "too many results" notice: the newest lines are what a server
+			     log is read for, and a warning above them every time said nothing
+			     the reader could act on. */}}
 			{{/* Without this an instance logging to the console shows a blank
 			     page, which reads as "nothing happened" rather than "the logs
 			     are going somewhere this screen cannot follow". */}}
