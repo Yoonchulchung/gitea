@@ -4503,6 +4503,7 @@
   "company.sidebar.memory_used": "%dMB of %dMB used",
   "company.sidebar.memory_limit": "limit %dMB",
   "company.perm.access": "Access",
+  "company.perm.more": "+%d more",
   "company.perm.outbound": "Outbound",
   "company.perm.outbound_open": "unrestricted",
   "company.perm.outbound_none": "not allowed",

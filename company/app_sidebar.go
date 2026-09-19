@@ -54,6 +54,29 @@ type PermissionRow struct {
 	// support request. ReasonText carries verbatim additions.
 	Reason     string
 	ReasonText string
+	// More is how many items were left off ValueText for room — the sidebar
+	// shows the first few packages and sends the reader to the app page.
+	More int
+}
+
+// sidebarPackageLimit is how many packages the repository sidebar names.
+const sidebarPackageLimit = 5
+
+// trimPackagesRow shortens the packages row to its first few names. The
+// list is the platform's whole stack plus every approval, and on a sidebar
+// it pushed everything below it out of sight.
+func trimPackagesRow(rows []PermissionRow, keep int) []PermissionRow {
+	for i := range rows {
+		if rows[i].Label != "company.perm.packages" || rows[i].ValueText == "" {
+			continue
+		}
+		names := strings.Split(rows[i].ValueText, ", ")
+		if len(names) > keep {
+			rows[i].ValueText = strings.Join(names[:keep], ", ")
+			rows[i].More = len(names) - keep
+		}
+	}
+	return rows
 }
 
 // AppSidebarData is everything the panel renders.
@@ -153,7 +176,7 @@ func SetAppPermissionData(ctx *context.Context) {
 		StatusLabel:    departmentStatusLabel(st),
 		Status:         st.Actual,
 		Cause:          DepartmentCause(st),
-		Rows:           permissionRows(settings, st),
+		Rows:           trimPackagesRow(permissionRows(settings, st), sidebarPackageLimit),
 		MemoryLimit:    settings.Limits.MemoryMB,
 		MemoryUsed:     CurrentMemoryMB(owner, name),
 		MemoryMeasured: memoryMeasured,
