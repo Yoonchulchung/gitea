@@ -14,14 +14,65 @@
 			<span>{{if .DeployRequester}}{{ctx.AvatarUtils.Avatar .DeployRequester 18 "tw-mr-1"}}{{.DeployRequester.Name}}{{else}}{{.Issue.Poster.Name}}{{end}}</span>
 			<span class="text-grey">{{ctx.Locale.Tr "company.review.submitted"}}</span>
 			<span>{{DateUtils.AbsoluteShort .Issue.CreatedUnix}}</span>
+			{{/* Approving is one press with no form behind it, so this line is
+			     where the name of whoever pressed it lives on screen. See
+			     routers/web/repo/pull_merge_form.go for the same name in the
+			     merge commit. */}}
+			{{with .DeployApprover}}
+				<span class="text-grey">{{ctx.Locale.Tr "company.review.approver"}}</span>
+				<span>{{ctx.AvatarUtils.Avatar . 18 "tw-mr-1"}}{{.Name}}{{with $.DeployApprovedAt}} · {{DateUtils.AbsoluteShort .}}{{end}}</span>
+			{{end}}
 		</div>
 		{{with .DeployRequestStatus}}
 			<div class="ui {{if eq .Status "approved" "deployed"}}green{{else if eq .Status "rejected" "deploy_failed"}}red{{else if eq .Status "cancelled"}}grey{{else}}yellow{{end}} label tw-mt-3">
 				{{ctx.Locale.Tr (printf "company.deploy_status.%s" .Status)}}
 			</div>
 		{{end}}
+		{{/* Every check the submission form runs, against the snapshot approving
+		     this would build. Above the decision, because it is the decision.
+		     See company/review_preflight.go. */}}
+		{{with .DeployPreflight}}
+			{{if .Checks}}
+				<div class="ui {{if .Deployable}}segment{{else}}negative message{{end}} company-review-preflight tw-mt-3 tw-mb-0">
+					<div class="header tw-mb-1">
+						{{if .Deployable}}{{svg "octicon-checklist" 16 "tw-mr-1"}}{{else}}{{svg "octicon-alert" 16 "tw-mr-1"}}{{end}}
+						{{if .Deployable}}{{ctx.Locale.Tr "company.review.preflight_ok_header"}}{{else}}{{ctx.Locale.Tr "company.review.blockers_header"}}{{end}}
+					</div>
+					<div class="company-preflight-list">
+						{{range .Checks}}
+							<div class="company-preflight-row">
+								<span class="company-preflight-{{.Status}}">
+									{{if eq .Status "ok"}}{{ctx.Locale.Tr "company.deploy.check_ok"}}{{else if eq .Status "warn"}}{{ctx.Locale.Tr "company.deploy.check_warn"}}{{else}}{{ctx.Locale.Tr "company.deploy.check_error"}}{{end}}
+								</span>
+								<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong>
+								{{/* pip's own words and a package name the department wrote —
+								     escaped by default, never innerHTML. */}}
+								<div class="company-preflight-detail">{{.Detail}}</div>
+							</div>
+						{{end}}
+					</div>
+					{{if not .Deployable}}<p class="tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.review.blockers_note"}}</p>{{end}}
+				</div>
+			{{end}}
+		{{end}}
 		{{if not .Issue.IsClosed}}
 			<p class="text-grey tw-text-12 tw-mt-3 tw-mb-0">{{if .DeployRemoval}}{{ctx.Locale.Tr "company.review.decide_removal"}}{{else}}{{ctx.Locale.Tr "company.review.decide"}}{{end}}</p>
+		{{end}}
+		{{/* How it ended, for the person opening this months later: who, when
+		     and in their own words. The badge above has the outcome and none of
+		     the story. See company/deploy_review.go. */}}
+		{{with .DeployDecisionReasons}}
+			<div class="company-deploy-review-outcome">
+				<div class="company-deploy-reason-why">
+					{{if eq $.DeployRequestStatus.Status "cancelled"}}{{ctx.Locale.Tr "company.deploy.cancel_reason_heading"}}{{else}}{{ctx.Locale.Tr "company.deploy.reject_reason_heading"}}{{end}}
+				</div>
+				{{range .}}
+					<div class="company-deploy-reason">
+						<div class="company-deploy-reason-head">{{ctx.AvatarUtils.Avatar .Poster 18}}<strong>{{.Poster.Name}}</strong><span class="muted">{{DateUtils.AbsoluteShort .CreatedUnix}}</span></div>
+						<div class="company-deploy-reason-quote">{{.Content}}</div>
+					</div>
+				{{end}}
+			</div>
 		{{end}}
 		{{/* Main moved on since the request was made and git cannot apply it.
 		     The files are known, so the way through is one press: the same
@@ -35,6 +86,36 @@
 				</form>
 			</div>
 		{{end}}
+		{{/* The requested version, run on its own for a look before deciding —
+		     its own process and a copy of today's data, never the live app. In
+		     this panel rather than its own: it is one of the things the person
+		     deciding does, next to what they are deciding about. See
+		     company/apppreview.go. */}}
+		{{if and (not .Issue.IsClosed) (not .DeployRemoval)}}
+			{{with .DeployPreview}}
+				<div class="company-deploy-preview tw-mt-3" data-global-init="initCompanyDeployPreview" data-state="{{.State}}" data-status-url="{{$.DeployPreviewURL}}/status">
+					<h5 class="tw-mb-1">{{svg "octicon-eye" 14 "tw-mr-1"}}{{ctx.Locale.Tr "company.preview.title"}}</h5>
+					<p class="text-grey tw-text-12">{{ctx.Locale.Tr "company.preview.explain"}}</p>
+					{{if eq .State "building"}}
+						<div class="tw-flex tw-items-center tw-gap-2"><span class="ui yellow tiny label">{{ctx.Locale.Tr "company.preview.building"}}</span><span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.preview.building_note"}}</span></div>
+					{{else if eq .State "running"}}
+						<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
+							<a class="ui primary tiny button" href="{{.URL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} {{ctx.Locale.Tr "company.preview.open"}}</a>
+							<form method="post" action="{{$.DeployPreviewURL}}/stop" class="tw-inline">{{$.CsrfTokenHtml}}<button class="ui basic tiny button">{{ctx.Locale.Tr "company.preview.stop"}}</button></form>
+						</div>
+						<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{if eq .DataNote "copied"}}{{ctx.Locale.Tr "company.preview.data_copied"}}{{else}}{{ctx.Locale.Tr "company.preview.data_empty"}}{{end}}</p>
+					{{else if eq .State "failed"}}
+						<div class="ui negative message tw-mt-0"><div class="header">{{ctx.Locale.Tr "company.preview.failed"}}</div><p class="tw-text-13">{{.Error}}</p></div>
+					{{end}}
+					{{if ne .State "building"}}
+						<form method="post" action="{{$.DeployPreviewURL}}" class="tw-mt-2">{{$.CsrfTokenHtml}}
+							<button class="ui tiny button">{{if eq .State "stopped"}}{{ctx.Locale.Tr "company.preview.build"}}{{else}}{{ctx.Locale.Tr "company.preview.rebuild"}}{{end}}</button>
+						</form>
+					{{end}}
+					<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.preview.idle_note"}}</p>
+				</div>
+			{{end}}
+		{{end}}
 	</div>
 
 	{{if .DeployRemoval}}
@@ -44,69 +125,48 @@
 		</div>
 	{{end}}
 
-	{{/* Merging is the approval — the items are applied with it
-	     (company/permissions_commit.go), and there is no second button. */}}
+	{{/* Approving fewer items than were asked for is a decision, and it is
+	     made here: the ticks are saved onto the request's own branch as a
+	     commit, and the merge grants exactly what that file says
+	     (company/permissions_decide.go, company/permissions_commit.go).
+	     Saving and approving are two presses on purpose — see
+	     docs/company/permission-lifecycle.md. */}}
 	<div class="ui segment company-deploy-review-panel">
 		<h4 class="tw-mb-2">{{svg "octicon-shield-lock" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.deploy.requested_perms" (len .PermissionRequests)}}</h4>
-		{{range .PermissionRequests}}
-			<div class="company-perm-review-item">
-				<div>
-					<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{if .DetailKey}}{{ctx.Locale.Tr .DetailKey}}{{else}}{{.Detail}}{{end}}
-					{{if .Evidence}}<div class="text-grey tw-text-12">{{if not (ctx.Locale.HasKey .Evidence)}}{{.Evidence}}{{else if .EvidenceArg}}{{ctx.Locale.Tr .Evidence .EvidenceArg}}{{else}}{{ctx.Locale.Tr .Evidence}}{{end}}</div>{{end}}
-					{{if .Reason}}<div class="tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.deploy.perm_reason" .Reason}}</div>{{end}}
-				</div>
-			</div>
-		{{else}}
-			<p class="text-grey tw-text-13 tw-mb-0">{{ctx.Locale.Tr "company.review.perms_none"}}</p>
-		{{end}}
-		{{if and .PermissionRequests (not .Issue.IsClosed)}}
-			<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.deploy.perm_merge_note"}}</p>
-		{{end}}
-	</div>
-
-	{{/* The requested version, run on its own for a look before deciding —
-	     its own process and a copy of today's data, never the live app.
-	     See company/apppreview.go. */}}
-	{{if and (not .Issue.IsClosed) (not .DeployRemoval)}}
-		{{with .DeployPreview}}
-			<div class="ui segment company-deploy-review-panel company-deploy-preview" data-global-init="initCompanyDeployPreview" data-state="{{.State}}" data-status-url="{{$.DeployPreviewURL}}/status">
-				<h4 class="tw-mb-2">{{svg "octicon-eye" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.preview.title"}}</h4>
-				<p class="text-grey tw-text-12">{{ctx.Locale.Tr "company.preview.explain"}}</p>
-				{{if eq .State "building"}}
-					<div class="tw-flex tw-items-center tw-gap-2"><span class="ui yellow tiny label">{{ctx.Locale.Tr "company.preview.building"}}</span><span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.preview.building_note"}}</span></div>
-				{{else if eq .State "running"}}
-					<div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
-						<a class="ui primary tiny button" href="{{.URL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} {{ctx.Locale.Tr "company.preview.open"}}</a>
-						<form method="post" action="{{$.DeployPreviewURL}}/stop" class="tw-inline">{{$.CsrfTokenHtml}}<button class="ui basic tiny button">{{ctx.Locale.Tr "company.preview.stop"}}</button></form>
+		<form method="post" action="{{.DeployPermissionsURL}}">
+			{{.CsrfTokenHtml}}
+			{{range .PermissionRows}}
+				<label class="company-perm-review-item">
+					<div class="company-perm-review-tick">
+						{{if $.CanDecidePermissions}}<input type="checkbox" name="perm" value="{{.ID}}" {{if .Approved}}checked{{end}}>{{end}}
 					</div>
-					<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{if eq .DataNote "copied"}}{{ctx.Locale.Tr "company.preview.data_copied"}}{{else}}{{ctx.Locale.Tr "company.preview.data_empty"}}{{end}}</p>
-				{{else if eq .State "failed"}}
-					<div class="ui negative message tw-mt-0"><div class="header">{{ctx.Locale.Tr "company.preview.failed"}}</div><p class="tw-text-13">{{.Error}}</p></div>
-				{{end}}
-				{{if ne .State "building"}}
-					<form method="post" action="{{$.DeployPreviewURL}}" class="tw-mt-2">{{$.CsrfTokenHtml}}
-						<button class="ui tiny button">{{if eq .State "stopped"}}{{ctx.Locale.Tr "company.preview.build"}}{{else}}{{ctx.Locale.Tr "company.preview.rebuild"}}{{end}}</button>
-					</form>
-				{{end}}
-				<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.preview.idle_note"}}</p>
-			</div>
-		{{end}}
-	{{end}}
-
-	{{/* Can the server carry it: the memory this app would hold against
-	     what the running apps commit, the storage it asks for against the
-	     volume. Numbers for the approver, not a gate. See company/deploy_capacity.go. */}}
-	{{with .Capacity}}
-		<div class="ui segment company-deploy-review-panel">
-			<h4 class="tw-mb-2">{{svg "octicon-server" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.capacity_header"}}</h4>
-			{{range .}}
-				<div class="company-capacity-row {{.State}}">
-					{{if eq .State "ok"}}{{svg "octicon-check-circle" 14}}{{else if eq .State "warn"}}{{svg "octicon-alert" 14}}{{else}}{{svg "octicon-x-circle" 14}}{{end}}
-					<span class="tw-text-13">{{.Text}}</span>
-				</div>
+					<div>
+						<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{if .DetailKey}}{{ctx.Locale.Tr .DetailKey}}{{else}}{{.Detail}}{{end}}
+						{{if .Evidence}}<div class="text-grey tw-text-12">{{if not (ctx.Locale.HasKey .Evidence)}}{{.Evidence}}{{else if .EvidenceArg}}{{ctx.Locale.Tr .Evidence .EvidenceArg}}{{else}}{{ctx.Locale.Tr .Evidence}}{{end}}</div>{{end}}
+						{{if .Reason}}<div class="tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.deploy.perm_reason" .Reason}}</div>{{end}}
+						{{if and (not .Approved) (not $.CanDecidePermissions)}}<div class="tw-text-12 company-perm-refused">{{ctx.Locale.Tr "company.review.perm_refused"}}</div>{{end}}
+						{{/* What this item does to the server, on the line that asks
+						     for it. The sentence behind the numbers is the bar's
+						     tooltip — see company/deploy_capacity.go. */}}
+						{{$kind := .Kind}}
+						{{range $.Capacity}}
+							{{if eq .Kind $kind}}
+								{{template "company/capacity_gauge" .}}
+							{{end}}
+						{{end}}
+					</div>
+				</label>
+			{{else}}
+				<p class="text-grey tw-text-13 tw-mb-0">{{ctx.Locale.Tr "company.review.perms_none"}}</p>
 			{{end}}
-		</div>
-	{{end}}
+			{{if .CanDecidePermissions}}
+				<button type="submit" class="ui tiny button tw-mt-2">{{ctx.Locale.Tr "company.review.perm_save"}}</button>
+				<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.review.perm_select_hint"}}</p>
+			{{else if and .PermissionRequests (not .Issue.IsClosed)}}
+				<p class="text-grey tw-text-12 tw-mt-2 tw-mb-0">{{ctx.Locale.Tr "company.deploy.perm_merge_note"}}</p>
+			{{end}}
+		</form>
+	</div>
 
 	{{/* Every package the snapshot installs, not only the new ones: what
 	     is already allowed is part of the picture too. */}}

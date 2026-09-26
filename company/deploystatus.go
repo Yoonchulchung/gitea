@@ -153,9 +153,16 @@ func rejectionReasons(ctx *context.Context, pr *issues_model.PullRequest) ([]*is
 	}
 	reasons := make([]*issues_model.Comment, 0, len(comments))
 	for _, c := range comments {
-		if !strings.HasPrefix(c.Content, aiReviewCommentMarker) {
-			reasons = append(reasons, c)
+		if strings.HasPrefix(c.Content, aiReviewCommentMarker) {
+			continue
 		}
+		// A withdrawal is stored with the marker CancelDeployRequest writes so
+		// that a cancellation can be told from a rejection later
+		// (company/deployrequests.go). That marker is bookkeeping; what the
+		// person wrote is the part after it, and it is the only part anybody
+		// reading this box wants.
+		c.Content = strings.TrimPrefix(c.Content, cancelCommentPrefix)
+		reasons = append(reasons, c)
 	}
 	return reasons, nil
 }

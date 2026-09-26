@@ -53,3 +53,23 @@ The REST API is a more stable surface than internal template variables —
 Gitea maintains it with real backward-compatibility discipline. Building the
 user-facing screens against the API in `company/` avoids editing or shadowing
 any Gitea template at all.
+
+## The central deploy repository can move
+
+`[company] CENTRAL_DEPLOY_REPO` names it once, in app.ini, which was fine
+while it never moved. It can: an administrator may rename it or transfer it
+from its own settings page, and nothing here stands in the way — it is a
+repository like any other, and that page is where somebody would do it.
+
+What must not happen is the platform losing it. Every policy read, every
+deploy request and every approval resolves the repository by owner and name,
+so a move used to leave app.ini pointing at nothing: the apps kept running on
+the policy last read and every new request failed, until an operator edited
+the file and restarted.
+
+So the move is followed (`company/centralrepo.go`). The rename and transfer
+notifiers that already re-key a department's app do the same for this one: the
+new location is written to the database, kept in memory for the callers that
+have no context to read it with, and read back at boot. app.ini stays the
+answer until something has moved, so an instance that never moves it never
+needs the setting.

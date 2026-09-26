@@ -1,5 +1,8 @@
 # Repo page nav — what's on, what's hidden, what's blocked
 
+This is the **department** repository's nav. The central deploy repository's
+own screens are a separate policy — see [central-repo-ui.md](central-repo-ui.md).
+
 Target: only **Code** stays as a real, native tab. Everything else in the
 screenshot below (Issues, Pull Requests, Actions, Packages, Projects,
 Releases, Wiki, Activity) is hidden from nav for non-admins, and the

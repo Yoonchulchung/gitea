@@ -155,7 +155,7 @@ func AdminDeploys(ctx *context.Context) {
 	since := time.Now().Add(-24 * time.Hour)
 
 	var repos []*repo_model.Repository
-	if err := db.GetEngine(ctx).In("id", orgOwnedRepoIDs()).Find(&repos); err != nil {
+	if err := db.GetEngine(ctx).In("id", orgOwnedRepoIDs(0)).Find(&repos); err != nil {
 		ctx.ServerError("list org-owned repos", err)
 		return
 	}
@@ -198,23 +198,12 @@ func AdminDeploys(ctx *context.Context) {
 	})
 
 	attention := make([]*adminDeployRow, 0, len(rows))
-	var running, stopped, failed, undeployed int
 	owners := map[string]bool{}
 	for _, r := range rows {
 		if r.NeedsAttention {
 			attention = append(attention, r)
 		}
 		owners[r.State.Owner] = true
-		switch r.Kind() {
-		case "running":
-			running++
-		case "failed":
-			failed++
-		case "undeployed":
-			undeployed++
-		default:
-			stopped++
-		}
 	}
 	ownerNames := make([]string, 0, len(owners))
 	for o := range owners {
@@ -241,15 +230,38 @@ func AdminDeploys(ctx *context.Context) {
 	ctx.Data["DataEnabled"] = AppDataEnabled()
 	ctx.Data["Title"] = ctx.Locale.TrString("company.admin.nav_deploys")
 	ctx.Data["Attention"] = attention
-	ctx.Data["CountTotal"] = len(rows)
 	ctx.Data["Fleet"] = summarizeFleet(rows, since) // fills every row's memory figures first
-	ctx.Data["CountRunning"] = running
-	ctx.Data["CountUndeployed"] = undeployed
 	ctx.Data["Owners"] = ownerNames
 
 	// The list itself: a state tab, an owner, an order, a page of ten.
 	kind, owner, sortBy := ctx.FormString("state"), ctx.FormString("owner"), ctx.FormString("sort")
-	shown := filterDeployRows(rows, kind, owner)
+
+	// The tabs label the list, so they count what the list is drawn from —
+	// this department's apps, not every app on the server. Counted before the
+	// state tab is applied and after the owner is, because the tabs are how
+	// the state is chosen: each one says how many it would show.
+	//
+	// They used to count every app whatever the filter said, so picking a
+	// department left "전체 17" above a list of 13.
+	scoped := filterDeployRows(rows, "", owner)
+	var running, stopped, failed, undeployed int
+	for _, r := range scoped {
+		switch r.Kind() {
+		case "running":
+			running++
+		case "failed":
+			failed++
+		case "undeployed":
+			undeployed++
+		default:
+			stopped++
+		}
+	}
+	ctx.Data["CountTotal"] = len(scoped)
+	ctx.Data["CountRunning"] = running
+	ctx.Data["CountUndeployed"] = undeployed
+
+	shown := filterDeployRows(scoped, kind, "")
 	sortDeployRows(shown, sortBy)
 	page := max(ctx.FormInt("page"), 1)
 	pages := max((len(shown)+adminDeploysPageSize-1)/adminDeploysPageSize, 1)

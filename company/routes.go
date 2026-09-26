@@ -44,6 +44,10 @@ func RegisterRoutes(m *web.Router) {
 	m.Group("/company", func() {
 		m.Post("/repo-description/{owner}/{repo}", UpdateDescription)
 		m.Post("/deploy-request/{id}/cancel", CancelDeployRequest)
+		// Which of a request's items are to be approved — the administrator
+		// deciding, or the requester taking one back. See
+		// company/permissions_decide.go.
+		m.Post("/deploy-request/{id}/permissions", DeployRequestPermissions)
 		m.Post("/deploy-request/{id}/ai-review", TriggerDeployRequestAIReview)
 		m.Post("/deploy-request/{id}/chat", DeployRequestChat)       // read-only assistant on the request page, see company/deploy_review.go
 		m.Post("/deploy-request/{id}/preview", DeployRequestPreview) // the requested version, run on its own — company/apppreview.go
@@ -74,6 +78,18 @@ func RegisterAdminRoutes(m *web.Router) {
 	// to contact, which AI provider departments are offered.
 	m.Get("/company-settings", AdminSettings)
 	m.Post("/company-settings", AdminSettingsPost)
+	// Where the platform's own mail goes out through, and who hears about
+	// what — see company/mail.go and company/mailrules.go.
+	m.Get("/company-mail", AdminMail)
+	m.Post("/company-mail/server", AdminMailServerPost)
+	m.Post("/company-mail/test", AdminMailTest)
+	m.Post("/company-mail/add", AdminMailRuleAdd)
+	// One notification's own page: who hears it and what it says.
+	m.Get("/company-mail/{id}", AdminMailRule)
+	m.Post("/company-mail/{id}", AdminMailRuleSave)
+	m.Post("/company-mail/{id}/preview", AdminMailRulePreview)
+	m.Post("/company-mail/{id}/toggle", AdminMailRuleToggle)
+	m.Post("/company-mail/{id}/delete", AdminMailRuleDelete)
 	// Department membership from the user page, where an administrator who
 	// has just seen that somebody belongs to none already is.
 	m.Post("/company-user-department", AdminAssignDepartment)

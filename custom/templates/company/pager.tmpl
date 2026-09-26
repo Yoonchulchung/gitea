@@ -1,0 +1,31 @@
+{{/* A numbered pager for a list that is not the page's only one.
+     base/paginate writes "?page=", which every list on a page would share —
+     the dashboard has two, and paging one must not move the other. This takes
+     the parameter name to use.
+     Attributes: Pager (a context.Pagination), ParamName. */}}
+{{$param := .ParamName}}
+{{with .Pager}}
+	{{$params := .GetParams}}
+	{{with .Paginator}}
+		{{if gt .TotalPages 1}}
+			<div class="center page buttons">
+				<div class="ui borderless pagination menu">
+					<a class="{{if not .HasPrevious}}disabled{{end}} item navigation" {{if .HasPrevious}}href="?{{$param}}={{.Previous}}{{if $params}}&{{$params}}{{end}}"{{end}}>
+						{{svg "octicon-chevron-left" 16 "tw-mr-1"}}<span class="navigation_label">{{ctx.Locale.Tr "repo.issues.previous"}}</span>
+					</a>
+					{{$pagesLen := len .Pages}}
+					{{range .Pages}}
+						{{if eq .Num -1}}
+							<a class="disabled item">...</a>
+						{{else}}
+							<a class="{{if and .IsCurrent (gt $pagesLen 1)}}active {{end}}item" {{if not .IsCurrent}}href="?{{$param}}={{.Num}}{{if $params}}&{{$params}}{{end}}"{{end}}>{{.Num}}</a>
+						{{end}}
+					{{end}}
+					<a class="{{if not .HasNext}}disabled{{end}} item navigation" {{if .HasNext}}href="?{{$param}}={{.Next}}{{if $params}}&{{$params}}{{end}}"{{end}}>
+						<span class="navigation_label">{{ctx.Locale.Tr "repo.issues.next"}}</span>{{svg "octicon-chevron-right" 16 "tw-ml-1"}}
+					</a>
+				</div>
+			</div>
+		{{end}}
+	{{end}}
+{{end}}

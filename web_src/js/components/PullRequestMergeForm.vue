@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {computed, onMounted, onUnmounted, shallowRef, watch} from 'vue';
+import {computed, nextTick, onMounted, onUnmounted, shallowRef, useTemplateRef, watch} from 'vue';
 import SvgIcon from './SvgIcon.vue';
 import {toggleElem} from '../utils/dom.ts';
 
@@ -15,6 +15,9 @@ type MergeStyle = {
 
 type MergeForm = {
   allOverridableChecksOk: boolean,
+  // company: approve on the press, without asking for a commit subject, a
+  // commit body and whether to delete a branch — see routers/web/repo/pull_merge_form.go
+  companyDirectMerge?: boolean,
   baseLink: string,
   canMergeNow: boolean,
   defaultDeleteBranchAfterMerge: boolean,
@@ -57,6 +60,7 @@ const mergeStyleAllowedCount = shallowRef(0);
 
 const showMergeStyleMenu = shallowRef(false);
 const showActionForm = shallowRef(false);
+const actionForm = useTemplateRef<HTMLFormElement>('actionForm');
 
 const mergeButtonStyleClass = computed(() => {
   if (mergeStyle.value === mergeStyleManuallyMerged) return 'red';
@@ -108,6 +112,21 @@ function toggleActionForm(show: boolean) {
   mergeMessageFieldValue.value = mergeStyleDetail.value.mergeMessageFieldText;
 }
 
+// company: the press is the whole decision, so the form is filled with the
+// defaults and submitted rather than shown. It still has to be rendered for a
+// tick — the fields it posts are its own.
+async function pressMergeButton() {
+  toggleActionForm(true);
+  if (!mergeForm.companyDirectMerge) return;
+  await nextTick();
+  // With the real submit button as the submitter, so its name/value pair
+  // ("do=merge") is part of the submission. requestSubmit() on its own has no
+  // submitter, the merge style never reaches the server, and the approval
+  // comes back as "that merge option cannot be used".
+  const submitter = actionForm.value?.querySelector<HTMLButtonElement>('button[name="do"]');
+  actionForm.value?.requestSubmit(submitter ?? undefined);
+}
+
 function switchMergeStyle(name: string, autoMerge = false) {
   mergeStyle.value = name;
   autoMergeWhenSucceed.value = autoMerge;
@@ -134,7 +153,7 @@ function clearMergeMessage() {
     <div v-if="mergeForm.hasPendingPullRequestMerge" v-html="mergeForm.hasPendingPullRequestMergeTip" class="ui info message"/>
 
     <!-- another similar form is in pull.tmpl (manual merge)-->
-    <form class="ui form form-fetch-action" v-if="showActionForm" :action="mergeForm.baseLink+'/merge'" method="post">
+    <form class="ui form form-fetch-action" ref="actionForm" v-if="showActionForm" v-show="!mergeForm.companyDirectMerge" :action="mergeForm.baseLink+'/merge'" method="post">
       <input type="hidden" name="head_commit_id" v-model="mergeForm.pullHeadCommitID">
       <input type="hidden" name="merge_when_checks_succeed" v-model="autoMergeWhenSucceed">
       <input type="hidden" name="force_merge" v-model="forceMerge">
@@ -178,7 +197,7 @@ function clearMergeMessage() {
 
     <div v-if="!showActionForm" class="tw-flex">
       <!-- the merge button -->
-      <div class="ui buttons merge-button" :class="mergeSelectStyleClass" @click="toggleActionForm(true)">
+      <div class="ui buttons merge-button" :class="mergeSelectStyleClass" @click="pressMergeButton()">
         <button class="ui button">
           <svg-icon name="octicon-git-merge"/>
           <span class="button-text">

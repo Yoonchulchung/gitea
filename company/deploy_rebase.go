@@ -111,7 +111,7 @@ func DeployRequestRebase(ctx *gitea_context.Context) {
 	// already holds every file of the snapshot — the same reason DeployPost
 	// gives (company/deploy.go).
 	files = append(files, buildRequestLogFile(ctx, central, owner, repo,
-		requestLogEntry(ctx.Doer.Name, pr.Issue.Title, "rebased onto "+central.DefaultBranch+" by @"+ctx.Doer.Name, requests, time.Now())))
+		requestLogEntry(ctx.Locale, ctx.Doer.Name, pr.Issue.Title, "rebased onto "+central.DefaultBranch+" by @"+ctx.Doer.Name, requests, time.Now())))
 
 	newBranch := deployBranchName(owner, repo, requesterID)
 	if _, err := files_service.ChangeRepoFiles(ctx, central, centralOwner, &files_service.ChangeRepoFilesOptions{

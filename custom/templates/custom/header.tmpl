@@ -300,7 +300,6 @@
 .company-fleet-tab b { font-weight: 600; margin-left: 2px; }
 .company-fleet-tab.active { background: var(--color-active); color: var(--color-text); font-weight: 600; }
 .company-fleet-controls { display: flex; gap: 12px; align-items: center; }
-.company-fleet-select { margin-left: 6px; padding: 4px 8px; border: 1px solid var(--color-secondary); border-radius: 6px; background: var(--color-input-background); color: var(--color-text); }
 .company-fleet { border: 1px solid var(--color-secondary); border-radius: 6px; overflow: hidden; }
 .company-fleet-table.ui.table { margin: 0 !important; }
 .company-fleet-table th { font-size: .8rem; color: var(--color-text-light-2); font-weight: 500; }
@@ -593,12 +592,89 @@
 	align-items: center;
 	font-size: 13px;
 }
-.company-capacity-row { display: flex; gap: 6px; align-items: flex-start; padding: 4px 0; }
-.company-capacity-row svg { flex-shrink: 0; margin-top: 2px; }
+/* "Can the server carry it" — a gauge, because the answer is a proportion
+   and four numbers in a sentence are not one. The colour is the verdict the
+   check already made, so the bar and the icon never disagree. */
+/* How a decided request ended, on the request page. Same shape as the box on
+   the department's own deploy screen, so the two read alike. */
+.company-deploy-review-outcome { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--color-secondary); border-radius: 6px; background: var(--color-secondary-alpha-30); }
+.company-deploy-review-outcome .company-deploy-reason-why { font-weight: var(--font-weight-medium); font-size: 13px; margin-bottom: 6px; }
+.company-deploy-review-outcome .company-deploy-reason-head { display: flex; align-items: center; gap: 5px; font-size: 12px; margin-bottom: 3px; }
+.company-deploy-review-outcome .company-deploy-reason-quote { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.company-deploy-review-outcome .company-deploy-reason + .company-deploy-reason { margin-top: 8px; }
+.company-perm-review-tick { width: 18px; flex-shrink: 0; }
+.company-perm-withdraw { max-width: 32rem; }
+/* Turning a request down sits beside approving it, and should not shout
+   louder than it: the icon is the timeline's, muted, not the red of the
+   button underneath. */
+.company-deploy-cancel .timeline-avatar { color: var(--color-text-light-3); }
+/* The × that hands one package back, inside its own label. */
+.company-pkg-revoke button { border: 0; background: none; padding: 0 0 0 4px; cursor: pointer; color: inherit; opacity: 0.6; }
+.company-pkg-revoke button:hover { opacity: 1; }
+.company-perm-refused { color: var(--color-red); }
+.company-error-ref { margin-top: 12px; color: var(--color-text-light-2); }
+.company-error-ref code { font-size: 15px; letter-spacing: 1px; }
+/* The approval queue's table: a title that can be long, next to two columns
+   that never are. */
+.company-approval-queue td { vertical-align: top; }
+.company-approval-title { display: flex; align-items: center; gap: 6px; font-weight: var(--font-weight-medium); min-width: 0; }
+/* Truncation from the cell's own width, not a fixed character count: the
+   title column takes whatever the other two leave. */
+.company-approval-title .gt-ellipsis { min-width: 0; }
+/* A filter that is a menu of links rather than a field in a form: choosing
+   navigates, so there is nothing to save and nothing for the unsaved-changes
+   guard to ask about. Used by the fleet list and the activity log. */
+/* Addresses as removable items rather than lines in a textarea: the box
+   looks like a field, each entry is its own thing, and the × takes one off. */
+.company-mail-body-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.company-mail-body-head label { margin: 0 !important; }
+/* The preview stands where the textarea did, at the same size, so switching
+   between them does not move the page. */
+/* Block, not the iframe default of inline: it stands exactly where the
+   textarea did, without a baseline gap under it. */
+.company-mail-preview { display: block; width: 100%; min-height: 220px; border: 1px solid var(--color-input-border); border-radius: var(--border-radius); background: #fff; }
+.company-mail-preview.tw-hidden { display: none; }
+.company-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; min-height: 38px; border: 1px solid var(--color-input-border); border-radius: var(--border-radius); background: var(--color-input-background); cursor: text; }
+.company-tags:focus-within { border-color: var(--color-primary); }
+.company-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; background: var(--color-secondary); font-size: 13px; }
+.company-tag-remove { border: 0; background: none; padding: 0; cursor: pointer; color: inherit; opacity: 0.6; font-size: 15px; line-height: 1; }
+.company-tag-remove:hover { opacity: 1; }
+.company-tag-entry { flex: 1; min-width: 12rem; border: 0 !important; background: none !important; padding: 2px 0 !important; box-shadow: none !important; }
+.company-mail-add { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.company-mail-add input { flex: 1; }
+.company-mail-list td { vertical-align: middle; }
+.company-mail-field { margin-right: 6px; }
+.company-filter-menu { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border: 1px solid var(--color-secondary); border-radius: 4px; cursor: pointer; }
+.company-filter-menu-value { font-size: 13px; font-weight: var(--font-weight-medium); }
+.company-activity-filter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.company-capacity-row { padding: 6px 0; }
+.company-capacity-row + .company-capacity-row { border-top: 1px solid var(--color-secondary); }
+.company-capacity-head { display: flex; gap: 6px; align-items: center; }
+.company-capacity-head svg { flex-shrink: 0; }
+.company-capacity-title { font-weight: var(--font-weight-medium); font-size: 13px; }
+.company-capacity-figure { margin-left: auto; font-size: 12px; color: var(--color-text-light-2); }
+/* One bar, two shades: the pale part is what the server already carries, the
+   solid part is what approving this request would add. Same hue either way —
+   the verdict must not change colour depending on how much of it is new. */
+.company-capacity-bar { display: flex; height: 8px; border-radius: 4px; background: var(--color-secondary); overflow: hidden; margin: 6px 0 4px; }
+.company-capacity-bar-fill { height: 100%; background: var(--color-green); }
+.company-capacity-bar-fill.is-base { opacity: 0.4; }
+.company-capacity-bar-fill.is-add { border-left: 1px solid var(--color-body); }
+.company-capacity-bar-fill.is-add:first-child { border-left: 0; }
+.company-capacity-split { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 12px; color: var(--color-text-light-2); margin: 0 0 2px; }
+.company-capacity-split .company-capacity-key:not(:first-child) { margin-left: 6px; }
+.company-capacity-key { width: 8px; height: 8px; border-radius: 2px; background: var(--color-green); flex-shrink: 0; }
+.company-capacity-key.is-base { opacity: 0.4; }
+.company-capacity-text { font-size: 12px; color: var(--color-text-light-2); margin: 0; }
+.company-capacity-asof { font-size: 12px; color: var(--color-text-light-2); font-style: italic; margin: 0 0 2px; }
 .company-capacity-row.ok svg { color: var(--color-green); }
 .company-capacity-row.warn svg { color: var(--color-yellow); }
+.company-capacity-row.warn .company-capacity-bar-fill,
+.company-capacity-row.warn .company-capacity-key { background: var(--color-yellow); }
 .company-capacity-row.no svg { color: var(--color-red); }
-.company-capacity-row.no { color: var(--color-red); }
+.company-capacity-row.no .company-capacity-title { color: var(--color-red); }
+.company-capacity-row.no .company-capacity-bar-fill,
+.company-capacity-row.no .company-capacity-key { background: var(--color-red); }
 .company-deploy-review-package {
 	display: flex;
 	justify-content: space-between;
@@ -662,11 +738,15 @@
 .company-perm-review-header { background: var(--color-warning-bg) !important; }
 .company-perm-review-item {
 	display: flex;
-	justify-content: space-between;
+	align-items: flex-start;
 	gap: 12px;
 	padding: 8px 0;
 	border-bottom: 1px solid var(--color-secondary);
 }
+/* The whole row is the label, so the text is a target too — these rows are
+   read by someone deciding, not aimed at by someone practised. */
+.company-perm-review-item:has(input) { cursor: pointer; }
+.company-perm-review-item > div:last-child { flex: 1; }
 .company-perm-review-item:last-child { border-bottom: 0; }
 </style>
 

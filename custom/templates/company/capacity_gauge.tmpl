@@ -1,0 +1,23 @@
+{{/* One capacity answer, drawn: two shades of a bar — what the server already
+     carries and what approving this would add — with the arithmetic behind it
+     as the tooltip. Used inside the requested-permissions panel, on the item
+     the figures are about. See company/deploy_capacity.go. */}}
+<div class="company-capacity-row {{.State}}" title="{{.Text}}">
+	<div class="company-capacity-head">
+		{{if eq .State "ok"}}{{svg "octicon-check-circle" 12}}{{else if eq .State "warn"}}{{svg "octicon-alert" 12}}{{else}}{{svg "octicon-x-circle" 12}}{{end}}
+		<span class="company-capacity-figure">{{.Figure}}</span>
+	</div>
+	<div class="company-capacity-bar">
+		<div class="company-capacity-bar-fill is-base" style="width: {{.BaseFill}}%"></div>
+		<div class="company-capacity-bar-fill is-add" style="width: {{.AddFill}}%"></div>
+	</div>
+	{{/* Said plainly when these are not today's numbers: the same bar means a
+	     different thing under a request that has already been decided. */}}
+	{{with .RecordedAt}}<p class="company-capacity-asof">{{ctx.Locale.Tr "company.review.capacity_as_of" (DateUtils.AbsoluteShort .)}}</p>{{end}}
+	{{with .AddText}}
+		<p class="company-capacity-split">
+			<span class="company-capacity-key is-base"></span>{{$.BaseText}}
+			<span class="company-capacity-key"></span>{{.}}
+		</p>
+	{{end}}
+</div>

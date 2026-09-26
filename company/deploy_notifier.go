@@ -58,17 +58,68 @@ func (*deployBranchCleanupNotifier) IssueChangeStatus(ctx context.Context, _ *us
 		return
 	}
 	stopPreviewForPR(issue.PullRequest)
+	recordCapacityOnClose(ctx, issue.PullRequest)
+	notifyRequestEnded(ctx, issue.PullRequest)
 	cleanupDeployBranch(ctx, issue.PullRequest)
 }
 
+// notifyRequestEnded mails the rule for a request that closed without being
+// approved — withdrawn by the department or turned down by an administrator.
+// The merge path has its own event, so this one only fires for the rest.
+func notifyRequestEnded(ctx context.Context, pr *issues_model.PullRequest) {
+	if pr.HasMerged {
+		return
+	}
+	owner, repo, _, ok := parseDeployBranchName(pr.HeadBranch)
+	if !ok {
+		return
+	}
+	centralOwner, centralName, err := centralDeployOwnerName()
+	if err != nil {
+		return
+	}
+	if err := pr.LoadBaseRepo(ctx); err != nil || pr.BaseRepo.OwnerName != centralOwner || pr.BaseRepo.Name != centralName {
+		return
+	}
+	fields := MailFields{"app": owner + "/" + repo, "title": pr.Issue.Title, "link": pr.Issue.HTMLURL(ctx)}
+	if c := lastDecisionComment(ctx, pr.Issue.ID); c != nil {
+		if err := c.LoadPoster(ctx); err == nil && c.Poster != nil {
+			fields["actor"] = c.Poster.Name
+		}
+		fields["reason"] = strings.TrimPrefix(c.Content, cancelCommentPrefix)
+	}
+	NotifyMail(ctx, MailEventRejected, fields)
+}
+
+// recordCapacityOnClose freezes the server's figures onto a deploy request as
+// it is decided, whichever way it went — see
+// company.RecordCapacityOnDecision. Called from every close and merge path,
+// because all three outcomes are somebody deciding.
+func recordCapacityOnClose(ctx context.Context, pr *issues_model.PullRequest) {
+	owner, repo, _, ok := parseDeployBranchName(pr.HeadBranch)
+	if !ok {
+		return
+	}
+	centralOwner, centralName, err := centralDeployOwnerName()
+	if err != nil {
+		return
+	}
+	if err := pr.LoadBaseRepo(ctx); err != nil || pr.BaseRepo.OwnerName != centralOwner || pr.BaseRepo.Name != centralName {
+		return
+	}
+	RecordCapacityOnDecision(owner, repo, pr.ID)
+}
+
 func (*deployBranchCleanupNotifier) MergePullRequest(ctx context.Context, doer *user_model.User, pr *issues_model.PullRequest) {
-	stopPreviewForPR(pr) // before the deploy builds, so the two never share a moment
+	stopPreviewForPR(pr)           // before the deploy builds, so the two never share a moment
+	recordCapacityOnClose(ctx, pr) // before the approval changes the fleet it is measuring
 	queueDeployOnMerge(ctx, doer, pr)
 	cleanupDeployBranch(ctx, pr)
 }
 
 func (*deployBranchCleanupNotifier) AutoMergePullRequest(ctx context.Context, doer *user_model.User, pr *issues_model.PullRequest) {
 	stopPreviewForPR(pr)
+	recordCapacityOnClose(ctx, pr)
 	queueDeployOnMerge(ctx, doer, pr)
 	cleanupDeployBranch(ctx, pr)
 }
@@ -126,9 +177,17 @@ func queueDeployOnMerge(ctx context.Context, doer *user_model.User, pr *issues_m
 	// that needs them is built — a package approved in the same merge has to
 	// be installable by the worker that picks the job up next.
 	if doer != nil {
-		ApplyPermissionsOnMerge(ctx, doer, owner, repo, pr.ID)
+		ApplyPermissionsOnMerge(ctx, doer, owner, repo, pr.ID, pr.MergedCommitID)
 	}
 	enqueueDeploy(owner, repo, pr.MergedCommitID, pr.ID, prior)
+
+	NotifyMail(ctx, MailEventApproved, MailFields{
+		"app":    owner + "/" + repo,
+		"title":  pr.Issue.Title,
+		"actor":  actor,
+		"link":   pr.Issue.HTMLURL(ctx),
+		"reason": "",
+	})
 }
 
 // cleanupDeployBranch deletes pr.HeadBranch on the central deploy repo,

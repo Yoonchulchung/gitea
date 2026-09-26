@@ -6,6 +6,7 @@ package repo
 import (
 	"errors"
 	"fmt"
+	"html/template"
 	"math/big"
 	"net/http"
 	"sort"
@@ -485,6 +486,25 @@ func prepareIssueViewSidebarDependency(ctx *context.Context, issue *issues_model
 func (prInfo *pullRequestViewInfo) prepareMergeBoxCommitSigning(ctx *context.Context) {
 	pull := prInfo.issue.PullRequest
 	data := prInfo.MergeBoxData
+
+	// company: on a Deploy Request the question above the button is not
+	// whether the merge commit will be signed — nobody on this instance has a
+	// key and nobody is asking — but whether the person about to press
+	// "Approve deploy" is allowed to. Only a site administrator is, and the
+	// merge itself refuses anyone else (company.GuardDeployApproval); saying
+	// so here means they find out before pressing rather than after. See
+	// docs/company/central-repo-ui.md.
+	if _, isDeployRequest := ctx.Data["CompanyMergeLabel"].(template.HTML); isDeployRequest {
+		if ctx.Doer != nil && ctx.Doer.IsAdmin {
+			data.infoMergePrompts.AddInfoItem(
+				svg.RenderHTML("octicon-shield-check", 16, "tw-text-green"),
+				ctx.Locale.Tr("company.review.approver_allowed", ctx.Doer.Name),
+			)
+		} else {
+			data.infoProtectionBlockers.AddErrorItem(ctx.Locale.Tr("company.review.approver_refused"))
+		}
+		return
+	}
 
 	pb := prInfo.ProtectedBranchRule
 	data.requireSigned = pb != nil && pb.RequireSignedCommits

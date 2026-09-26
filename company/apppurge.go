@@ -101,7 +101,7 @@ func removeAppFromCentral(ctx *context.Context, doer *user_model.User, owner, re
 		files = append(files, &files_service.ChangeRepoFile{Operation: "delete", TreePath: prefix + "/" + path})
 	}
 	files = append(files, buildRequestLogFile(ctx, central, owner, repo,
-		requestLogEntry(doer.Name, title, "removed by an administrator: the repository is gone", nil, time.Now())))
+		requestLogEntry(ctx.Locale, doer.Name, title, "removed by an administrator: the repository is gone", nil, time.Now())))
 	_, err = files_service.ChangeRepoFiles(ctx, central, doer, &files_service.ChangeRepoFilesOptions{
 		OldBranch: central.DefaultBranch,
 		NewBranch: central.DefaultBranch,

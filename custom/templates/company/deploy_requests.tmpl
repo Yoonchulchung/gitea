@@ -28,6 +28,28 @@
 							<div class="ui basic label">{{ctx.Locale.Tr "company.deploy_requests.pending_review"}}</div>
 						</div>
 					</div>
+					{{/* What this request asks to be allowed. Until somebody decides,
+					     the requester can take an item back — a whole request
+					     cancelled and resubmitted because one line of it was wrong
+					     is a request that goes to the back of the queue for no
+					     reason. See docs/company/permission-lifecycle.md. */}}
+					{{if .Items}}
+						<form method="post" action="{{AppSubUrl}}/company/deploy-request/{{.ID}}/permissions" class="ui form tw-mt-2 company-perm-withdraw">
+							{{$.CsrfTokenHtml}}
+							<input type="hidden" name="org" value="{{$.Org.Name}}">
+							<div class="text-grey tw-text-13">{{ctx.Locale.Tr "company.deploy_requests.items_header"}}</div>
+							{{range .Items}}
+								<label class="company-perm-review-item">
+									<div class="company-perm-review-tick"><input type="checkbox" name="perm" value="{{.ID}}" checked></div>
+									<div class="tw-text-13">
+										<strong>{{if ctx.Locale.HasKey .Label}}{{ctx.Locale.Tr .Label}}{{else}}{{.Label}}{{end}}</strong> — {{if .DetailKey}}{{ctx.Locale.Tr .DetailKey}}{{else}}{{.Detail}}{{end}}
+									</div>
+								</label>
+							{{end}}
+							<button type="submit" class="ui tiny button tw-mt-2">{{ctx.Locale.Tr "company.deploy_requests.items_save"}}</button>
+							<span class="text-grey tw-text-12 tw-ml-2">{{ctx.Locale.Tr "company.deploy_requests.items_hint"}}</span>
+						</form>
+					{{end}}
 					<div class="tw-mt-2 tw-flex tw-items-center tw-gap-3 tw-text-13">
 						<a href="{{$.ContextUser.DashboardLink}}/deploy-requests/{{.ID}}">{{ctx.Locale.Tr "company.deploy_requests.view_files"}}</a>
 						{{if .CanCancel}}

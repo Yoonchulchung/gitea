@@ -29,20 +29,36 @@ func TestDashboardDeploysRendersWithoutAdminData(t *testing.T) {
 			}
 			return a + b
 		},
+		"dict": func(args ...any) map[string]any {
+			m := map[string]any{}
+			for i := 0; i+1 < len(args); i += 2 {
+				m[args[i].(string)] = args[i+1]
+			}
+			return m
+		},
 	}
-	tmpl, err := template.New("root").Funcs(funcs).ParseFiles("../custom/templates/company/dashboard_deploys.tmpl")
+	// The pager it includes is parsed with it: a sub-template Gitea resolves
+	// at runtime is a parse error here, which is what this test would report
+	// instead of what it is about.
+	tmpl, err := template.New("root").Funcs(funcs).ParseFiles(
+		"../custom/templates/company/dashboard_deploys.tmpl",
+		"../custom/templates/company/pager.tmpl",
+	)
+	require.NoError(t, err)
+	_, err = tmpl.AddParseTree("company/pager", tmpl.Lookup("pager.tmpl").Tree)
 	require.NoError(t, err)
 
 	var out strings.Builder
 	require.NoError(t, tmpl.ExecuteTemplate(&out, "dashboard_deploys.tmpl", map[string]any{}))
 	assert.Empty(t, strings.TrimSpace(out.String()))
 
+	// With rows but no pager the panel still renders — the pager is a separate
+	// piece of data, and a missing one must not take the list with it.
 	out.Reset()
 	require.NoError(t, tmpl.ExecuteTemplate(&out, "dashboard_deploys.tmpl", map[string]any{
-		"DashboardDeployPage": 2, "DashboardDeployHasNext": true,
-		"DashboardDeploys": []dashboardDeploy{{Owner: "PO", Repo: "app", Title: "t", Link: "/x", AppLink: "/y"}},
+		"DashboardDeployPage": 2,
+		"DashboardDeploys":    []dashboardDeploy{{Owner: "PO", Repo: "app", Title: "t", Link: "/x", AppLink: "/y"}},
 	}))
-	assert.Contains(t, out.String(), "?deploys=1")
-	assert.Contains(t, out.String(), "?deploys=3")
 	assert.Contains(t, out.String(), "PO/app")
+	assert.Contains(t, out.String(), "/x")
 }

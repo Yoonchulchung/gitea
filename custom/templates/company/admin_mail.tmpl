@@ -1,0 +1,135 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-mail")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.mail.server_header"}}</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.mail.server_explain"}}</p>
+			<form class="ui form" method="post" action="{{AppSubUrl}}/-/admin/company-mail/server">
+				{{.CsrfTokenHtml}}
+				<div class="inline fields">
+					<div class="field tw-flex-1">
+						<label for="host">{{ctx.Locale.Tr "company.mail.host"}}</label>
+						<input id="host" name="host" value="{{.MailServer.Host}}" placeholder="smtp.example.com">
+					</div>
+					<div class="field">
+						<label for="port">{{ctx.Locale.Tr "company.mail.port"}}</label>
+						<input id="port" name="port" type="number" min="1" max="65535" value="{{if .MailServer.Port}}{{.MailServer.Port}}{{end}}" placeholder="587">
+					</div>
+					<div class="field">
+						<label for="security">{{ctx.Locale.Tr "company.mail.security"}}</label>
+						<select id="security" name="security">
+							<option value="starttls" {{if eq .MailServer.Security "starttls"}}selected{{end}}>STARTTLS</option>
+							<option value="tls" {{if eq .MailServer.Security "tls"}}selected{{end}}>TLS</option>
+							<option value="none" {{if eq .MailServer.Security "none"}}selected{{end}}>{{ctx.Locale.Tr "company.mail.security_none"}}</option>
+						</select>
+					</div>
+				</div>
+				<div class="inline fields">
+					<div class="field tw-flex-1">
+						<label for="username">{{ctx.Locale.Tr "company.mail.username"}}</label>
+						<input id="username" name="username" value="{{.MailServer.Username}}" autocomplete="off">
+					</div>
+					<div class="field tw-flex-1">
+						<label for="password">{{ctx.Locale.Tr "company.mail.password"}}</label>
+						<input id="password" name="password" type="password" autocomplete="new-password"
+						       placeholder="{{if .MailPasswordSet}}{{ctx.Locale.Tr "company.mail.password_kept"}}{{else}}{{ctx.Locale.Tr "company.mail.password_none"}}{{end}}">
+					</div>
+				</div>
+				{{if .MailPasswordSet}}
+					{{/* Blank keeps what is stored, so removing it needs its own action. */}}
+					<div class="field">
+						<div class="ui checkbox">
+							<input id="clear_password" type="checkbox" name="clear_password" value="true">
+							<label for="clear_password">{{ctx.Locale.Tr "company.mail.password_clear"}}</label>
+						</div>
+					</div>
+				{{end}}
+				<div class="inline fields">
+					<div class="field tw-flex-1">
+						<label for="from">{{ctx.Locale.Tr "company.mail.from"}}</label>
+						<input id="from" name="from" value="{{.MailServer.From}}" placeholder="platform@example.com">
+					</div>
+					<div class="field tw-flex-1">
+						<label for="from_name">{{ctx.Locale.Tr "company.mail.from_name"}}</label>
+						<input id="from_name" name="from_name" value="{{.MailServer.FromName}}">
+					</div>
+				</div>
+				<div class="field">
+					<div class="ui checkbox">
+						<input id="skip_verify" type="checkbox" name="skip_verify" value="true" {{if .MailServer.SkipVerify}}checked{{end}}>
+						<label for="skip_verify">{{ctx.Locale.Tr "company.mail.skip_verify"}}</label>
+					</div>
+					<p class="text-grey tw-text-12 tw-mt-1">{{ctx.Locale.Tr "company.mail.skip_verify_explain"}}</p>
+				</div>
+				<button class="ui primary button">{{ctx.Locale.Tr "company.adminsettings.save"}}</button>
+			</form>
+		</div>
+
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.mail.test_header"}}</h4>
+		<div class="ui attached segment">
+			<form class="ui form company-mail-test" method="post" action="{{AppSubUrl}}/-/admin/company-mail/test">
+				{{.CsrfTokenHtml}}
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.mail.test_explain"}}</p>
+				<div class="inline fields">
+					<div class="field tw-flex-1">
+						<input name="test_to" placeholder="{{ctx.Locale.Tr "company.mail.test_to"}}">
+					</div>
+					<div class="field">
+						<button class="ui button" {{if not .MailConfigured}}disabled{{end}}>{{ctx.Locale.Tr "company.mail.test_send"}}</button>
+					</div>
+				</div>
+			</form>
+		</div>
+
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.mail.rules_header"}}</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.mail.rules_explain"}}</p>
+
+			{{/* Adding one opens it: an empty row on a list is something somebody
+			     has to remember to come back and fill in. */}}
+			<form class="ui form company-mail-add" method="post" action="{{AppSubUrl}}/-/admin/company-mail/add">
+				{{.CsrfTokenHtml}}
+				<input name="name" placeholder="{{ctx.Locale.Tr "company.mail.rule_name_placeholder"}}">
+				<select name="event">
+					{{range .MailEventList}}<option value="{{.}}">{{ctx.Locale.Tr (printf "company.mail.event.%s" .)}}</option>{{end}}
+				</select>
+				<button class="ui primary button">{{ctx.Locale.Tr "company.mail.rule_add"}}</button>
+			</form>
+
+			<table class="ui very basic table company-mail-list">
+				<thead>
+					<tr>
+						<th>{{ctx.Locale.Tr "company.mail.rule_name"}}</th>
+						<th>{{ctx.Locale.Tr "company.mail.rule_event"}}</th>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.mail.to"}}</th>
+						<th class="tw-text-right tw-w-1/5"></th>
+					</tr>
+				</thead>
+				<tbody>
+					{{range .MailRules}}
+						<tr>
+							<td><a href="{{AppSubUrl}}/-/admin/company-mail/{{.ID}}"><strong>{{.Name}}</strong></a></td>
+							<td class="tw-text-13">{{ctx.Locale.Tr (printf "company.mail.event.%s" .Event)}}</td>
+							<td class="tw-text-13">{{if .To}}{{ctx.Locale.Tr "company.mail.to_count" (len .To)}}{{else}}<span class="text-red">{{ctx.Locale.Tr "company.mail.to_none"}}</span>{{end}}</td>
+							<td class="tw-text-right">
+								<form method="post" action="{{AppSubUrl}}/-/admin/company-mail/{{.ID}}/toggle" class="tw-inline">
+									{{$.CsrfTokenHtml}}
+									<input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
+									<button class="ui tiny {{if .Enabled}}green{{else}}basic{{end}} button">
+										{{if .Enabled}}{{ctx.Locale.Tr "company.mail.rule_on"}}{{else}}{{ctx.Locale.Tr "company.mail.rule_off"}}{{end}}
+									</button>
+								</form>
+								<form method="post" action="{{AppSubUrl}}/-/admin/company-mail/{{.ID}}/delete" class="tw-inline"
+								      data-company-confirm="{{ctx.Locale.Tr "company.mail.rule_delete_confirm" .Name}}">
+									{{$.CsrfTokenHtml}}
+									<button class="ui tiny basic red button">{{ctx.Locale.Tr "company.mail.rule_delete"}}</button>
+								</form>
+							</td>
+						</tr>
+					{{else}}
+						<tr><td colspan="4" class="text-grey">{{ctx.Locale.Tr "company.mail.rules_none"}}</td></tr>
+					{{end}}
+				</tbody>
+			</table>
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}

@@ -95,7 +95,7 @@ func RequestRemoval(ctx *gitea_context.Context) error {
 		files = append(files, &files_service.ChangeRepoFile{Operation: "delete", TreePath: prefix + "/" + path})
 	}
 	files = append(files, buildRequestLogFile(ctx, central, owner, name,
-		requestLogEntry(ctx.Doer.Name, title, "removal requested", nil, time.Now())))
+		requestLogEntry(ctx.Locale, ctx.Doer.Name, title, "removal requested", nil, time.Now())))
 
 	newBranch := deployBranchName(owner, name, ctx.Doer.ID) + removalBranchSuffix
 	if _, err := files_service.ChangeRepoFiles(ctx, central, centralOwner, &files_service.ChangeRepoFilesOptions{

@@ -1,0 +1,32 @@
+{{/*
+	Override of templates/repo/issue/openclose.tmpl. One change: on the
+	central deploy repository's pull list, "Open"/"Closed" are the wrong
+	words — that list is the approval queue, so it says "waiting for
+	approval" / "decided". See docs/company/central-repo-ui.md.
+	Keep in sync with the upstream file; diff it on every Gitea upgrade.
+*/}}
+{{/* this tmpl is quite dirty, it should not mix unrelated things together .... need to split it in the future*/}}
+{{$allStatesLink := ""}}{{$openLink := ""}}{{$closedLink := ""}}
+{{$projectIDsQuery := SliceUtils.JoinInt64 $.ProjectIDs}}
+{{if .PageIsMilestones}}
+	{{$allStatesLink = QueryBuild "?" "q" $.Keyword "sort" $.SortType "state" "all"}}
+{{else}}
+	{{$allStatesLink = QueryBuild "?" "q" $.Keyword "type" $.ViewType "sort" $.SortType "state" "all" "labels" $.SelectLabels "milestone" $.MilestoneID "project" $projectIDsQuery "assignee" $.AssigneeID "poster" $.PosterUsername "archived_labels" (Iif $.ShowArchivedLabels "true")}}
+{{end}}
+{{$isApprovalQueue := and .PageIsPullList .CompanyCentralRepoPath .Repository (eq (printf "%s/%s" .Repository.OwnerName .Repository.Name) .CompanyCentralRepoPath)}}
+{{$openLink = QueryBuild $allStatesLink "state" "open"}}
+{{$closedLink = QueryBuild $allStatesLink "state" "closed"}}
+<div class="small-menu-items ui compact tiny menu">
+	<a class="{{if eq .State "open"}}active {{end}}item flex-text-inline" href="{{if eq .State "open"}}{{$allStatesLink}}{{else}}{{$openLink}}{{end}}">
+		{{if .PageIsMilestones}}
+			{{svg "octicon-milestone"}}
+		{{else}}
+			{{Iif .PageIsPullList (svg "octicon-git-pull-request") (svg "octicon-issue-opened")}}
+		{{end}}
+		{{ctx.Locale.PrettyNumber .OpenCount}} {{if $isApprovalQueue}}{{ctx.Locale.Tr "company.review.state_waiting"}}{{else}}{{ctx.Locale.Tr "repo.issues.open_title"}}{{end}}
+	</a>
+	<a class="{{if eq .State "closed"}}active {{end}}item flex-text-inline" href="{{if eq .State "closed"}}{{$allStatesLink}}{{else}}{{$closedLink}}{{end}}">
+		{{svg "octicon-issue-closed"}}
+		{{ctx.Locale.PrettyNumber .ClosedCount}} {{if $isApprovalQueue}}{{ctx.Locale.Tr "company.review.state_done"}}{{else}}{{ctx.Locale.Tr "repo.issues.closed_title"}}{{end}}
+	</a>
+</div>

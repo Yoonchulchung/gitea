@@ -18,11 +18,26 @@ import (
 // organization and once for every watcher. Filtering only by repo_id showed
 // all of them, and the same event appeared three times in a row.
 func TestAdminActivityKeepsOneRowPerAction(t *testing.T) {
-	sql, args, err := builder.ToSQL(oneRowPerAction())
+	sql, args, err := builder.ToSQL(oneRowPerAction(0))
 	require.NoError(t, err)
 
 	assert.Contains(t, sql, "user_id IN", "the feed must pick one reader's copy")
 	assert.Contains(t, sql, "FROM user", "and that reader is the repository's organization")
 	require.Len(t, args, 1)
 	assert.EqualValues(t, user_model.UserTypeOrganization, args[0])
+}
+
+// Narrowed to one department it is still one row per action — the copy kept
+// is that department's own, not every reader's.
+func TestAdminActivityByDepartmentKeepsTheOrgsCopy(t *testing.T) {
+	sql, args, err := builder.ToSQL(oneRowPerAction(42))
+	require.NoError(t, err)
+	assert.Equal(t, "user_id=?", sql)
+	assert.Equal(t, []any{int64(42)}, args)
+
+	sql, args, err = builder.ToSQL(orgOwnedRepoIDs(42))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "owner_id=?")
+	assert.NotContains(t, sql, "owner_id IN", "one department means one owner, not every organization")
+	assert.Equal(t, []any{int64(42)}, args)
 }

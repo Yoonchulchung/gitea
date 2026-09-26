@@ -87,8 +87,14 @@
 		     doing. Ticked rows can be stopped or started together
 		     (company/admin_bulk.go; the counting and the auto-submitting
 		     selects are in web_src/js/features/company-app-charts.ts). */}}
-		<form method="get" class="company-fleet-toolbar" id="fleet-filters">
-			<input type="hidden" name="page" value="1">
+		{{/* Links, not a form. A filter that navigates the moment it changes has
+		     nothing to save, but a <select> inside a <form> is tracked as an
+		     unsaved edit (web_src/js/modules/are-you-sure.ts) — and because the
+		     change event reaches the form after the auto-submit, it was marked
+		     dirty again on the way out and the browser asked whether to leave.
+		     The state tabs beside these were already links; now the whole
+		     toolbar is one kind of thing. */}}
+		<div class="company-fleet-toolbar">
 			<div class="company-fleet-tabs">
 				{{$q := .}}
 				<a class="company-fleet-tab{{if or (eq .ListState "") (eq .ListState "all")}} active{{end}}" href="?state=all&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.admin.tab_all"}} <b>{{.CountTotal}}</b></a>
@@ -98,22 +104,31 @@
 				<a class="company-fleet-tab{{if eq .ListState "undeployed"}} active{{end}}" href="?state=undeployed&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.admin.tab_undeployed"}} <b>{{.CountUndeployed}}</b></a>
 			</div>
 			<div class="company-fleet-controls">
-				<input type="hidden" name="state" value="{{.ListState}}">
-				<label class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.filter_owner"}}
-					<select name="owner" class="company-fleet-select">
-						<option value="">{{ctx.Locale.Tr "company.admin.tab_all"}}</option>
-						{{range .Owners}}<option value="{{.}}" {{if eq $.ListOwner .}}selected{{end}}>{{.}}</option>{{end}}
-					</select>
-				</label>
-				<label class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.filter_sort"}}
-					<select name="sort" class="company-fleet-select">
-						<option value="recent" {{if or (eq .ListSort "") (eq .ListSort "recent")}}selected{{end}}>{{ctx.Locale.Tr "company.admin.sort_recent"}}</option>
-						<option value="name" {{if eq .ListSort "name"}}selected{{end}}>{{ctx.Locale.Tr "company.admin.sort_name"}}</option>
-						<option value="memory" {{if eq .ListSort "memory"}}selected{{end}}>{{ctx.Locale.Tr "company.admin.sort_memory"}}</option>
-					</select>
-				</label>
+				{{$sortNames := dict "recent" (ctx.Locale.Tr "company.admin.sort_recent") "name" (ctx.Locale.Tr "company.admin.sort_name") "memory" (ctx.Locale.Tr "company.admin.sort_memory")}}
+				{{$sort := or .ListSort "recent"}}
+				<div class="ui dropdown jump company-filter-menu">
+					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.filter_owner"}}</span>
+					<span class="company-filter-menu-value">{{if .ListOwner}}{{.ListOwner}}{{else}}{{ctx.Locale.Tr "company.admin.tab_all"}}{{end}}</span>
+					{{svg "octicon-triangle-down" 14 "dropdown icon"}}
+					<div class="menu">
+						<a class="item{{if not .ListOwner}} active{{end}}" href="?state={{.ListState}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.admin.tab_all"}}</a>
+						{{range .Owners}}
+							<a class="item{{if eq $.ListOwner .}} active{{end}}" href="?state={{$.ListState}}&owner={{PathEscape .}}&sort={{$.ListSort}}">{{.}}</a>
+						{{end}}
+					</div>
+				</div>
+				<div class="ui dropdown jump company-filter-menu">
+					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.filter_sort"}}</span>
+					<span class="company-filter-menu-value">{{index $sortNames $sort}}</span>
+					{{svg "octicon-triangle-down" 14 "dropdown icon"}}
+					<div class="menu">
+						<a class="item{{if eq $sort "recent"}} active{{end}}" href="?state={{.ListState}}&owner={{.ListOwner}}&sort=recent">{{ctx.Locale.Tr "company.admin.sort_recent"}}</a>
+						<a class="item{{if eq $sort "name"}} active{{end}}" href="?state={{.ListState}}&owner={{.ListOwner}}&sort=name">{{ctx.Locale.Tr "company.admin.sort_name"}}</a>
+						<a class="item{{if eq $sort "memory"}} active{{end}}" href="?state={{.ListState}}&owner={{.ListOwner}}&sort=memory">{{ctx.Locale.Tr "company.admin.sort_memory"}}</a>
+					</div>
+				</div>
 			</div>
-		</form>
+		</div>
 		<form method="post" action="{{AppSubUrl}}/-/admin/company-deploys/bulk" class="company-fleet" id="fleet-bulk">
 			{{.CsrfTokenHtml}}
 			<table class="ui very basic table company-fleet-table">

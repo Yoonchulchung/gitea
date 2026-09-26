@@ -1,0 +1,34 @@
+{{/* The department filter on the approval queue.
+     Built from repo/issue/filter_item_label: every Deploy Request carries a
+     label for its department and one for its app (company/labels.go), so
+     filtering by department is filtering by the labels that name one — the
+     app labels ("PO/report") are left out here, and the dropdown is named for
+     what it actually selects. No archived-label toggle and no exclusive
+     scopes: these labels are created by the platform and have neither.
+     Attributes: QueryLink, Labels. */}}
+{{$queryLink := .QueryLink}}
+{{$depts := .Labels}}
+{{/* Not "label-filter": that class makes repo-issue.ts's label filter take
+     this over, and it requires elements this dropdown has no use for (an
+     exclude hint, an archived toggle, a "no label" entry). These are plain
+     links — the page reloads with the department applied. */}}
+<div class="item ui dropdown jump {{if not $depts}}disabled{{end}} company-dept-filter">
+	<span class="text">{{ctx.Locale.Tr "company.review.filter_dept"}}</span>
+	{{svg "octicon-triangle-down" 14 "dropdown icon"}}
+	<div class="menu flex-items-menu">
+		<div class="ui icon search input">
+			<i class="icon">{{svg "octicon-search" 16}}</i>
+			<input type="text" placeholder="{{ctx.Locale.Tr "company.review.filter_dept"}}">
+		</div>
+		<a class="item" href="{{QueryBuild $queryLink "labels" NIL}}">{{ctx.Locale.Tr "company.review.filter_dept_all"}}</a>
+		<div class="divider"></div>
+		{{range $depts}}
+			{{if not (StringUtils.Contains .Name "/")}}
+				<a class="item" href="{{QueryBuild $queryLink "labels" .QueryString}}">
+					{{if .IsSelected}}{{svg "octicon-check"}}{{end}}
+					{{ctx.RenderUtils.RenderLabel .}}
+				</a>
+			{{end}}
+		{{end}}
+	</div>
+</div>

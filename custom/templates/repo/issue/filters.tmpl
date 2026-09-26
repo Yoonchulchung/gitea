@@ -1,0 +1,36 @@
+{{/*
+	Override of templates/repo/issue/filters.tmpl. One change: no select-all
+	checkbox on the central repository's approval queue. That list is a table
+	with no per-row checkboxes (company/approval_queue.go), so the box selects
+	nothing and the bulk-action panel behind it can never appear — a control
+	that cannot do anything is worse than no control.
+	See docs/company/central-repo-ui.md.
+	Keep in sync with the upstream file; diff it on every Gitea upgrade.
+*/}}
+<div id="issue-filters" class="issue-list-toolbar">
+	<div class="issue-list-toolbar-left">
+		{{$isApprovalQueue := and .PageIsPullList .CompanyCentralRepoPath .Repository (eq (printf "%s/%s" .Repository.OwnerName .Repository.Name) .CompanyCentralRepoPath)}}
+		{{if and (not $isApprovalQueue) $.CanWriteIssuesOrPulls .Issues}}
+			<input type="checkbox" autocomplete="off" class="issue-checkbox-all tw-mr-4" title="{{ctx.Locale.Tr "repo.issues.action_check_all"}}">
+		{{end}}
+		{{template "repo/issue/openclose" .}}
+		<!-- Total Tracked Time -->
+		{{if .TotalTrackedTime}}
+			<div class="ui compact tiny secondary menu">
+				<span class="item" data-tooltip-content='{{ctx.Locale.Tr "tracked_time_summary"}}'>
+					{{svg "octicon-clock"}}
+					{{.TotalTrackedTime | Sec2Hour}}
+				</span>
+			</div>
+		{{end}}
+	</div>
+	<div class="issue-list-toolbar-right">
+		<div class="ui secondary filter menu labels">
+			{{if .PageIsMilestones}}
+				{{template "repo/issue/milestone/filter_list" .}}
+			{{else}}
+				{{template "repo/issue/filter_list" .}}
+			{{end}}
+		</div>
+	</div>
+</div>

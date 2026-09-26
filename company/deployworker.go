@@ -173,6 +173,14 @@ func failBuild(owner, repo, reason, message, restore string, userMessage ...stri
 
 func recordDeployFailure(owner, repo, reason, message, actual string, userMessage ...string) {
 	log.Error("company: deploy %s/%s failed (%s): %s", owner, repo, reason, message)
+	// Every deploy failure passes through here, so this is where the one
+	// notification for it belongs — see company/mailrules.go. Its own context:
+	// the request that started this is long gone, and a mail must not be
+	// cancelled because a build was.
+	go NotifyMail(graceful.GetManager().ShutdownContext(), MailEventFailed, MailFields{
+		"app":    owner + "/" + repo,
+		"reason": reason,
+	})
 	// Bounded: the state file is re-read on every dashboard load, and a
 	// requirements.txt of a thousand lines had put all of them in it twice.
 	message = util.TruncateRunes(message, 4000)

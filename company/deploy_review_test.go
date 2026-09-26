@@ -47,3 +47,14 @@ func TestDeployReviewContextSaysWhatIsMissing(t *testing.T) {
 	assert.Contains(t, long, "get_diff returns all of it")
 	assert.Contains(t, long, "No extra permissions are requested.")
 }
+
+// The bar is drawn from a division the approver never sees, so the two
+// cases that would make it lie are pinned: nothing left to give, and asking
+// for more than there is.
+func TestBarFillClampsAndSurvivesAnEmptyServer(t *testing.T) {
+	assert.Equal(t, 75, barFill(768, 1024))
+	assert.Equal(t, 100, barFill(2048, 1024)) // over-committed: a full bar, not 200%
+	assert.Equal(t, 100, barFill(1, 0))       // no room at all
+	assert.Equal(t, 100, barFill(1, -50))     // the floor already ate the volume
+	assert.Equal(t, 0, barFill(0, 1024))
+}

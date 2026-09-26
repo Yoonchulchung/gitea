@@ -16,6 +16,9 @@ import {
   type Plugin,
 } from 'chart.js';
 import {chartJsColors} from '../utils/color.ts';
+import {POST} from '../modules/fetch.ts';
+import {toggleElem} from '../utils/dom.ts';
+import {htmlEscape} from '../utils/html.ts';
 import dayjs from 'dayjs';
 
 // The admin app dashboard's charts. chart.js is already bundled (it drives
@@ -235,14 +238,11 @@ export function initCompanyKpiEdit() {
   }
 }
 
-// The app list: the owner and sort selects apply themselves, the header
-// checkbox ticks every row, and the bulk buttons appear with a count once
-// something is ticked.
+// The app list: the header checkbox ticks every row, and the bulk buttons
+// appear with a count once something is ticked. The owner and sort filters
+// are plain links (custom/templates/company/admin_deploys.tmpl) and need
+// nothing from here.
 export function initCompanyFleet() {
-  const filters = document.querySelector<HTMLFormElement>('#fleet-filters');
-  for (const select of filters?.querySelectorAll('select') ?? []) {
-    select.addEventListener('change', () => filters!.requestSubmit());
-  }
   const bulk = document.querySelector<HTMLFormElement>('#fleet-bulk');
   if (!bulk) return;
   const all = bulk.querySelector<HTMLInputElement>('.company-fleet-check-all');
@@ -266,6 +266,121 @@ export function initCompanyFleet() {
 // Destructive controls (stop, remove, rollback) ask first. Stopping an app
 // disconnects whoever is using it right now, which is not obvious from a
 // button labelled "중지".
+// The mail body, seen as HTML. The server renders it through the same
+// substitution the real message uses, and it is shown in a sandboxed frame:
+// the administrator's own markup should neither run in this page nor inherit
+// its styles — a preview that looks like Gitea is not a preview of a mail.
+export function initCompanyMailPreview() {
+  for (const field of document.querySelectorAll<HTMLElement>('.company-mail-body')) {
+    const textarea = field.querySelector<HTMLTextAreaElement>('textarea')!;
+    const frame = field.querySelector<HTMLIFrameElement>('.company-mail-preview')!;
+    const tabs = field.querySelectorAll<HTMLButtonElement>('[data-mail-tab]');
+    const url = field.getAttribute('data-preview-url')!;
+
+    const show = async (which: string) => {
+      for (const tab of tabs) tab.classList.toggle('active', tab.getAttribute('data-mail-tab') === which);
+      const preview = which === 'preview';
+      toggleElem(textarea, !preview);
+      toggleElem(frame, preview);
+      if (!preview) return;
+      frame.srcdoc = '';
+      const body = new FormData();
+      body.append('body', textarea.value);
+      let html: string;
+      try {
+        const resp = await POST(url, {data: body});
+        if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+        ({html} = await resp.json());
+      } catch (e) {
+        // Said in the frame rather than swallowed: an empty preview looks
+        // exactly like a body that renders to nothing, and "it stopped
+        // working" is not something anyone can act on.
+        frame.srcdoc = `<!DOCTYPE html><meta charset="utf-8"><body style="color-scheme:light;margin:0;padding:12px;font:14px system-ui;color:#b91c1c;background:#fff">${htmlEscape(String(e))}</body>`;
+        return;
+      }
+      // A document of its own, so the mail's own markup decides how it looks.
+      //
+      // color-scheme and the colours are pinned to light on purpose: an iframe
+      // with no scheme of its own takes the embedder's, so on a dark page the
+      // browser rendered this text white — on the white background a mail is
+      // read against. A mail client is not the admin panel's theme.
+      const subject = (field.closest('form')?.querySelector<HTMLInputElement>('[name="subject"]')?.value ?? '').trim();
+      const head = subject ? `<div style="border-bottom:1px solid #ddd;padding-bottom:8px;margin-bottom:12px;font-weight:600">${htmlEscape(subject)}</div>` : '';
+      frame.srcdoc = `<!DOCTYPE html><meta charset="utf-8">` +
+        `<body style="color-scheme:light;margin:0;padding:12px;font:14px/1.5 system-ui;color:#1f2328;background:#fff">${head}${html}</body>`;
+    };
+    for (const tab of tabs) tab.addEventListener('click', () => show(tab.getAttribute('data-mail-tab')!));
+  }
+}
+
+// A list of addresses built one at a time: type, press Enter, it becomes an
+// item with an × on it. Each item carries a hidden input of the given name,
+// so the form posts a list and the server parses nothing.
+export function initCompanyTagInput() {
+  for (const box of document.querySelectorAll<HTMLElement>('[data-company-tags]')) {
+    const name = box.getAttribute('data-company-tags')!;
+    const entry = box.querySelector<HTMLInputElement>('.company-tag-entry');
+    if (!entry) continue;
+
+    const values = () => Array.from(box.querySelectorAll<HTMLInputElement>(`input[name="${CSS.escape(name)}"]`), (el) => el.value.toLowerCase());
+    const add = (raw: string) => {
+      // Split here too: people paste a list into the box they were told to
+      // type one address into.
+      for (const part of raw.split(/[\n,;]+/)) {
+        const value = part.trim();
+        if (!value || values().includes(value.toLowerCase())) continue;
+        const tag = document.createElement('span');
+        tag.className = 'company-tag';
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = name;
+        hidden.value = value;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'company-tag-remove';
+        remove.textContent = '×';
+        tag.append(hidden, document.createTextNode(value), remove);
+        box.insertBefore(tag, entry);
+      }
+      entry.value = '';
+    };
+
+    entry.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault(); // Enter in a text field would submit the form
+        add(entry.value);
+      } else if (e.key === 'Backspace' && !entry.value) {
+        box.querySelector('.company-tag:last-of-type')?.remove();
+      }
+    });
+    // Leaving the field commits what is in it: somebody who types an address
+    // and presses Save should not lose it for want of an Enter.
+    entry.addEventListener('blur', () => add(entry.value));
+    entry.form?.addEventListener('submit', () => add(entry.value));
+    box.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('company-tag-remove')) target.closest('.company-tag')?.remove();
+      else if (target === box) entry.focus();
+    });
+  }
+}
+
+// A checkbox that switches another one off with it. The dependent control
+// decides nothing while its parent is unchecked, and a control that decides
+// nothing should not invite a decision — see custom/templates/company/admin_settings.tmpl.
+export function initCompanyDependentToggles() {
+  for (const parent of document.querySelectorAll<HTMLInputElement>('input[data-company-enables]')) {
+    const child = document.querySelector<HTMLInputElement>(parent.getAttribute('data-company-enables')!);
+    if (!child) continue;
+    const sync = () => {
+      child.disabled = !parent.checked;
+      child.closest('.field')?.classList.toggle('disabled', child.disabled);
+    };
+    parent.addEventListener('change', sync);
+    sync();
+  }
+}
+
 export function initCompanyConfirmForms() {
   for (const form of document.querySelectorAll<HTMLFormElement>('form[data-company-confirm]')) {
     form.addEventListener('submit', (e) => {

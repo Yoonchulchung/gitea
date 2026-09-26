@@ -21,11 +21,13 @@ import (
 // had never been deployed. Following the rename is what a non-developer
 // expects to happen, so it does.
 
-func (*deployBranchCleanupNotifier) RenameRepository(_ context.Context, _ *user_model.User, repo *repo_model.Repository, oldRepoName string) {
+func (*deployBranchCleanupNotifier) RenameRepository(ctx context.Context, _ *user_model.User, repo *repo_model.Repository, oldRepoName string) {
+	followCentralRepoMove(ctx, repo.OwnerName, oldRepoName, repo.OwnerName, repo.Name)
 	followRepoRename(repo.OwnerName, oldRepoName, repo.OwnerName, repo.Name)
 }
 
-func (*deployBranchCleanupNotifier) TransferRepository(_ context.Context, _ *user_model.User, repo *repo_model.Repository, oldOwnerName string) {
+func (*deployBranchCleanupNotifier) TransferRepository(ctx context.Context, _ *user_model.User, repo *repo_model.Repository, oldOwnerName string) {
+	followCentralRepoMove(ctx, oldOwnerName, repo.Name, repo.OwnerName, repo.Name)
 	followRepoRename(oldOwnerName, repo.Name, repo.OwnerName, repo.Name)
 }
 

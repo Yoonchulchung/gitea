@@ -4,6 +4,7 @@
 package context
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"html/template"
@@ -165,9 +166,33 @@ func (ctx *Context) ServerError(logMsg string, logErr error) {
 	ctx.serverErrorInternal(logMsg, logErr)
 }
 
+// companyErrorRef is the number the error page shows and the log line
+// carries, so the two can be tied together by somebody who can only see one
+// of them.
+//
+// The person who hits a 500 here is usually a department member; they cannot
+// read the log, and a Go error tells them nothing they can act on. What they
+// can do is read six characters down the phone. The alphabet leaves out
+// 0/O/1/I for exactly that reason. See docs/company/error-reference.md.
+func companyErrorRef() string {
+	const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+	b := make([]byte, 6)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return string(b[:3]) + "-" + string(b[3:])
+}
+
 func (ctx *Context) serverErrorInternal(logMsg string, logErr error) {
 	if logErr != nil {
-		log.ErrorWithSkip(2, "%s: %v", logMsg, logErr)
+		// company: the reference goes into the same line as the error, so
+		// searching for it in /-/admin/company-logs lands on the cause.
+		ref := companyErrorRef()
+		ctx.Data["CompanyErrorRef"] = ref
+		log.ErrorWithSkip(2, "[ref %s] %s: %v", ref, logMsg, logErr)
 		if _, ok := logErr.(*net.OpError); ok || errors.Is(logErr, &net.OpError{}) {
 			// This is an error within the underlying connection
 			// and further rendering will not work so just return

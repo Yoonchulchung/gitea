@@ -1,0 +1,69 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-mail")}}
+	<div class="admin-setting-content">
+		<div class="tw-mb-3">
+			<a href="{{AppSubUrl}}/-/admin/company-mail" class="muted">{{svg "octicon-chevron-left" 14}}{{ctx.Locale.Tr "company.mail.title"}}</a>
+		</div>
+		<h4 class="ui top attached header">
+			{{.Rule.Name}}
+			<span class="ui tiny label tw-ml-2">{{ctx.Locale.Tr (printf "company.mail.event.%s" .Rule.Event)}}</span>
+			{{if not .Rule.Enabled}}<span class="ui tiny basic label">{{ctx.Locale.Tr "company.mail.rule_off"}}</span>{{end}}
+		</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13">{{ctx.Locale.Tr (printf "company.mail.event.%s.explain" .Rule.Event)}}</p>
+			{{if not .MailConfigured}}
+				<div class="ui warning message">{{ctx.Locale.Tr "company.mail.err_unconfigured"}}</div>
+			{{end}}
+			<form class="ui form" method="post" action="{{AppSubUrl}}/-/admin/company-mail/{{.Rule.ID}}">
+				{{.CsrfTokenHtml}}
+				<div class="field">
+					<label for="name">{{ctx.Locale.Tr "company.mail.rule_name"}}</label>
+					<input id="name" name="name" value="{{.Rule.Name}}">
+				</div>
+				{{/* One address at a time, each its own removable item, rather than
+				     a textarea somebody has to punctuate correctly. Every chip
+				     carries its own hidden input, so the form posts a list and
+				     needs no parsing on the way in — see initCompanyTagInput. */}}
+				<div class="field">
+					<label for="to-entry">{{ctx.Locale.Tr "company.mail.to"}}</label>
+					<div class="company-tags" data-company-tags="to">
+						{{range .Rule.To}}
+							<span class="company-tag">
+								<input type="hidden" name="to" value="{{.}}">
+								{{.}}
+								<button type="button" class="company-tag-remove" aria-label="{{ctx.Locale.Tr "company.mail.to_remove"}}">&times;</button>
+							</span>
+						{{end}}
+						<input id="to-entry" class="company-tag-entry" type="email" autocomplete="off"
+						       placeholder="{{ctx.Locale.Tr "company.mail.to_placeholder"}}">
+					</div>
+					<p class="text-grey tw-text-12 tw-mt-1">{{ctx.Locale.Tr "company.mail.to_hint"}}</p>
+				</div>
+				<div class="field">
+					<label for="subject">{{ctx.Locale.Tr "company.mail.subject"}}</label>
+					<input id="subject" name="subject" value="{{.Rule.Subject}}">
+				</div>
+				{{/* The body is HTML, so it is worth seeing as HTML. The preview is
+				     rendered by the server through the same substitution the real
+				     message uses, and shown in a sandboxed frame — it is the
+				     administrator's own markup, and it should neither run in this
+				     page nor inherit its styles. */}}
+				<div class="field company-mail-body" data-preview-url="{{AppSubUrl}}/-/admin/company-mail/{{.Rule.ID}}/preview">
+					<div class="company-mail-body-head">
+						<label for="body">{{ctx.Locale.Tr "company.mail.body"}}</label>
+						<div class="ui compact mini basic buttons">
+							<button type="button" class="ui button active" data-mail-tab="write">{{ctx.Locale.Tr "company.mail.body_write"}}</button>
+							<button type="button" class="ui button" data-mail-tab="preview">{{ctx.Locale.Tr "company.mail.body_preview"}}</button>
+						</div>
+					</div>
+					<textarea id="body" name="body" rows="10" class="tw-font-mono tw-text-13">{{.Rule.Body}}</textarea>
+					<iframe class="company-mail-preview tw-hidden" sandbox title="{{ctx.Locale.Tr "company.mail.body_preview"}}"></iframe>
+					<p class="text-grey tw-text-12 tw-mt-1">
+						{{ctx.Locale.Tr "company.mail.fields_explain"}}
+						{{range .MailFields}}<code class="company-mail-field">&#123;&#123;{{.}}&#125;&#125;</code>{{end}}
+					</p>
+				</div>
+				<button class="ui primary button">{{ctx.Locale.Tr "company.adminsettings.save"}}</button>
+			</form>
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}

@@ -98,6 +98,13 @@ func AIConfiguredFor(ctx context.Context, userID int64) bool {
 	if !AIEnabled() {
 		return false // every AI screen hides itself behind this
 	}
+	// And whether this person is offered it at all — an administrator's
+	// decision, changed from a screen rather than a restart. Checked here
+	// rather than on each screen because here is the one place every AI path
+	// already passes through (company/adminsettings.go).
+	if !aiAllowedFor(ctx, userID) {
+		return false
+	}
 	c, err := loadAIUserConfig(ctx, userID)
 	if err != nil || c.apiKey == "" {
 		return false

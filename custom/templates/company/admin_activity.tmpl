@@ -1,6 +1,32 @@
 {{template "admin/layout_head" (dict "pageClass" "admin company-activity")}}
 	<div class="admin-setting-content">
 		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.activity.title"}}</h4>
+		{{/* One department at a time, because "what has PO been doing" is the
+		     question an administrator arrives with once they know which
+		     department they mean. The choice is in the URL, so the page can be
+		     linked to and the pager keeps it.
+		     A menu of links, not a field in a form: choosing applies at once,
+		     and there is nothing the unsaved-changes guard could ask to save —
+		     see custom/templates/company/admin_deploys.tmpl for the same
+		     picker and why it stopped being a <select>. */}}
+		<div class="ui attached segment">
+			<div class="company-activity-filter">
+				<div class="ui dropdown jump company-filter-menu">
+					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.activity.filter_dept"}}</span>
+					<span class="company-filter-menu-value">{{with .Department}}{{.DisplayName}}{{else}}{{ctx.Locale.Tr "company.activity.dept_all"}}{{end}}</span>
+					{{svg "octicon-triangle-down" 14 "dropdown icon"}}
+					<div class="menu">
+						<a class="item{{if not .Department}} active{{end}}" href="?">{{ctx.Locale.Tr "company.activity.dept_all"}}</a>
+						{{range .Departments}}
+							<a class="item{{if and $.Department (eq $.Department.ID .ID)}} active{{end}}" href="?dept={{PathEscape .Name}}">{{.DisplayName}}</a>
+						{{end}}
+					</div>
+				</div>
+				{{with .Department}}
+					<a class="ui tiny basic button" href="{{AppSubUrl}}/{{PathEscape .Name}}">{{ctx.Locale.Tr "company.activity.open_dept"}}</a>
+				{{end}}
+			</div>
+		</div>
 		<div class="ui attached table segment">
 			<table class="ui very basic table">
 				<thead>
@@ -32,7 +58,7 @@
 							<td>{{if .Repo}}<a href="{{.Repo.Link}}">{{.Repo.OwnerName}}/{{.Repo.Name}}</a>{{end}}</td>
 						</tr>
 					{{else}}
-						<tr><td colspan="4" class="text-grey">{{ctx.Locale.Tr "company.activity.none"}}</td></tr>
+						<tr><td colspan="4" class="text-grey">{{if .Department}}{{ctx.Locale.Tr "company.activity.none_dept" .Department.DisplayName}}{{else}}{{ctx.Locale.Tr "company.activity.none"}}{{end}}</td></tr>
 					{{end}}
 				</tbody>
 			</table>

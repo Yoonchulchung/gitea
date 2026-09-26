@@ -124,6 +124,41 @@ merge를 돌린다(`company-conflict.ts`의 `buildConflictText`): 서로 다른 
 마스킹이 아니다. 소스 코드는 `read_file`로 이미 모델에 가므로, 비밀은 코드가
 아니라 환경 변수에 두어야 한다 — 환경 변수의 값은 모델에 가지 않는다.
 
+## 누구에게 AI가 보이는가 — `company.ai.users_enabled`
+
+지금 스위치는 둘이다. `[company] AI_ENABLED`(app.ini, 재시작)는 이 인스턴스가
+AI 요청을 보낼 수 있는지를 정하고, 관리자 설정 화면의
+`company.ai.anthropic_visible`은 **어느 제공자**를 부서에 보여줄지를 정한다
+(`company/adminsettings.go`). 빠진 것은 그 사이에 있는 질문이다 — **직원에게
+AI를 제공할 것인가.** 지금은 `AI_ENABLED`가 켜져 있으면 키를 넣은 사람은 누구든
+쓸 수 있다.
+
+세 번째 스위치를 같은 자리, 같은 방식으로 추가한다. app.ini가 아니라 DB에 두고
+관리자 설정 화면에서 바꾼다 — 계약이 바뀌거나 사고가 한 번 나면 그날 안에
+꺼야 하는 종류의 결정이고, 그때 서버를 재시작하게 만들 이유가 없다.
+
+- 키: `company.ai.users_enabled`, 기본값 **꺼짐**. 기존 두 스위치와 같은
+  방향이다 — 회사 밖으로 나가는 기능은 누군가 켠 적이 있어야 켜져 있다.
+- 관리자는 설정과 무관하게 유지한다. `anthropic_visible`이 이미 그렇게
+  되어 있고(`anthropicAllowedFor`), 이유도 같다: 끈 사람이 다시 켜기 전에
+  무엇을 끄는 건지 볼 수 있어야 한다.
+- 캐시와 무효화는 `platformSettings`를 그대로 쓴다.
+
+거는 자리는 두 곳뿐이고, 둘 다 이미 모든 AI 화면이 지나가는 길목이다:
+
+- `AIConfiguredFor` — 워크스페이스 사이드바, 요청 리뷰 채팅, PR AI 리뷰 버튼,
+  관리자 로그 진단이 전부 이걸 본다. 여기서 거절하면 화면도 라우트도 같이
+  닫힌다(핸들러들이 이미 이 값을 다시 확인한다).
+- `AIOfferedTo` — `/user/settings/ai` 탭과 페이지. 제공하지 않는 기능의 설정
+  탭은 그 기능이 있다는 말이므로 탭째로 사라진다.
+
+배포 요청 제출 시의 자동 리뷰 코멘트(`postAIReviewComment`)는 중앙 저장소
+소유자의 설정으로 도는 플랫폼 자신의 동작이지 직원에게 제공하는 기능이 아니다.
+`AI_ENABLED` 아래에 그대로 둔다.
+
+**바뀌는 동작**: 이미 키를 넣어 쓰고 있던 부서는 관리자가 체크할 때까지 AI를
+잃는다. 요청된 기본값이 그쪽이다.
+
 ## 등장 위치 (3곳)
 
 | 위치 | 목적 | 도구 | 상태 |
@@ -238,6 +273,15 @@ central-deploy PR로 한정(아래 두 항목 모두 확정, 더 이상 미해�
       `get_diff` 뿐이고 아무것도 쓰지 않음. 시스템 프롬프트에 요청 제목·본문·
       권한 항목·diff(앞 30k자)가 들어감. 스트리밍 프로토콜과 프론트 모듈
       (`company-ai-chat.ts`)은 워크스페이스와 공유
+
+### Phase 5 — 직원에게 제공할지를 관리자가 정한다 (완료)
+- [x] `company.ai.users_enabled` 설정 키 + `AIOfferedToUsers(ctx)`,
+      `aiAllowedFor` (`company/adminsettings.go`, 기존 캐시 재사용)
+- [x] `AIConfiguredFor`/`AIOfferedTo`에 반영 — 관리자는 예외
+- [x] `/user/settings/ai`의 POST와 모델 목록 엔드포인트에도 같은 검사 —
+      페이지가 404인데 폼 재전송으로 키가 저장되던 구멍을 같이 막음
+- [x] 관리자 설정 화면 체크박스, Anthropic 항목은 그 아래 종속으로 표시
+- [x] locale: `company.adminsettings.ai_users`, `ai_users_explain`
 
 ### Phase 4 — 다듬기
 - [ ] 로딩/에러 상태 UI 통일

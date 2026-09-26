@@ -10,7 +10,9 @@ export function getIssueIcon(issue: Issue) {
       }
       return 'octicon-git-pull-request'; // Open PR
     } else if (issue.pull_request.merged) {
-      return 'octicon-git-merge'; // Merged PR
+      // company: merging a Deploy Request is how it is approved, so the icon
+      // says approved — see custom/templates/shared/issueicon.tmpl.
+      return 'octicon-check-circle-fill'; // Approved (merged) PR
     }
     return 'octicon-git-pull-request-closed'; // Closed PR
   }
@@ -29,7 +31,7 @@ export function getIssueColorClass(issue: Issue) {
       }
       return 'tw-text-green'; // Open PR
     } else if (issue.pull_request.merged) {
-      return 'tw-text-purple'; // Merged PR
+      return 'tw-text-green'; // Approved (merged) PR
     }
     return 'tw-text-red'; // Closed PR
   }

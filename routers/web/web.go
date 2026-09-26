@@ -1471,6 +1471,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 		m.Post("/{editor_action:_app}/data/{verb}", reqRepoCodeWriter, company.AppDataAction)
 		m.Post("/{editor_action:_app}/env", reqRepoCodeWriter, company.AppEnvSave)
 		m.Post("/{editor_action:_app}/access", reqRepoCodeWriter, company.AppAccessSave)
+		m.Post("/{editor_action:_app}/permissions/revoke", reqRepoCodeWriter, company.RevokeOwnPermission)
 		m.Post("/{editor_action:_app}/{verb}", reqRepoCodeWriter, company.AppControl)
 		m.Get("/deploy", company.DeployForm)
 		m.Post("/deploy", company.DeployPost)
@@ -1702,7 +1703,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 	// end "/{username}/{reponame}/activity"
 
 	m.Group("/{username}/{reponame}", func() {
-		m.Get("/{type:pulls}", repo.Issues)
+		m.Get("/{type:pulls}", company.SetApprovalQueueData, repo.Issues) // the central repository's list is the approval queue — see docs/company/central-repo-ui.md
 		m.Group("/{type:pulls}/{index}", func() {
 			m.Get("", repo.SetEditorconfigIfExists, repo.SetWhitespaceBehavior, repo.GetPullDiffStats, company.SetDeployRequestPageData, repo.ViewIssue) // see docs/company/mount-points.md
 			m.Get(".diff", repo.DownloadPullDiff)

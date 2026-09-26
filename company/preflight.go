@@ -51,12 +51,33 @@ type PreflightResult struct {
 	NeedsApproval []string `json:"needsApproval"`
 }
 
+// fileSource hands back one of the app's files, or "" when it is not there.
+//
+// The checks below are about a *version* of an app, and there are two that
+// matter: the department's repository as it is now, which is what they are
+// about to ask to deploy, and the snapshot a request froze, which is what
+// approving it would build. Same questions, different files — so the files
+// are the parameter and there is one implementation of the questions. A
+// check added here is a check both screens gain.
+type fileSource func(path string) string
+
+// repoFiles reads them from a repository's default branch.
+func repoFiles(ctx *context.Context, repo *repo_model.Repository) fileSource {
+	return func(path string) string { return readRepoFile(ctx, repo, path) }
+}
+
+// runPreflight checks the department's repository as it stands.
 func runPreflight(ctx *context.Context, repo *repo_model.Repository) PreflightResult {
+	return runPreflightOn(ctx, repo.OwnerName, repo.Name, repoFiles(ctx, repo))
+}
+
+// runPreflightOn is the same checks against whichever files are given.
+func runPreflightOn(ctx *context.Context, owner, name string, file fileSource) PreflightResult {
 	// Translated here rather than carried as keys: this report is built inside
 	// a request and shown once, so the reader's language is already known and
 	// there is nothing to store.
 	tr := ctx.Locale.TrString
-	settings := SettingsFor(repo.OwnerName, repo.Name)
+	settings := SettingsFor(owner, name)
 	result := PreflightResult{Deployable: true}
 
 	fail := func(label, detail string) {
@@ -82,13 +103,13 @@ func runPreflight(ctx *context.Context, repo *repo_model.Repository) PreflightRe
 
 	// The start command runs `main:app`, so a missing main.py is the one part
 	// of the app contract that can be checked without running anything.
-	if readRepoFile(ctx, repo, "main.py") == "" {
+	if file("main.py") == "" {
 		fail(tr("company.preflight.main_py"), tr("company.preflight.main_py_missing"))
 	} else {
 		ok(tr("company.preflight.main_py"), tr("company.preflight.main_py_ok"))
 	}
 
-	requirements := readRepoFile(ctx, repo, "requirements.txt")
+	requirements := file("requirements.txt")
 	if requirements == "" {
 		ok(tr("company.preflight.requirements"), tr("company.preflight.requirements_none", joinOrDash(ctx, settings.BasePackages)))
 		result.Summary = summarize(ctx, result.Deployable, nil)

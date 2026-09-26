@@ -256,6 +256,19 @@
 								{{if .Value}}{{ctx.Locale.Tr .Value}}{{end}}{{.ValueText}}{{if .More}} <a href="#app-packages">{{ctx.Locale.Tr "company.perm.more" .More}}</a>{{end}}
 								{{if or .Reason .ReasonText}}<span class="text-grey tw-text-12 tw-block">{{if .Reason}}{{ctx.Locale.Tr .Reason}}{{end}} {{.ReasonText}}</span>{{end}}
 							</td>
+							{{/* Narrowing applies immediately, so this needs nobody's
+							     approval — see docs/company/permission-lifecycle.md. */}}
+							<td class="tw-text-right">
+								{{if and .RevokeKind $.CanControl}}
+									<form method="post" action="{{$.AppLink}}/permissions/revoke" class="tw-inline"
+									      data-company-confirm="{{ctx.Locale.Tr "company.app.revoke_confirm"}}">
+										{{$.CsrfTokenHtml}}
+										<input type="hidden" name="kind" value="{{.RevokeKind}}">
+										<input type="hidden" name="value" value="{{.RevokeValue}}">
+										<button type="submit" class="ui tiny basic button">{{ctx.Locale.Tr "company.app.revoke"}}</button>
+									</form>
+								{{end}}
+							</td>
 						</tr>
 					{{end}}
 				</tbody>
@@ -277,7 +290,23 @@
 				{{end}}
 				<div>
 					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_approved"}}</span>
-					<div class="tw-mt-1">{{range .ApprovedExtra}}<span class="ui green basic label tw-mr-1 tw-mb-1">{{.}}</span>{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_approved_empty"}}</span>{{end}}</div>
+					<div class="tw-mt-1">
+						{{range .ApprovedExtra}}
+							<span class="ui green basic label tw-mr-1 tw-mb-1">{{.}}
+								{{if $.CanControl}}
+									<form method="post" action="{{$.AppLink}}/permissions/revoke" class="tw-inline company-pkg-revoke"
+									      data-company-confirm="{{ctx.Locale.Tr "company.app.revoke_pkg_confirm" .}}">
+										{{$.CsrfTokenHtml}}
+										<input type="hidden" name="kind" value="package">
+										<input type="hidden" name="value" value="{{.}}">
+										<button type="submit" title="{{ctx.Locale.Tr "company.app.revoke"}}">&times;</button>
+									</form>
+								{{end}}
+							</span>
+						{{else}}
+							<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_approved_empty"}}</span>
+						{{end}}
+					</div>
 				</div>
 			</div>
 

@@ -7,6 +7,9 @@
 	     (company/gate.go) — this is the visual half of that decision.
 	  2. A "Register Deploy" button is added next to Watch/Star/Fork,
 	     linking into company/deploy.go.
+	  3. On the central deploy repository the nav is Code and "Approvals"
+	     only — see docs/company/central-repo-ui.md.
+	  4. The central repository has no RSS/watch/star/fork buttons.
 	See docs/company/repo-ui.md for the full reasoning.
 	Keep this in sync with the upstream file; diff it on every Gitea
 	upgrade — see docs/company/architecture.md on custom/templates drift.
@@ -68,7 +71,12 @@
 							<button class="ui compact small basic red button" disabled>{{ctx.Locale.Tr "repo.transfer.is_transferring"}}</button>
 						</div>
 					{{end}}
-					{{if $.IsAdmin}}
+					{{/* Not on the central repository: an administrator opening it is
+					     approving deployments, not following a project — nobody
+					     subscribes to the queue, and a fork of it is a second copy of
+					     the one thing that must have exactly one. On a department's own
+					     repository they stay. See docs/company/central-repo-ui.md. */}}
+					{{if and $.IsAdmin (not $isCentral)}}
 					{{if $.EnableFeed}}
 					{{/* An extra div-element is not necessary here, as this button does not secretly contain two buttons. */}}
 					<a class="ui compact small basic button" href="{{$.RepoLink}}.rss" data-tooltip-content="{{ctx.Locale.Tr "rss_feed"}}">
@@ -165,13 +173,21 @@
 		{{if .IsGenerated}}<div class="secondary-info">{{ctx.Locale.Tr "repo.generated_from"}} <a href="{{(.TemplateRepo ctx).Link}}">{{(.TemplateRepo ctx).FullName}}</a></div>{{end}}
 	</div>
 	{{end}}
-	{{/* The watch-options modal belongs to a control non-admins do not have;
-	     rendering it for them ships markup for a button that is not there. */}}
-	{{if and .IsSigned .IsAdmin}}{{template "repo/watch_options_modal"}}{{end}}
+
+	{{/* The watch-options modal belongs to a control non-admins do not have,
+	     and that the central repository does not have either; rendering it
+	     ships markup for a button that is not on the page. Recomputed because
+	     the `with .Repository` block that scoped the first one has closed. */}}
+	{{if and .IsSigned .IsAdmin (not (and .CompanyCentralRepoPath (eq (printf "%s/%s" .Repository.OwnerName .Repository.Name) .CompanyCentralRepoPath)))}}
+		{{template "repo/watch_options_modal"}}
+	{{end}}
 
 	{{if .IsAdmin}}
 	{{/* non-admins only ever have the Code tab left — a one-item tab bar is
 	     noise, and the repo root already shows Code by default */}}
+	{{/* Recomputed: the one above is scoped to the `with .Repository` block
+	     that has already closed. */}}
+	{{$isCentral := and .CompanyCentralRepoPath (eq (printf "%s/%s" .Repository.OwnerName .Repository.Name) .CompanyCentralRepoPath)}}
 	<div class="ui container">
 		<overflow-menu class="ui secondary pointing menu">
 			{{if not (or .Repository.IsBeingCreated .Repository.IsBroken)}}
@@ -194,15 +210,18 @@
 							     user-owned repo like the central deploy repo — there's
 							     no "/org/<user>/pulls" to fall back on there, so use
 							     this repo's own list instead. See docs/company/repo-ui.md. */}}
-							<a class="{{if .PageIsPullList}}active {{end}}item" href="{{if .Repository.Owner.IsOrganization}}{{AppSubUrl}}/org/{{.Repository.OwnerName}}/pulls{{else}}{{.RepoLink}}/pulls{{end}}">
-								{{svg "octicon-git-pull-request"}} {{ctx.Locale.Tr "repo.pulls"}}
+							{{/* On the central repository this list *is* the approval
+							     queue, so it is named for that and points here rather
+							     than at the department-wide list. */}}
+							<a class="{{if .PageIsPullList}}active {{end}}item" href="{{if or $isCentral (not .Repository.Owner.IsOrganization)}}{{.RepoLink}}/pulls{{else}}{{AppSubUrl}}/org/{{.Repository.OwnerName}}/pulls{{end}}">
+								{{svg "octicon-git-pull-request"}} {{if $isCentral}}{{ctx.Locale.Tr "company.repo.central_tab_approvals"}}{{else}}{{ctx.Locale.Tr "repo.pulls"}}{{end}}
 								{{if .Repository.NumOpenPulls}}
 									<span class="ui small label">{{CountFmt .Repository.NumOpenPulls}}</span>
 								{{end}}
 							</a>
 						{{end}}
 
-						{{if and .EnableActions (.Permission.CanRead ctx.Consts.RepoUnitTypeActions) (not .IsEmptyRepo)}}
+						{{if and (not $isCentral) .EnableActions (.Permission.CanRead ctx.Consts.RepoUnitTypeActions) (not .IsEmptyRepo)}}
 							<a class="{{if .PageIsActions}}active {{end}}item" href="{{.RepoLink}}/actions">
 								{{svg "octicon-play"}} {{ctx.Locale.Tr "actions.actions"}}
 								{{if .Repository.NumOpenActionRuns}}
@@ -219,7 +238,7 @@
 					{{end}}
 
 					{{if .IsAdmin}}
-						{{if and (.Permission.CanRead ctx.Consts.RepoUnitTypeReleases) (not .IsEmptyRepo)}}
+						{{if and (not $isCentral) (.Permission.CanRead ctx.Consts.RepoUnitTypeReleases) (not .IsEmptyRepo)}}
 						<a class="{{if or .PageIsReleaseList .PageIsTagList}}active {{end}}item" href="{{.RepoLink}}/releases">
 							{{svg "octicon-tag"}} {{ctx.Locale.Tr "repo.releases"}}
 							{{if .NumReleases}}
@@ -228,7 +247,7 @@
 						</a>
 						{{end}}
 
-						{{if and (.Permission.CanReadAny ctx.Consts.RepoUnitTypePullRequests ctx.Consts.RepoUnitTypeIssues ctx.Consts.RepoUnitTypeReleases ctx.Consts.RepoUnitTypeCode) (not .IsEmptyRepo)}}
+						{{if and (not $isCentral) (.Permission.CanReadAny ctx.Consts.RepoUnitTypePullRequests ctx.Consts.RepoUnitTypeIssues ctx.Consts.RepoUnitTypeReleases ctx.Consts.RepoUnitTypeCode) (not .IsEmptyRepo)}}
 							<a class="{{if .PageIsActivity}}active {{end}}item" href="{{.RepoLink}}/activity">
 								{{svg "octicon-pulse"}} {{ctx.Locale.Tr "repo.activity"}}
 							</a>

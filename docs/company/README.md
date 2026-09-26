@@ -29,6 +29,12 @@ upstream rebase). Only `custom/conf` (local secrets/paths) stays
 - [routing.md](routing.md) — anonymous → login → department dashboard landing behavior
 - [repo-ui.md](repo-ui.md) — which repo tabs are disabled, hidden, or
   gate-blocked, and why they need different treatment
+- [central-repo-ui.md](central-repo-ui.md) — the central deploy repository's
+  own screens: two tabs, approval wording, approve/cancel
+- [permission-lifecycle.md](permission-lifecycle.md) — how a permission is
+  asked for, partly approved, withdrawn and handed back
+- [error-reference.md](error-reference.md) — the number a 500 shows the
+  person who hit it, and how an administrator finds it in the log
 - [ui-gate.md](ui-gate.md) — whitelist gate blocking arbitrary-URL access to
   native Gitea screens for non-admin users
 - [patches.md](patches.md) — the running list of every touch point in stock

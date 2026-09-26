@@ -10,10 +10,12 @@ import (
 	"slices"
 	"strings"
 
+	issues_model "gitea.dev/models/issues"
 	repo_model "gitea.dev/models/repo"
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/git"
 	"gitea.dev/modules/log"
+	issue_service "gitea.dev/services/issue"
 	files_service "gitea.dev/services/repository/files"
 
 	"go.yaml.in/yaml/v4"
@@ -42,22 +44,28 @@ const commitRetries = 3
 // ApplyPermissionsOnMerge folds a merged deploy request's approved
 // permissions into apps.yml.
 //
+// What counts as approved is read off the request log in the merge commit,
+// not assumed from the merge: an administrator who unticked an item before
+// approving decided that item is not granted, and the merge has to mean what
+// the file they merged says. See docs/company/permission-lifecycle.md.
+//
 // Best-effort by design: it runs from the merge notification, and the merge
 // has already happened. Failing loudly here would leave an admin looking at
 // a merged request with an error, unable to tell what did and did not apply.
 // A failure is logged and the permissions simply stay unapplied — the app
 // keeps its previous policy, which is the safe direction.
-func ApplyPermissionsOnMerge(ctx context.Context, doer *user_model.User, owner, repo string, prID int64) {
+func ApplyPermissionsOnMerge(ctx context.Context, doer *user_model.User, owner, repo string, prID int64, mergedCommitID string) {
 	requests := LoadPermissionRequests(owner, repo, prID)
 	if len(requests) == 0 {
 		return
 	}
-	// Merging the deploy request is the approval — there is no separate
-	// per-item decision, so everything the requester submitted and the admin
-	// merged counts as approved.
-	for i := range requests {
-		requests[i].Decision = "approve"
+	requests = decideFromRequestLog(ctx, owner, repo, mergedCommitID, requests)
+	// Recorded before anything is written, so the department's own screens and
+	// a later reader see what was refused rather than only what landed.
+	if err := SavePermissionRequests(owner, repo, prID, requests); err != nil {
+		log.Error("company: recording the decisions on deploy request #%d: %v", prID, err)
 	}
+	sayWhatWasRefused(ctx, doer, prID, refusedItems(requests))
 
 	var lastErr error
 	for attempt := range commitRetries {
@@ -73,6 +81,89 @@ func ApplyPermissionsOnMerge(ctx context.Context, doer *user_model.User, owner, 
 	// will refuse the very packages they approved. The banner is the one
 	// place that can say the two are different.
 	SetAppsConfigError(fmt.Errorf("the permissions approved with deploy request #%d for %s/%s could not be written to apps.yml: %w", prID, owner, repo, lastErr))
+}
+
+// sayWhatWasRefused posts one comment naming the items the approval did not
+// grant.
+//
+// Without it a department reads "approved", waits for the package they asked
+// for, and finds out it was refused when the build fails on it. The refusal
+// is a decision somebody made; they should hear it from the request, not from
+// a stack trace.
+func sayWhatWasRefused(ctx context.Context, doer *user_model.User, prID int64, refused []PermissionRequest) {
+	if len(refused) == 0 {
+		return
+	}
+	pr, err := issues_model.GetPullRequestByID(ctx, prID)
+	if err != nil || pr.LoadIssue(ctx) != nil || pr.LoadBaseRepo(ctx) != nil {
+		log.Error("company: naming the refused items of deploy request #%d: %v", prID, err)
+		return
+	}
+	var b strings.Builder
+	b.WriteString("승인되지 않은 항목:\n")
+	for _, r := range refused {
+		fmt.Fprintf(&b, "\n- %s", r.Detail)
+	}
+	b.WriteString("\n\n나머지는 승인되어 적용되었습니다. 필요하면 사유를 적어 다시 요청해 주세요.")
+	if _, err := issue_service.CreateIssueComment(ctx, doer, pr.BaseRepo, pr.Issue, b.String(), nil); err != nil {
+		log.Error("company: naming the refused items of deploy request #%d: %v", prID, err)
+	}
+}
+
+// decideFromRequestLog marks each item approved or not from the ticks in the
+// merged request log.
+//
+// Falls back to approving everything when the entry has no checkboxes — a
+// request written before they existed, whose submitter and approver both read
+// it as all-or-nothing — and when the file cannot be read at all, which is
+// the behaviour this replaced and the one an administrator pressing approve
+// on such a request expects.
+func decideFromRequestLog(ctx context.Context, owner, repo, commitID string, requests []PermissionRequest) []PermissionRequest {
+	decisions, _ := readRequestLogDecisions(ctx, owner, repo, commitID)
+	return decideWithLog(requests, decisions)
+}
+
+// decideWithLog is that decision on its own, given the ticks.
+//
+// No ticks means no checkboxes to read — parseRequestLogDecisions only ever
+// reports success with at least one item — which is the fall-back case above.
+func decideWithLog(requests []PermissionRequest, decisions map[string]bool) []PermissionRequest {
+	ok := len(decisions) > 0
+	for i := range requests {
+		id := permRequestID(requests[i])
+		ticked, inLog := decisions[id]
+		switch {
+		case !ok || ticked:
+			requests[i].Decision = decisionApprove
+		case !inLog && requests[i].Decision == decisionApprove:
+			// The packages ticked beside "Approve deploy" are recorded by
+			// GuardDeployApproval as the merge goes through, so they are never
+			// in the file — approved a moment ago by the same person, on the
+			// same page, and not something the file is silent about.
+		default:
+			// Everything else the file does not carry is not approved: a line
+			// somebody deleted out of the entry is as unticked as one they
+			// unticked.
+			requests[i].Decision = decisionReject
+		}
+	}
+	return requests
+}
+
+func readRequestLogDecisions(ctx context.Context, owner, repo, commitID string) (map[string]bool, bool) {
+	centralOwner, centralName, err := centralDeployOwnerName()
+	if err != nil {
+		return nil, false
+	}
+	central, err := repo_model.GetRepositoryByOwnerAndName(ctx, centralOwner, centralName)
+	if err != nil {
+		return nil, false
+	}
+	body, found := readCentralFileAt(ctx, central, commitID, requestLogPath(owner, repo))
+	if !found {
+		return nil, false
+	}
+	return parseRequestLogDecisions(body)
 }
 
 // commitPermissionUpdate reads apps.yml, applies the approved items, and
@@ -314,7 +405,7 @@ func ApproveAppPackages(ctx context.Context, doer *user_model.User, owner, repo 
 			Value:    name,
 			Label:    "company.perm.kind.package",
 			Detail:   name,
-			Decision: "approve",
+			Decision: decisionApprove,
 			Reason:   "company.perm.approved_directly",
 		})
 	}

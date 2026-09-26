@@ -88,6 +88,13 @@ func AISettings(ctx *gitea_context.Context) {
 // of overloading an empty submit for that, to avoid silently locking
 // someone out of AI features from a copy-paste mistake.
 func AISettingsPost(ctx *gitea_context.Context) {
+	// The page 404s in this state, so a POST that reaches here is a replayed
+	// or hand-made form. Saving a key for a feature nobody is offered would
+	// leave it waiting to work the moment the switch flips.
+	if !AIOfferedTo(ctx) {
+		ctx.NotFound(nil)
+		return
+	}
 	provider := strings.TrimSpace(ctx.Req.FormValue("provider"))
 	// Re-checked here rather than trusted from the form: the option is hidden
 	// when it is not allowed, and hidden is not the same as refused.
@@ -135,7 +142,7 @@ type aiListModelsResponse struct {
 // to their already-saved key if the field was left blank (e.g. re-checking
 // after the gateway added a model, without retyping the key).
 func AIListModels(ctx *gitea_context.Context) {
-	if !AIEnabled() {
+	if !AIEnabled() || !AIOfferedTo(ctx) {
 		ctx.HTTPError(http.StatusForbidden, "AI is disabled on this instance")
 		return
 	}

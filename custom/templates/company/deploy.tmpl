@@ -27,6 +27,7 @@
 			     heading here — the badge above already says that; this box
 			     only exists to show the one thing the badge can't: why. */}}
 			<div class="company-deploy-statusbox {{.DeployRequestStatus.Status}}">
+				<div class="company-deploy-reason-why">{{if eq .DeployRequestStatus.Status "cancelled"}}{{ctx.Locale.Tr "company.deploy.cancel_reason_heading"}}{{else}}{{ctx.Locale.Tr "company.deploy.reject_reason_heading"}}{{end}}</div>
 				{{range .RejectionComments}}
 					<div class="company-deploy-reason">
 						<div class="company-deploy-reason-head">{{ctx.AvatarUtils.Avatar .Poster 20}}<strong>{{.Poster.Name}}</strong><span class="muted">{{DateUtils.TimeSince .CreatedUnix}}</span></div>
@@ -430,7 +431,11 @@
    badge above already states the status itself, so this box exists purely to hold the
    admin's own reason, not to restate "rejected" a second time. */
 .company-deploy-statusbox { border: 1px solid var(--color-secondary); border-radius: 6px; margin-top: 16px; padding: 12px 14px; }
+.company-deploy-reason-why { font-weight: var(--font-weight-medium); margin-bottom: 8px; }
 .company-deploy-statusbox.rejected { background: var(--color-error-bg); }
+/* A withdrawal is not a refusal — the department did it themselves, and the
+   box should not read like something went wrong. */
+.company-deploy-statusbox.cancelled { background: var(--color-secondary-alpha-30); }
 .company-deploy-reason + .company-deploy-reason { margin-top: 10px; }
 .company-deploy-reason-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--color-text-light-2); margin-bottom: 4px; }
 .company-deploy-reason-head strong { color: var(--color-text); }

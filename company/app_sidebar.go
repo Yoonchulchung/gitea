@@ -58,6 +58,13 @@ type PermissionRow struct {
 	// More is how many items were left off ValueText for room — the sidebar
 	// shows the first few packages and sends the reader to the app page.
 	More int
+	// RevokeKind and RevokeValue name what this row grants, where the
+	// department can hand it back themselves (company/permissions_revoke.go).
+	// Empty on a row that is not a permission of theirs to withdraw — what
+	// they were denied, what the platform sets, what an approval would have
+	// to widen.
+	RevokeKind  string
+	RevokeValue string
 }
 
 // sidebarPackageLimit is how many packages the repository sidebar names.
@@ -215,7 +222,10 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 			if len(rule.Methods) > 0 {
 				value += " (" + strings.Join(rule.Methods, ", ") + ")"
 			}
-			rows = append(rows, PermissionRow{Label: "company.perm.outbound", ValueText: value, State: PermAllowed})
+			rows = append(rows, PermissionRow{
+				Label: "company.perm.outbound", ValueText: value, State: PermAllowed,
+				RevokeKind: PermKindNetwork, RevokeValue: rule.Host,
+			})
 		}
 	default:
 		rows = append(rows, PermissionRow{
@@ -254,7 +264,10 @@ func permissionRows(settings AppSettings, st *AppState) []PermissionRow {
 	}
 
 	if settings.Download.Policy == "allow" {
-		rows = append(rows, PermissionRow{Label: "company.perm.download", Value: "company.perm.allowed", State: PermAllowed})
+		rows = append(rows, PermissionRow{
+			Label: "company.perm.download", Value: "company.perm.allowed", State: PermAllowed,
+			RevokeKind: PermKindDownload,
+		})
 	} else {
 		rows = append(rows, PermissionRow{
 			Label: "company.perm.download", Value: "company.perm.blocked", State: PermDenied,

@@ -32,3 +32,20 @@ Gitea's API/DB for the upload flow) aggregates org list → org repos →
 activity, and renders it in the `company` admin view. Gitea source stays
 untouched. See [mount-points.md](mount-points.md) for how `company`'s admin
 routes attach.
+
+## Narrowing to one department
+
+The reason this screen exists is that it crosses departments, but the question
+an administrator actually arrives with is usually "what has PO been doing".
+Paging through every other department's commits to find out is not an answer.
+
+So there is a department picker above the list, and the chosen department goes
+into the URL by name (`?dept=PO`) rather than by id — a link somebody pastes to
+a colleague should say which department it is about. An unknown name is a 404:
+the only way to produce one is to edit the URL by hand, and showing everything
+under that name would be a lie.
+
+Narrowed, it is still one row per action. `action` is a feed table that writes
+one row per reader (above), so a department means that department
+organization's own copy — `oneRowPerAction(orgID)`. The pager carries the
+query params, so the choice survives turning the page.

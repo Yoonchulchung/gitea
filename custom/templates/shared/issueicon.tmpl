@@ -1,0 +1,36 @@
+{{/*
+	Override of templates/shared/issueicon.tmpl. One change: a merged pull
+	request is a green check, not a purple merge glyph. On this instance every
+	pull request is a Deploy Request and merging it is how an administrator
+	approves it — the list that calls this is the approval queue
+	(docs/company/central-repo-ui.md), so the icon says approved.
+	The JS twin (web_src/js/features/issue.ts) is changed with it, as its own
+	comment asks.
+	Keep in sync with the upstream file; diff it on every Gitea upgrade.
+*/}}
+{{/* the logic should be kept the same as getIssueIcon/getIssueColorClass in JS code */}}
+{{- if .IsPull -}}
+	{{- if not .PullRequest -}}
+		No PullRequest
+	{{- else -}}
+		{{- if .IsClosed -}}
+			{{- if .PullRequest.HasMerged -}}
+				{{- svg "octicon-check-circle-fill" 16 "tw-text-green" -}}
+			{{- else -}}
+				{{- svg "octicon-git-pull-request-closed" 16 "tw-text-red" -}}
+			{{- end -}}
+		{{- else -}}
+			{{- if .PullRequest.IsWorkInProgress ctx -}}
+				{{- svg "octicon-git-pull-request-draft" 16 "tw-text-text-light" -}}
+			{{- else -}}
+				{{- svg "octicon-git-pull-request" 16 "tw-text-green" -}}
+			{{- end -}}
+		{{- end -}}
+	{{- end -}}
+{{- else -}}
+	{{- if .IsClosed -}}
+		{{- svg "octicon-issue-closed" 16 "tw-text-red" -}}
+	{{- else -}}
+		{{- svg "octicon-issue-opened" 16 "tw-text-green" -}}
+	{{- end -}}
+{{- end -}}

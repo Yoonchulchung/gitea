@@ -35,6 +35,13 @@ import (
 // hit, so it proposes the items and the person supplies only the reason.
 // See docs/company/app-platform.md.
 
+// A decision on one item. Stored on the request and written as a tick in the
+// log entry the administrator decides on (company/requestlog.go).
+const (
+	decisionApprove = "approve"
+	decisionReject  = "reject"
+)
+
 // PermissionKind identifies what is being asked for.
 const (
 	PermKindPackage  = "package"
@@ -79,6 +86,13 @@ type PermissionRequestSet struct {
 	PRID     int64               `json:"prID"`
 	At       int64               `json:"at"`
 	Requests []PermissionRequest `json:"requests"`
+	// Capacity is what the server looked like when this request was decided,
+	// and DecidedAt is when that was. Kept because the gauges on the request
+	// page answer "can the server carry this", and once the request is closed
+	// the only honest answer is the one whoever decided it was looking at —
+	// today's fleet is a different question. See company/deploy_capacity.go.
+	Capacity  []CapacitySnapshot `json:"capacity,omitempty"`
+	DecidedAt int64              `json:"decidedAt,omitempty"`
 }
 
 // DetectPermissionRequests works out what this deploy needs that the app is
@@ -181,13 +195,48 @@ func permissionFile(owner, repo string) string {
 }
 
 // SavePermissionRequests records what a Deploy Request is asking for.
+//
+// A snapshot already taken for this same request is carried over: the
+// decisions are written here again as the merge goes through
+// (company/permissions_commit.go), and that write must not drop the figures
+// recorded a moment earlier.
 func SavePermissionRequests(owner, repo string, prID int64, requests []PermissionRequest) error {
 	set := PermissionRequestSet{PRID: prID, At: time.Now().Unix(), Requests: requests}
+	if prev := LoadPermissionRequestSet(owner, repo); prev != nil && prev.PRID == prID {
+		set.Capacity, set.DecidedAt = prev.Capacity, prev.DecidedAt
+	}
+	return savePermissionRequestSet(owner, repo, set)
+}
+
+func savePermissionRequestSet(owner, repo string, set PermissionRequestSet) error {
 	body, err := json.Marshal(set)
 	if err != nil {
 		return err
 	}
 	return writeFileAtomic(permissionFile(owner, repo), body)
+}
+
+// RecordCapacityOnDecision freezes the server's figures onto a request as it
+// is decided — approved, turned down or withdrawn, all three.
+//
+// Once only: a request is decided once, and a second pass would overwrite the
+// numbers somebody acted on with numbers nobody saw. Best-effort, like
+// everything else that runs from a close notification — a request whose
+// figures were not captured shows no gauge, which is better than a gauge
+// that is quietly about today.
+func RecordCapacityOnDecision(owner, repo string, prID int64) {
+	set := LoadPermissionRequestSet(owner, repo)
+	if set == nil || set.PRID != prID || len(set.Capacity) > 0 || len(set.Requests) == 0 {
+		return
+	}
+	snaps := capacityNumbers(owner, repo, set.Requests)
+	if len(snaps) == 0 {
+		return
+	}
+	set.Capacity, set.DecidedAt = snaps, time.Now().Unix()
+	if err := savePermissionRequestSet(owner, repo, *set); err != nil {
+		log.Error("company: recording the capacity behind deploy request #%d: %v", prID, err)
+	}
 }
 
 // LoadPermissionRequestSet returns whatever request is on file for this app,
@@ -236,7 +285,7 @@ func LoadPermissionRequests(owner, repo string, prID int64) []PermissionRequest 
 func ApplyApprovedPermissions(current AppSettings, requests []PermissionRequest) AppSettings {
 	updated := current
 	for _, r := range requests {
-		if r.Decision != "approve" {
+		if r.Decision != decisionApprove {
 			continue
 		}
 		switch r.Kind {

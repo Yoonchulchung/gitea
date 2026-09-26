@@ -9,6 +9,7 @@ import (
 	"gitea.dev/models/db"
 	issues_model "gitea.dev/models/issues"
 	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/container"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
 	"gitea.dev/modules/timeutil"
@@ -138,4 +139,11 @@ func SetDashboardDeploys(ctx *context.Context) {
 	ctx.Data["DashboardDeploys"] = rows
 	ctx.Data["DashboardDeployPage"] = page
 	ctx.Data["DashboardDeployHasNext"] = int64(page*dashboardDeployRows) < total
+	// A numbered pager, like every other list on the platform. Its own
+	// parameter is dropped from the carried query so the links do not emit
+	// "deploys" twice, and the feed's own "page" is carried through so paging
+	// one list does not reset the other.
+	pager := context.NewPagerBuilder(ctx).TotalCount(total).PerPageLimit(dashboardDeployRows).CurPage(page).Build()
+	pager.RemoveParam(container.SetOf("deploys"))
+	ctx.Data["DashboardDeployPager"] = pager
 }

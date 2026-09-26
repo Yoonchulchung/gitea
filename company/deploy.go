@@ -44,7 +44,11 @@ const (
 // hook, which runs outside any HTTP request) can still resolve the repo
 // without needing our web-request-scoped *context.Context.
 func centralDeployOwnerName() (owner, name string, err error) {
-	ownerRepo := setting.CfgProvider.Section("company").Key("CENTRAL_DEPLOY_REPO").String()
+	// Wherever it was moved to, if it was — see company/centralrepo.go.
+	ownerRepo, _ := centralRepoMoved.Load().(string)
+	if ownerRepo == "" {
+		ownerRepo = setting.CfgProvider.Section("company").Key("CENTRAL_DEPLOY_REPO").String()
+	}
 	owner, name, ok := strings.Cut(ownerRepo, "/")
 	if !ok || owner == "" || name == "" {
 		return "", "", fmt.Errorf("[company] CENTRAL_DEPLOY_REPO must be set to an \"owner/name\" repo path")
@@ -293,7 +297,13 @@ func renderDeployForm(ctx *context.Context) {
 		// Gitea's native "close with comment" box on the PR. Shared with
 		// DeployStatus (company/deploystatus.go), which summarizes the same
 		// reasons into the repo home page badge's tooltip.
-		if status.Status == "rejected" {
+		//
+		// Cancelled counts too. It was left out, and a request somebody in the
+		// department withdrew showed "취소됨" and nothing else — including to
+		// the person who wrote the reason, who then had nowhere to read back
+		// what they had said, and to their colleagues, who had no way to find
+		// out at all.
+		if status.Status == "rejected" || status.Status == "cancelled" {
 			formHeadingKey = "company.deploy.resubmit_heading"
 			reasons, err := rejectionReasons(ctx, pr)
 			if err != nil {
@@ -784,7 +794,7 @@ func DeployPost(ctx *context.Context) {
 	// with no diff cannot be opened or merged — which is exactly the case
 	// when the only thing being asked for is approval.
 	files = append(files, buildRequestLogFile(ctx, central, deptRepo.OwnerName, deptRepo.Name,
-		requestLogEntry(ctx.Doer.Name, title, body, requests, time.Now())))
+		requestLogEntry(ctx.Locale, ctx.Doer.Name, title, body, requests, time.Now())))
 
 	newBranch := deployBranchName(deptRepo.OwnerName, deptRepo.Name, ctx.Doer.ID)
 	if _, err := files_service.ChangeRepoFiles(ctx, central, centralOwner, &files_service.ChangeRepoFilesOptions{
@@ -821,6 +831,19 @@ func DeployPost(ctx *context.Context) {
 	// Best-effort, same reasoning as the AI review comment below — see
 	// applyDeployLabels (company/labels.go).
 	applyDeployLabels(ctx, central, deptRepo, pullIssue, centralOwner)
+
+	// Whoever has to decide this does not have to be looking at a screen to
+	// find out it is waiting — see company/mailrules.go.
+	NotifyMail(ctx, MailEventRequested, MailFields{
+		"app":       deptRepo.FullName(),
+		"title":     title,
+		"requester": ctx.Doer.Name,
+		"actor":     ctx.Doer.Name,
+		"reason":    ctx.FormString("perm_reason"),
+		// Absolute: this is read in a mail client, which has no idea what
+		// this instance's base URL is.
+		"link": fmt.Sprintf("%s/pulls/%d", central.HTMLURL(ctx), pullIssue.Index),
+	})
 
 	// The dashboards already show the queue, but both need somebody to go and
 	// look. Mail is what reaches whoever is not looking.

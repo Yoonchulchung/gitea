@@ -1,0 +1,62 @@
+{{/* The central repository's pull request list, as a table: one request per
+     row, the same three things on every row. An administrator here is
+     comparing requests, and things that are compared belong in columns.
+     Rows resolved by company.SetApprovalQueueData — the requester and the
+     department live in the branch name, not on the issue. */}}
+<table class="ui very basic table company-approval-queue">
+	<thead>
+		<tr>
+			<th>{{ctx.Locale.Tr "company.review.col_request"}}</th>
+			<th class="tw-w-1/6">{{ctx.Locale.Tr "company.review.col_requester"}}</th>
+			{{/* Against the right edge rather than floating with a gap after it.
+			     A class rather than a rule: Semantic's own `.ui.table td` sets
+			     the alignment at the same specificity and wins on source order. */}}
+			<th class="tw-w-1/6 tw-text-right">{{ctx.Locale.Tr "company.review.col_dept"}}</th>
+		</tr>
+	</thead>
+	<tbody>
+		{{range .Issues}}
+			{{$row := call $.CompanyRequestOf .PullRequest}}
+			<tr>
+				<td>
+					<a class="company-approval-title" href="{{$.Link}}/{{.Index}}">
+						{{/* The outcome as an icon: approved, ended, still waiting. */}}
+						{{if and $row $row.Approver}}{{svg "octicon-check-circle-fill" 16 "tw-text-green"}}
+						{{else if and $row $row.CancelledAt}}{{svg "octicon-x-circle-fill" 16 "tw-text-red"}}
+						{{else}}{{template "shared/issueicon" .}}{{end}}
+						<span class="gt-ellipsis">{{.Title}}</span>
+						<span class="text-grey">#{{.Index}}</span>
+					</a>
+					<div class="text-grey tw-text-12">
+						{{if and $row $row.Approver}}
+							{{ctx.Locale.Tr "company.review.approved_by_on" (HTMLFormat `<a href="%[1]s">%[2]s</a>` $row.Approver.HomeLink $row.Approver.GetDisplayName) (DateUtils.AbsoluteShort $row.ApprovedAt)}}
+						{{else if and $row $row.CancelledAt $row.Canceller}}
+							{{ctx.Locale.Tr (Iif $row.Cancelled "company.review.cancelled_by_on" "company.review.rejected_by_on") (HTMLFormat `<a href="%[1]s">%[2]s</a>` $row.Canceller.HomeLink $row.Canceller.GetDisplayName) (DateUtils.AbsoluteShort $row.CancelledAt)}}
+						{{else}}
+							{{DateUtils.AbsoluteShort .GetLastEventTimestamp}}
+						{{end}}
+					</div>
+				</td>
+				<td>
+					{{with $row}}
+						{{with .Requester}}
+							<a class="flex-text-inline" href="{{.HomeLink}}">{{ctx.AvatarUtils.Avatar . 18}}{{.GetDisplayName}}</a>
+						{{else}}
+							<span class="text-grey">{{ctx.Locale.Tr "company.activity.who_gone"}}</span>
+						{{end}}
+					{{end}}
+				</td>
+				<td class="tw-text-right">
+					{{with $row}}
+						<a href="{{AppSubUrl}}/{{PathEscape .Dept}}">{{.Dept}}</a>
+						<div class="text-grey tw-text-12 gt-ellipsis">{{.App}}</div>
+					{{end}}
+				</td>
+			</tr>
+		{{else}}
+			<tr><td colspan="3" class="text-grey">{{ctx.Locale.Tr "company.review.queue_empty"}}</td></tr>
+		{{end}}
+	</tbody>
+</table>
+{{/* The pager lives in shared/issuelist upstream, which this table replaces. */}}
+{{template "base/paginate" .}}

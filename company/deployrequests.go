@@ -6,6 +6,7 @@ package company
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"gitea.dev/models/db"
@@ -112,6 +113,10 @@ type deployRequestView struct {
 	Rejected    bool // only meaningful when listed under "Deployed" — closed by an admin, not merged
 	Cancelled   bool // only meaningful when listed under "Deployed" — withdrawn by the requester, not merged
 	CanCancel   bool // only meaningful when listed under "Requested" — poster or admin
+	// Items is what this request asks to be allowed, with its ticks — the
+	// requester can take one back while nobody has decided yet
+	// (company/permissions_decide.go). Only filled for open requests.
+	Items []permissionRequestRow
 }
 
 // DeployRequests lists every department's deploy requests, split the same
@@ -239,6 +244,11 @@ func loadDeployRequestPage(ctx *context.Context, central *repo_model.Repository,
 		}
 		if !closed {
 			view.CanCancel = ctx.Doer.IsAdmin || requesterID == ctx.Doer.ID
+			if view.CanCancel {
+				// Same right as cancelling: whoever may take the whole request
+				// back may take one item off it.
+				view.Items = permissionRequestRows(LoadPermissionRequests(repo.OwnerName, repo.Name, pr.ID))
+			}
 			views = append(views, view)
 			continue
 		}
@@ -310,8 +320,17 @@ func CancelDeployRequest(ctx *context.Context) {
 		return
 	}
 
-	org := ctx.Req.FormValue("org")
-	ctx.Redirect(fmt.Sprintf("%s/org/%s/dashboard/deploy-requests", setting.AppSubURL, org))
+	// Back where it was pressed. The department's list sends "org"; the
+	// request page does not, and an administrator cancelling from there wants
+	// the request they are looking at, not a department dashboard. The name
+	// comes from the branch rather than from the posted field — a redirect
+	// built out of a form value is a redirect somebody else can choose.
+	if ctx.Req.FormValue("org") == "" {
+		ctx.Redirect(pr.Issue.Link())
+		return
+	}
+	owner, _, _, _ := parseDeployBranchName(pr.HeadBranch)
+	ctx.Redirect(fmt.Sprintf("%s/org/%s/dashboard/deploy-requests", setting.AppSubURL, url.PathEscape(owner)))
 }
 
 // RepoCreateForOrg renders Gitea's own repo-creation page directly at

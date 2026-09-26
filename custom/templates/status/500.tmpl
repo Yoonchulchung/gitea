@@ -52,6 +52,17 @@
 						{{if .CompanyHelpURL}}<a class="ui basic button" href="{{.CompanyHelpURL}}">{{ctx.Locale.Tr "company.error500.help"}}</a>{{end}}
 					</div>
 
+					{{/* The one thing the person who hit this can do with it: read it
+					     out. The same six characters are in the log line, so an
+					     administrator can search for them — see
+					     docs/company/error-reference.md. */}}
+					{{if .CompanyErrorRef}}
+						<p class="company-error-ref">
+							{{ctx.Locale.Tr "company.error500.ref"}}
+							<code>{{.CompanyErrorRef}}</code>
+						</p>
+					{{end}}
+
 					{{if .CompanySupportEmail}}
 						<p class="company-error-contact">
 							{{ctx.Locale.Tr "company.error500.contact"}}
@@ -67,7 +78,9 @@
 							<details class="company-error-detail">
 								<summary>{{ctx.Locale.Tr "company.error500.detail"}}</summary>
 								<pre class="tw-whitespace-pre-wrap tw-wrap-anywhere">{{.ErrorMsg}}</pre>
-								<p class="text-grey tw-text-12">{{ctx.Locale.Tr "company.error500.detail_log"}} <code>{{AppSubUrl}}/-/admin/company-logs</code></p>
+								<p class="text-grey tw-text-12">{{ctx.Locale.Tr "company.error500.detail_log"}}
+									<a href="{{AppSubUrl}}/-/admin/company-logs?q={{.CompanyErrorRef}}&amp;level=error">{{AppSubUrl}}/-/admin/company-logs</a>
+								</p>
 							</details>
 						{{end}}
 						<p class="text-grey tw-text-12">{{ctx.Locale.Tr "admin.config.app_ver"}}: {{AppVer}}</p>

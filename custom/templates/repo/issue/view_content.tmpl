@@ -85,45 +85,99 @@
 			{{template "repo/issue/view_content/comments" .}}
 			<div class="timeline-item tw-hidden" id="timeline-comments-end"></div>
 
+			{{/* Above "Approve deploy", because it is what somebody does before
+			     deciding, not after. Deploy Request PRs on the central deploy
+			     repository only — company/pull_ai_review.go's
+			     SetDeployRequestPageData decides which of these two (if either)
+			     is set. Its own form, never inside another one: HTML forms
+			     cannot nest, and the comment form's fetch-action JS used to
+			     swallow this button's submit. */}}
+			{{if or .ShowDeployAIReview .ShowDeployAIReviewSetup}}
+				<div class="timeline-item comment company-deploy-aireview">
+					<div class="timeline-avatar">{{svg "octicon-sparkle-fill" 40}}</div>
+					<div class="content">
+						<div class="ui segment avatar-content-left-arrow tw-flex tw-items-center tw-justify-between tw-flex-wrap tw-gap-2">
+							<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.pulls.ai_review_hint"}}</span>
+							{{if .ShowDeployAIReview}}
+								<form method="post" action="{{.DeployAIReviewURL}}">
+									<button type="submit" class="ui basic button">{{ctx.Locale.Tr "company.pulls.ai_review"}}</button>
+								</form>
+							{{else}}
+								{{/* Same PR, but the viewing admin hasn't got their own AI key
+								     registered yet — say so instead of just not showing
+								     anything with no explanation. */}}
+								<a href="{{.DeployAIReviewSetupURL}}" class="ui basic button">{{ctx.Locale.Tr "company.pulls.ai_review_setup"}}</a>
+							{{end}}
+						</div>
+					</div>
+				</div>
+			{{end}}
+
 			{{if and .Issue.IsPull (not $.Repository.IsArchived)}}
 				{{template "repo/issue/view_content/pull_merge_box".}}
 			{{end}}
 
+			{{/* The other half of the decision. "Approve deploy" is the merge
+			     box above; turning the request down is this, and it goes
+			     through the same endpoint as the department's own cancel so
+			     the comment, the status and the dashboard agree whichever
+			     screen it was pressed on (company/deployrequests.go). See
+			     docs/company/central-repo-ui.md. */}}
+			{{if and .IsDeployRequest (not .Issue.IsClosed)}}
+				{{/* Same shape as the merge box above it — avatar in the gutter,
+				     arrowed segment in the content column — so the two decisions
+				     read as a pair rather than one of them falling out of the
+				     timeline. */}}
+				<div class="timeline-item comment company-deploy-cancel">
+					<div class="timeline-avatar">{{svg "octicon-x-circle" 40}}</div>
+					<div class="content">
+						<div class="ui segment avatar-content-left-arrow">
+							<h4 class="tw-mt-0 tw-mb-1">{{ctx.Locale.Tr "company.review.cancel_header"}}</h4>
+							<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.review.cancel_explain"}}</p>
+							{{/* ignore-dirty: the reason is submitted, not abandoned, so
+							     the browser's "leave without saving?" prompt is asking
+							     about something that is being saved. */}}
+							<form method="post" action="{{.DeployCancelURL}}" class="ui form ignore-dirty">
+								{{.CsrfTokenHtml}}
+								<div class="field">
+									<textarea name="reason" rows="2" required
+										placeholder="{{ctx.Locale.Tr "company.deploy_requests.cancel_reason_placeholder"}}"></textarea>
+								</div>
+								<button type="submit" class="ui red button">{{ctx.Locale.Tr "company.deploy_requests.cancel_confirm"}}</button>
+							</form>
+						</div>
+					</div>
+				</div>
+			{{end}}
+
 			{{if .IsSigned}}
-				{{if and (or .IsRepoAdmin .HasIssuesOrPullsWritePermission (not .Issue.IsLocked)) (not .Repository.IsArchived)}}
+				{{/* On a Deploy Request there is nothing to put in this timeline
+				     item — the comment box is gone — and rendering it anyway left
+				     the avatar hanging on its own at the foot of the page, an icon
+				     attached to nothing. */}}
+				{{if and (not $.IsDeployRequest) (or .IsRepoAdmin .HasIssuesOrPullsWritePermission (not .Issue.IsLocked)) (not .Repository.IsArchived)}}
 				<div class="timeline-item comment form">
 					<a class="timeline-avatar" href="{{.SignedUser.HomeLink}}">
 						{{ctx.AvatarUtils.Avatar .SignedUser 40}}
 					</a>
 					<div class="content">
-						{{if or .ShowDeployAIReview .ShowDeployAIReviewSetup}}
-							{{/* Deploy Request PRs on the central deploy repo only — see
-							company/pull_ai_review.go's SetDeployRequestPageData, which is
-							also what decides which of these two (if either) gets set. A
-							structural sibling of #comment-form below, not nested inside it —
-							HTML forms can't nest, and #comment-form's own form-fetch-action JS
-							intercepts submit clicks from anywhere inside it, which silently
-							submitted this as an empty native comment instead of hitting
-							.DeployAIReviewURL when it briefly lived inside that form. */}}
-							<div class="ui segment tw-flex tw-justify-end">
-								{{if .ShowDeployAIReview}}
-									<form method="post" action="{{.DeployAIReviewURL}}">
-										<button type="submit" class="ui basic button">{{ctx.Locale.Tr "company.pulls.ai_review"}}</button>
-									</form>
-								{{else}}
-									{{/* Same PR, but the viewing admin hasn't got their own AI key
-									registered yet — say so instead of just not showing anything
-									with no explanation. */}}
-									<a href="{{.DeployAIReviewSetupURL}}" class="ui basic button">{{ctx.Locale.Tr "company.pulls.ai_review_setup"}}</a>
-								{{end}}
-							</div>
-						{{end}}
+						{{/* A Deploy Request is decided with "Approve deploy" or
+						     "Cancel request", both above; the read-only assistant on
+						     the right answers what a reviewer wants to ask. A Markdown
+						     comment box is git vocabulary for somebody who has never
+						     opened a pull request, and nothing on this page needs it.
+						     See docs/company/central-repo-ui.md. */}}
+						{{if not $.IsDeployRequest}}
 						<div class="ui segment avatar-content-left-arrow">
 							<form class="ui form form-fetch-action" id="comment-form" action="{{$.RepoLink}}/issues/{{.Issue.Index}}/comments" method="post">
 								{{template "repo/issue/comment_tab" .}}
 								<div class="field footer">
 									<div class="flex-text-block tw-justify-end">
-										{{if and (or .HasIssuesOrPullsWritePermission .IsIssuePoster) (not .DisableStatusChange)}}
+										{{/* Closing a Deploy Request is "Cancel request" above, which
+										     takes a reason and records the cancellation; reopening one
+										     would leave a request the department's record calls
+										     cancelled. Neither belongs on the comment box. */}}
+										{{if and (not $.IsDeployRequest) (or .HasIssuesOrPullsWritePermission .IsIssuePoster) (not .DisableStatusChange)}}
 											{{$btnIconColor := ""}}{{$btnIcon := ""}}{{$btnTextNoComment := ""}}{{$btnTextWithComment := ""}}{{$btnValue := ""}}
 											{{if .Issue.IsClosed}}
 												{{$btnValue = "reopen"}}
@@ -150,6 +204,7 @@
 								</div>
 							</form>
 						</div>
+						{{end}}
 					</div>
 				</div>
 				{{else if .Repository.IsArchived}}

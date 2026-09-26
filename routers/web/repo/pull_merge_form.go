@@ -83,8 +83,25 @@ func (prInfo *pullRequestViewInfo) prepareMergeBoxFormProps(ctx *context.Context
 		}
 	}
 
+	// company: a Deploy Request is approved with one press. The form behind
+	// that press asks for a commit subject, a commit body and whether to
+	// delete a branch — three questions about git put to somebody who is
+	// answering "may this app go live", and whose answer to all three is the
+	// default. The defaults go with the press instead
+	// (web_src/js/components/PullRequestMergeForm.vue), which is also why the
+	// approver's name is put into the body here: nobody will see the field.
+	// The snapshot branch is the request; once it is decided there is nothing
+	// left to keep, and company/deploy_notifier.go removes it either way. Asked
+	// for here as well so the merge itself takes it, rather than leaving a
+	// branch alive for however long the notification takes.
+	_, companyDirectMerge := ctx.Data["CompanyMergeLabel"].(template.HTML)
+	if companyDirectMerge {
+		defaultMergeBody = "승인자: " + ctx.Doer.Name + "\n" + defaultMergeBody
+	}
+
 	allOverridableChecksOk := !prInfo.MergeBoxData.hasOverridableBlockers
 	mergeFormProps := map[string]any{
+		"companyDirectMerge":             companyDirectMerge,
 		"baseLink":                       prInfo.issue.Link(),
 		"textCancel":                     ctx.Locale.Tr("cancel"),
 		"textDeleteBranch":               ctx.Locale.Tr("repo.branch.delete", prInfo.headTarget),
@@ -101,7 +118,7 @@ func (prInfo *pullRequestViewInfo) prepareMergeBoxFormProps(ctx *context.Context
 		"pullHeadCommitID":              prInfo.CompareInfo.HeadCommitID,
 		"isPullBranchDeletable":         prInfo.MergeBoxData.IsPullBranchDeletable,
 		"defaultMergeStyle":             mergeStyle,
-		"defaultDeleteBranchAfterMerge": prConfig.DefaultDeleteBranchAfterMerge,
+		"defaultDeleteBranchAfterMerge": prConfig.DefaultDeleteBranchAfterMerge || companyDirectMerge,
 		"mergeMessageFieldPlaceHolder":  ctx.Locale.Tr("repo.editor.commit_message_desc"),
 		"defaultMergeMessage":           defaultMergeBody,
 

@@ -92,6 +92,12 @@ func setDeployReviewData(ctx *gitea_context.Context, pr *issues_model.PullReques
 	ctx.Data["DeployDeptName"] = deptName
 	ctx.Data["DeployDeptLink"] = fmt.Sprintf("%s/%s/%s", setting.AppSubURL, deptOwner, deptName)
 	ctx.Data["DeployChatURL"] = fmt.Sprintf("%s/company/deploy-request/%d/chat", setting.AppSubURL, pr.ID)
+	// Approving and turning down are two different decisions, so they are two
+	// buttons. Gitea's own "Close pull request" is hidden on this page: it
+	// takes no reason, leaves no cancellation comment, and the department's
+	// dashboard would still call the request open. See
+	// docs/company/central-repo-ui.md.
+	ctx.Data["DeployCancelURL"] = fmt.Sprintf("%s/company/deploy-request/%d/cancel", setting.AppSubURL, pr.ID)
 	ctx.Data["DeployRequestMessage"] = deployRequestMessage(pr.Issue.Content)
 	ctx.Data["DeployPreview"] = PreviewStatusOf(deptOwner, deptName)
 	if isRemovalRequest(pr) {
@@ -110,19 +116,55 @@ func setDeployReviewData(ctx *gitea_context.Context, pr *issues_model.PullReques
 	if status, err := deployStatusFor(ctx, pr); err == nil {
 		ctx.Data["DeployRequestStatus"] = status
 	}
+	// Who approved it. The merge commit carries the name too, but nobody
+	// deciding whether an app may go live reads a commit — and the approval is
+	// the one thing on this page somebody comes back to ask about.
+	if pr.HasMerged {
+		if approver, err := user_model.GetUserByID(ctx, pr.MergerID); err == nil {
+			ctx.Data["DeployApprover"] = approver
+			ctx.Data["DeployApprovedAt"] = pr.MergedUnix
+		}
+	}
+	// And who ended it the other way. A request that was withdrawn or turned
+	// down said "취소됨" and nothing else: the page someone opens months later
+	// to ask "what happened to this" had the outcome and none of the story.
+	// Same comments the department's own screen shows, so the two cannot
+	// disagree (company/deploystatus.go's rejectionReasons).
+	if pr.Issue.IsClosed && !pr.HasMerged {
+		if reasons, err := rejectionReasons(ctx, pr); err != nil {
+			log.Error("company: reading the reasons deploy request #%d ended: %v", pr.ID, err)
+		} else if len(reasons) > 0 {
+			ctx.Data["DeployDecisionReasons"] = reasons
+		}
+	}
 	// Always a slice, even an empty one: the sidebar counts these, and `len`
 	// of an unset value stops the template half-way down the page.
 	requests := LoadPermissionRequests(deptOwner, deptName, pr.ID)
 	ctx.Data["PermissionRequests"] = requests
+	// Approving fewer items than were asked for is a decision made here and
+	// committed to the request's own branch before the merge reads it —
+	// company/permissions_decide.go.
+	ctx.Data["PermissionRows"] = permissionRequestRows(requests)
+	ctx.Data["DeployPermissionsURL"] = fmt.Sprintf("%s/company/deploy-request/%d/permissions", setting.AppSubURL, pr.ID)
+	ctx.Data["CanDecidePermissions"] = ctx.Doer.IsAdmin && !pr.Issue.IsClosed && len(requests) > 0
 	if !pr.Issue.IsClosed && !isRemovalRequest(pr) {
 		ctx.Data["Capacity"] = capacityCheck(ctx.Locale, deptOwner, deptName, requests) // company/deploy_capacity.go
+	} else if set := LoadPermissionRequestSet(deptOwner, deptName); set != nil && set.PRID == pr.ID && len(set.Capacity) > 0 {
+		// Decided: the figures whoever decided it was looking at, not today's.
+		ctx.Data["Capacity"] = renderCapacity(ctx.Locale, set.Capacity, set.DecidedAt)
 	}
 	ctx.Data["DeployPackages"] = []reviewPackage{}
 	if gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, ctx.Repo.Repository); err == nil {
-		requirements := deployRequestFile(ctx, gitRepo, pr.HeadBranch, deployPathPrefix(deptOwner, deptName), "requirements.txt")
+		prefix := deployPathPrefix(deptOwner, deptName)
+		requirements := deployRequestFile(ctx, gitRepo, pr.HeadBranch, prefix, "requirements.txt")
 		packages := reviewPackages(requirements, SettingsFor(deptOwner, deptName), requests)
 		ctx.Data["DeployPackages"] = packages
 		ctx.Data["DeployPackagesPending"] = len(pendingPackages(packages))
+		if !pr.Issue.IsClosed && !isRemovalRequest(pr) {
+			// Everything the submission form checks, against the snapshot this
+			// request froze — see company/review_preflight.go.
+			ctx.Data["DeployPreflight"] = PreflightForRequest(ctx, gitRepo, pr, deptOwner, deptName)
+		}
 	}
 	ctx.Data["CompanyAIOffered"] = AIOfferedTo(ctx)
 	ctx.Data["AIEnabled"] = AIConfiguredFor(ctx, ctx.Doer.ID)
@@ -168,7 +210,7 @@ func packagesToApprove(names []string, packages []reviewPackage) []PermissionReq
 			Label:    "company.perm.kind.package",
 			Detail:   p.Name + " (" + p.Version + ")",
 			Evidence: "company.evidence.in_requirements",
-			Decision: "approve",
+			Decision: decisionApprove,
 		})
 	}
 	return out

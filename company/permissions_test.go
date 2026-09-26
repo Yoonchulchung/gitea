@@ -214,12 +214,56 @@ func TestMissingPackagesBecomeRequestable(t *testing.T) {
 // The log has to give every request a diff, including one that changes no
 // code — that is the case it exists for.
 func TestRequestLogEntryNamesWhatIsBeingAsked(t *testing.T) {
-	entry := requestLogEntry("kim", "패키지 승인 요청", "",
-		[]PermissionRequest{{Label: "패키지 추가", Detail: "MarkupSafe (3.0.3)", Evidence: "의존성입니다", Reason: "빌드가 멈춰서"}},
+	entry := requestLogEntry(translation.MockLocale{}, "kim", "패키지 승인 요청", "",
+		[]PermissionRequest{{Kind: PermKindPackage, Value: "MarkupSafe", Label: "패키지 추가", Detail: "MarkupSafe (3.0.3)", Evidence: "의존성입니다", Reason: "빌드가 멈춰서"}},
 		time.Unix(1700000000, 0))
 	assert.Contains(t, entry, "@kim")
 	assert.Contains(t, entry, "MarkupSafe (3.0.3)")
 	assert.Contains(t, entry, "빌드가 멈춰서")
+}
+
+// The ticks in the newest entry are the approval, so what the writer puts in
+// the file and what the merge reads back out of it have to be the same thing.
+func TestRequestLogDecisionsRoundTrip(t *testing.T) {
+	requests := []PermissionRequest{
+		{Kind: PermKindPackage, Value: "pandas", Label: "패키지 추가", Detail: "pandas (2.2.0)"},
+		{Kind: PermKindNetwork, Value: "erp.internal", Label: "외부 통신 허용", Detail: "erp.internal (GET)"},
+		{Kind: PermKindMemory, Value: "1024", Label: "메모리", Detail: "512MB → 1024MB", Decision: decisionReject},
+	}
+	md := requestLogHeader("PO", "app") + requestLogEntry(translation.MockLocale{}, "kim", "요청", "", requests, time.Unix(1700000000, 0))
+
+	got, ok := parseRequestLogDecisions(md)
+	require.True(t, ok)
+	assert.Equal(t, map[string]bool{
+		"package:pandas":       true,
+		"network:erp.internal": true,
+		"memory:1024":          false,
+	}, got)
+}
+
+// Only the newest entry decides. The ones below it are requests that were
+// decided long ago, and a tick still sitting in one of those must not grant
+// anything now.
+func TestRequestLogDecisionsReadOnlyTheNewestEntry(t *testing.T) {
+	md := requestLogHeader("PO", "app") +
+		"## newest\n\n- [ ] **패키지 추가** — pandas <!-- perm:package:pandas -->\n\n" +
+		"## older\n\n- [x] **패키지 추가** — numpy <!-- perm:package:numpy -->\n"
+	got, ok := parseRequestLogDecisions(md)
+	require.True(t, ok)
+	assert.Equal(t, map[string]bool{"package:pandas": false}, got)
+	assert.NotContains(t, got, "package:numpy")
+}
+
+// An entry written before checkboxes existed says nothing about individual
+// items, and a request sitting in front of an administrator across that
+// upgrade has to keep meaning what it meant when they read it.
+func TestRequestLogDecisionsFallBackWhenThereAreNoCheckboxes(t *testing.T) {
+	md := requestLogHeader("PO", "app") + "## old entry\n\n- **패키지 추가** — pandas\n"
+	_, ok := parseRequestLogDecisions(md)
+	assert.False(t, ok)
+
+	_, ok = parseRequestLogDecisions("no entries at all")
+	assert.False(t, ok)
 }
 
 // Newest first, and bounded: this file is reviewed as a diff, and an admin
@@ -448,4 +492,138 @@ func TestParseLimitRequest(t *testing.T) {
 		assert.Equal(t, c.problem, problem, c.raw)
 		assert.Equal(t, c.mb, mb, c.raw)
 	}
+}
+
+// Saving a selection edits the ticks and nothing else: the commit an
+// administrator leaves on the request has to show what they decided, not a
+// regenerated entry where the timestamp and the wording moved too.
+func TestRewriteRequestLogDecisionsTouchesOnlyTheTicks(t *testing.T) {
+	requests := []PermissionRequest{
+		{Kind: PermKindPackage, Value: "pandas", Label: "패키지 추가", Detail: "pandas (2.2.0)", Evidence: "requirements.txt에 있음", Reason: "월말 보고서"},
+		{Kind: PermKindMemory, Value: "1024", Label: "메모리", Detail: "512MB → 1024MB"},
+	}
+	md := requestLogHeader("PO", "app") +
+		requestLogEntry(translation.MockLocale{}, "kim", "요청", "", requests, time.Unix(1700000000, 0)) +
+		"\n## 이전 요청\n\n- [x] **패키지 추가** — numpy <!-- perm:package:numpy -->\n"
+
+	got, changed := rewriteRequestLogDecisions(md, map[string]bool{"package:pandas": true}, nil)
+	require.True(t, changed)
+	assert.Contains(t, got, "- [x] **패키지 추가** — pandas (2.2.0) <!-- perm:package:pandas -->")
+	assert.Contains(t, got, "- [ ] **메모리** — 512MB → 1024MB <!-- perm:memory:1024 -->")
+	assert.Contains(t, got, "월말 보고서", "the reason is left alone")
+	assert.Contains(t, got, "2023-11-15", "and so is the timestamp")
+	assert.Contains(t, got, "- [x] **패키지 추가** — numpy", "older entries are not decided again")
+
+	decisions, ok := parseRequestLogDecisions(got)
+	require.True(t, ok)
+	assert.Equal(t, map[string]bool{"package:pandas": true, "memory:1024": false}, decisions)
+}
+
+// A withdrawn item leaves no trace: nobody was asked, so there is no decision
+// to record. Its evidence line goes with it rather than being left orphaned
+// under whatever item happens to be above.
+func TestRewriteRequestLogDecisionsRemovesWithdrawnItems(t *testing.T) {
+	requests := []PermissionRequest{
+		{Kind: PermKindPackage, Value: "pandas", Label: "패키지 추가", Detail: "pandas (2.2.0)", Evidence: "requirements.txt에 있음"},
+		{Kind: PermKindNetwork, Value: "erp.internal", Label: "외부 통신 허용", Detail: "erp.internal (GET)"},
+	}
+	md := requestLogHeader("PO", "app") + requestLogEntry(translation.MockLocale{}, "kim", "요청", "", requests, time.Unix(1700000000, 0))
+
+	got, changed := rewriteRequestLogDecisions(md,
+		map[string]bool{"network:erp.internal": true},
+		map[string]bool{"package:pandas": true})
+	require.True(t, changed)
+	assert.NotContains(t, got, "pandas")
+	assert.NotContains(t, got, "requirements.txt에 있음", "the withdrawn item's evidence goes with it")
+	assert.Contains(t, got, "erp.internal (GET)")
+
+	decisions, ok := parseRequestLogDecisions(got)
+	require.True(t, ok)
+	assert.Equal(t, map[string]bool{"network:erp.internal": true}, decisions)
+}
+
+// Saving the same ticks back is not a commit. An empty one would put a
+// "decided" commit on the request every time somebody opened the form.
+func TestRewriteRequestLogDecisionsReportsNoChange(t *testing.T) {
+	requests := []PermissionRequest{{Kind: PermKindPackage, Value: "pandas", Label: "패키지 추가", Detail: "pandas (2.2.0)"}}
+	md := requestLogHeader("PO", "app") + requestLogEntry(translation.MockLocale{}, "kim", "요청", "", requests, time.Unix(1700000000, 0))
+	_, changed := rewriteRequestLogDecisions(md, map[string]bool{"package:pandas": true}, nil)
+	assert.False(t, changed)
+}
+
+// The packages ticked beside "Approve deploy" are recorded as the merge goes
+// through, so they are never in the request log — approved a moment earlier by
+// the same person on the same page. Everything else the log does not carry is
+// refused, including a line deleted out of the entry by hand.
+func TestDecideKeepsWhatWasApprovedAtTheMergeAndRefusesWhatVanished(t *testing.T) {
+	requests := []PermissionRequest{
+		{Kind: PermKindPackage, Value: "pandas", Decision: decisionApprove}, // ticked on the merge form
+		{Kind: PermKindPackage, Value: "numpy"},                             // asked for, line deleted from the log
+		{Kind: PermKindNetwork, Value: "erp.internal"},                      // asked for, still ticked
+	}
+	got := decideWithLog(requests, map[string]bool{"network:erp.internal": true})
+	assert.Equal(t, decisionApprove, got[0].Decision)
+	assert.Equal(t, decisionReject, got[1].Decision)
+	assert.Equal(t, decisionApprove, got[2].Decision)
+}
+
+// No checkboxes at all is a request written before they existed: it meant
+// all-or-nothing to whoever submitted and whoever approved it.
+func TestDecideApprovesEverythingWithoutCheckboxes(t *testing.T) {
+	requests := []PermissionRequest{{Kind: PermKindPackage, Value: "pandas"}, {Kind: PermKindMemory, Value: "1024"}}
+	got := decideWithLog(requests, nil)
+	for _, r := range got {
+		assert.Equal(t, decisionApprove, r.Decision, "%s", permRequestID(r))
+	}
+}
+
+// The gauges under a decided request must describe the server whoever decided
+// it was looking at, so the numbers are frozen onto the request at that
+// moment — once, and without being lost by the writes that follow.
+func TestCapacitySnapshotIsRecordedOnceAndSurvivesLaterWrites(t *testing.T) {
+	withTempAppData(t)
+	withPolicy(t, "version: 1\napps:\n  PO/app:\n    limits:\n      memoryMB: 512\n")
+	requests := []PermissionRequest{{Kind: PermKindMemory, Value: "1024"}}
+	require.NoError(t, SavePermissionRequests("PO", "app", 7, requests))
+
+	RecordCapacityOnDecision("PO", "app", 7)
+	set := LoadPermissionRequestSet("PO", "app")
+	require.NotNil(t, set)
+	if len(set.Capacity) == 0 {
+		t.Skip("this host reports no total memory, so there is no figure to freeze")
+	}
+	first, decidedAt := set.Capacity[0], set.DecidedAt
+	assert.Equal(t, PermKindMemory, first.Kind)
+	assert.Equal(t, 1024, first.Own)
+	assert.Less(t, first.Before, first.After, "the request adds to what was already committed")
+
+	// Deciding again must not move the numbers somebody acted on.
+	RecordCapacityOnDecision("PO", "app", 7)
+	assert.Equal(t, decidedAt, LoadPermissionRequestSet("PO", "app").DecidedAt)
+
+	// And the merge writing the decisions back must not drop them.
+	requests[0].Decision = decisionApprove
+	require.NoError(t, SavePermissionRequests("PO", "app", 7, requests))
+	after := LoadPermissionRequestSet("PO", "app")
+	assert.Equal(t, []CapacitySnapshot{first}, after.Capacity)
+	assert.Equal(t, decidedAt, after.DecidedAt)
+
+	// A different request starts with no snapshot of its own.
+	require.NoError(t, SavePermissionRequests("PO", "app", 8, requests))
+	assert.Empty(t, LoadPermissionRequestSet("PO", "app").Capacity)
+}
+
+// Rendered figures say whether they are current or recorded — the same bar
+// means a different thing under a request that is already decided.
+func TestRenderCapacitySaysWhenItWasTaken(t *testing.T) {
+	snaps := []CapacitySnapshot{{Kind: PermKindMemory, Own: 1024, Before: 512, After: 1024, Whole: 4096}}
+	live := renderCapacity(translation.MockLocale{}, snaps, 0)
+	require.Len(t, live, 1)
+	assert.Zero(t, live[0].RecordedAt)
+	assert.Equal(t, "ok", live[0].State)
+	assert.Equal(t, 12, live[0].BaseFill)
+	assert.Equal(t, 13, live[0].AddFill)
+
+	recorded := renderCapacity(translation.MockLocale{}, snaps, 1790000000)
+	assert.EqualValues(t, 1790000000, recorded[0].RecordedAt)
 }

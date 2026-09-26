@@ -5,10 +5,11 @@ package company
 
 import (
 	"bytes"
-	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	_ "embed"
 )
 
 // The person deploying an app should not have to know that its code

@@ -17,6 +17,13 @@ import (
 // added to routers/init.go is a line that can conflict on the next upstream
 // merge (docs/company/patches.md).
 func InitAppPlatform(ctx context.Context) {
+	// Before anything resolves the central repository: it may have been moved
+	// since the last start (company/centralrepo.go).
+	LoadCentralRepoLocation(ctx)
+	// From here on there is a database behind the platform's own reads, so
+	// notifications may go out (company/mailrules.go).
+	platformRunning.Store(true)
+
 	// The policy in force comes from git, so a restart has to read it back —
 	// otherwise every app silently reverts to built-in defaults and the
 	// packages an admin approved last week stop being installable.

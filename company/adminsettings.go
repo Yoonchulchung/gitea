@@ -30,6 +30,7 @@ const tplAdminSettings templates.TplName = "company/admin_settings"
 // somebody signs a contract. Neither should need a file edit and a restart,
 // so they live in the database.
 const (
+	settingKeyAIUsersEnabled   = "company.ai.users_enabled"
 	settingKeyAnthropicVisible = "company.ai.anthropic_visible"
 	settingKeySupportEmail     = "company.support_email"
 	settingKeyHelpURL          = "company.help_url"
@@ -41,6 +42,7 @@ const (
 var (
 	platformSettingsMu     sync.RWMutex
 	platformSettingsLoaded bool
+	aiUsersEnabled         bool
 	anthropicVisible       bool
 	supportEmail           string
 	helpURL                string
@@ -68,10 +70,47 @@ func loadPlatformSettings(ctx context.Context) {
 
 	platformSettingsMu.Lock()
 	defer platformSettingsMu.Unlock()
+	aiUsersEnabled = all[settingKeyAIUsersEnabled] == "true"
 	anthropicVisible = all[settingKeyAnthropicVisible] == "true"
 	supportEmail = all[settingKeySupportEmail]
 	helpURL = all[settingKeyHelpURL]
 	platformSettingsLoaded = true
+}
+
+// AIOfferedToUsers reports whether anybody but an administrator is offered
+// AI on this instance.
+//
+// Three switches, three different questions. [company] AI_ENABLED decides
+// whether a request may leave the instance at all (company/ai_policy.go);
+// this decides whether the people who work here are given the feature; the
+// provider toggle below decides which provider they are given. An operator
+// who forbids AI tools turns the first one off and there is no screen that
+// can undo it. A company that allows them but is not handing them to
+// departments yet turns this one off, from a page, on the day the decision
+// changes.
+//
+// Off unless an administrator turns it on, like everything else here that
+// sends company code to a third party.
+func AIOfferedToUsers(ctx context.Context) bool {
+	loadPlatformSettings(ctx)
+	platformSettingsMu.RLock()
+	defer platformSettingsMu.RUnlock()
+	return aiUsersEnabled
+}
+
+// aiAllowedFor is the per-person half of that switch, checked on every AI
+// path (AIConfiguredFor, company/ai.go).
+//
+// Administrators keep AI whatever the setting says — the toggle is about what
+// departments are offered, and the administrator who turned it off is the one
+// who has to look at what they turned off. The user lookup only happens when
+// the answer could still change, so the common path is one cached read.
+func aiAllowedFor(ctx context.Context, userID int64) bool {
+	if AIOfferedToUsers(ctx) {
+		return true
+	}
+	u, err := user_model.GetUserByID(ctx, userID)
+	return err == nil && u.IsAdmin
 }
 
 // AnthropicVisibleToUsers reports whether the Anthropic provider is offered
@@ -163,7 +202,7 @@ func AIOfferedTo(ctx *gitea_context.Context) bool {
 	if ctx.Doer.IsAdmin {
 		return true
 	}
-	return AIEnabled() && (aiGatewayURL() != "" || AnthropicVisibleToUsers(ctx))
+	return AIEnabled() && AIOfferedToUsers(ctx) && (aiGatewayURL() != "" || AnthropicVisibleToUsers(ctx))
 }
 
 // anthropicAllowedFor is the check every AI path goes through.
@@ -228,6 +267,7 @@ func hostOnly(raw string) string {
 // AdminSettings renders the platform settings an administrator can change.
 func AdminSettings(ctx *gitea_context.Context) {
 	ctx.Data["Title"] = ctx.Locale.TrString("company.adminsettings.title")
+	ctx.Data["AIUsersEnabled"] = AIOfferedToUsers(ctx)
 	ctx.Data["AnthropicVisible"] = AnthropicVisibleToUsers(ctx)
 	ctx.Data["SupportEmail"] = SupportEmail(ctx)
 	ctx.Data["HelpURL"] = HelpURL(ctx)
@@ -254,16 +294,28 @@ func AdminSettingsPost(ctx *gitea_context.Context) {
 		ctx.Redirect(setting.AppSubURL + "/-/admin/company-settings")
 		return
 	}
+	usersEnabled := "false"
+	if ctx.FormBool("ai_users_enabled") {
+		usersEnabled = "true"
+	}
 	visible := "false"
 	if ctx.FormBool("anthropic_visible") {
 		visible = "true"
 	}
 
-	if err := system_model.SetSettings(ctx, map[string]string{
-		settingKeyAnthropicVisible: visible,
-		settingKeySupportEmail:     email,
-		settingKeyHelpURL:          help,
-	}); err != nil {
+	settings := map[string]string{
+		settingKeyAIUsersEnabled: usersEnabled,
+		settingKeySupportEmail:   email,
+		settingKeyHelpURL:        help,
+	}
+	// The provider box is disabled while nobody is offered AI, and a disabled
+	// checkbox posts nothing — writing that absence would erase the choice
+	// somebody made. Left alone instead, so turning AI back on restores it.
+	if usersEnabled == "true" {
+		settings[settingKeyAnthropicVisible] = visible
+	}
+
+	if err := system_model.SetSettings(ctx, settings); err != nil {
 		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 	} else {
 		invalidatePlatformSettings()

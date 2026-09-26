@@ -26,7 +26,22 @@
 				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.ai_explain"}}</p>
 				<div class="field">
 					<div class="ui checkbox">
-						<input id="anthropic_visible" type="checkbox" name="anthropic_visible" value="true" {{if .AnthropicVisible}}checked{{end}}>
+						<input id="ai_users_enabled" type="checkbox" name="ai_users_enabled" value="true" {{if .AIUsersEnabled}}checked{{end}}
+						       data-company-enables="#anthropic_visible">
+						<label for="ai_users_enabled">{{ctx.Locale.Tr "company.adminsettings.ai_users"}}</label>
+					</div>
+				</div>
+				{{/* Its own paragraph, not the field's `help`: inside a checkbox
+				     field that renders on the label's line and reads as part of it. */}}
+				<p class="text-grey tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.adminsettings.ai_users_explain"}}</p>
+				{{/* Indented under the switch above, and switched off with it: while
+				     nobody is offered AI there is no provider to choose between, and
+				     a control that decides nothing should not invite a decision. The
+				     saved answer is kept either way — turning AI back on restores what
+				     was chosen (company/adminsettings.go). */}}
+				<div class="field tw-ml-4">
+					<div class="ui checkbox">
+						<input id="anthropic_visible" type="checkbox" name="anthropic_visible" value="true" {{if .AnthropicVisible}}checked{{end}} {{if not .AIUsersEnabled}}disabled{{end}}>
 						<label for="anthropic_visible">{{ctx.Locale.Tr "company.adminsettings.ai_anthropic"}}</label>
 					</div>
 				</div>

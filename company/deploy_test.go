@@ -4,9 +4,11 @@
 package company
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func pathSet(paths ...string) map[string]bool {
@@ -161,4 +163,68 @@ func TestGroupDiffSegments(t *testing.T) {
 			assert.False(t, c)
 		}
 	})
+}
+
+// The central repository can be renamed or transferred from its own settings
+// page like any other. What must not happen is the platform losing it: every
+// policy read and every approval resolves it by owner and name, and app.ini
+// still says where it used to be.
+func TestCentralRepoFollowsAMove(t *testing.T) {
+	withCompanyINI(t, "CENTRAL_DEPLOY_REPO = yoonchul/central-deploy")
+	centralRepoMoved.Store("")
+	t.Cleanup(func() { centralRepoMoved.Store("") })
+
+	owner, name, err := centralDeployOwnerName()
+	assert.NoError(t, err)
+	assert.Equal(t, "yoonchul", owner)
+	assert.Equal(t, "central-deploy", name)
+
+	// Once moved, the new location wins over app.ini.
+	centralRepoMoved.Store("platform/approvals")
+	owner, name, err = centralDeployOwnerName()
+	assert.NoError(t, err)
+	assert.Equal(t, "platform", owner)
+	assert.Equal(t, "approvals", name)
+}
+
+// A notification is prose with a few names in it. The names are escaped
+// because an app or a person supplies them; the markup around them is what
+// the administrator wrote, and must survive.
+func TestMailPlaceholdersEscapeValuesNotMarkup(t *testing.T) {
+	fields := MailFields{"app": "PO/<b>report</b>", "actor": "kim & lee"}
+	body := renderMailText(`<p>App: {{app}} — by {{actor}}</p>`, fields, true)
+	assert.Equal(t, `<p>App: PO/&lt;b&gt;report&lt;/b&gt; — by kim &amp; lee</p>`, body)
+
+	// A subject is not markup, so nothing is escaped into entities there.
+	assert.Equal(t, "kim & lee asked", renderMailText("{{actor}} asked", fields, false))
+
+	// An unknown name is left as it was typed rather than silently emptied —
+	// the administrator can see their mistake in the message that arrives.
+	assert.Equal(t, "{{nope}}", renderMailText("{{nope}}", fields, true))
+}
+
+// Addresses are typed by hand into a textarea, and people paste lists in
+// every shape.
+func TestSplitAddressesTakesWhateverWasPasted(t *testing.T) {
+	got := SplitAddresses(" a@x.com,b@x.com\n c@x.com ;a@X.com\n\n")
+	assert.Equal(t, []string{"a@x.com", "b@x.com", "c@x.com"}, got, "blank entries and repeats are dropped")
+	assert.Empty(t, SplitAddresses("  \n , ; "))
+}
+
+// The message has to be a message: an HTML body declared as one, a subject a
+// mail server will not mangle, and every recipient on it.
+func TestBuildMessageIsWellFormedHTMLMail(t *testing.T) {
+	server := MailServer{From: "platform@example.com", FromName: "사내 플랫폼"}
+	msg := string(buildMessage(server, []string{"a@x.com", "b@x.com"}, "배포 요청", "<p>안녕<br>하세요</p>"))
+
+	headers, body, found := strings.Cut(msg, "\r\n\r\n")
+	require.True(t, found, "headers and body are separated by a blank line")
+	assert.Equal(t, "<p>안녕<br>하세요</p>", body, "the body is the HTML as written")
+	assert.Contains(t, headers, "To: a@x.com, b@x.com")
+	assert.Contains(t, headers, "Content-Type: text/html; charset=UTF-8")
+	// Non-ASCII in a header is encoded rather than sent raw, and the address
+	// stays readable beside the encoded name.
+	assert.Contains(t, headers, "<platform@example.com>")
+	assert.NotContains(t, headers, "Subject: 배포 요청")
+	assert.Contains(t, headers, "Subject: =?utf-8?q?")
 }

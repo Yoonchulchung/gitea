@@ -5,11 +5,15 @@ package company
 
 import (
 	"net/http"
+	"slices"
+	"strings"
 
 	activities_model "gitea.dev/models/activities"
 	"gitea.dev/models/db"
+	"gitea.dev/models/organization"
 	repo_model "gitea.dev/models/repo"
 	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/structs"
 	"gitea.dev/modules/templates"
 	"gitea.dev/modules/timeutil"
 	"gitea.dev/services/context"
@@ -30,10 +34,18 @@ func departmentOrgIDs() *builder.Builder {
 // but scoped to repos owned by any organization rather than by
 // permission — see docs/company/admin-activity.md for why no existing
 // Gitea query does this.
-func orgOwnedRepoIDs() *builder.Builder {
-	return builder.Select("id").From("repository").Where(
-		builder.In("owner_id", departmentOrgIDs()),
-	)
+//
+// With an org id it narrows to that one department. The feed's reason for
+// existing is that it crosses departments, but "what has PO been doing" is
+// the question an administrator arrives with once they know which department
+// they are asking about, and paging through every other department's commits
+// to find out is not an answer.
+func orgOwnedRepoIDs(orgID int64) *builder.Builder {
+	owner := builder.Cond(builder.In("owner_id", departmentOrgIDs()))
+	if orgID > 0 {
+		owner = builder.Eq{"owner_id": orgID}
+	}
+	return builder.Select("id").From("repository").Where(owner)
 }
 
 // oneRowPerAction keeps a single row per thing that actually happened.
@@ -48,7 +60,10 @@ func orgOwnedRepoIDs() *builder.Builder {
 // action on an org-owned repo, and unlike the actor's copy it survives the
 // actor being deleted (services/user/delete.go removes a departing user's
 // whole feed, which would take their history out of an audit view with it).
-func oneRowPerAction() builder.Cond {
+func oneRowPerAction(orgID int64) builder.Cond {
+	if orgID > 0 {
+		return builder.Eq{"user_id": orgID}
+	}
 	return builder.In("user_id", departmentOrgIDs())
 }
 
@@ -138,9 +153,31 @@ func AdminActivity(ctx *context.Context) {
 	page := max(ctx.FormInt("page"), 1)
 	const perPage = 50
 
+	departments, err := db.Find[organization.Organization](ctx, organization.FindOrgOptions{
+		ListOptions:       db.ListOptionsAll,
+		IncludeVisibility: structs.VisibleTypePrivate, // an admin page: a private department is still one of theirs
+	})
+	if err != nil {
+		ctx.ServerError("list departments", err)
+		return
+	}
+	// Named in the URL rather than numbered, so the link an administrator
+	// pastes to a colleague still says which department it is about.
+	var orgID int64
+	if name := ctx.FormString("dept"); name != "" {
+		i := slices.IndexFunc(departments, func(o *organization.Organization) bool { return strings.EqualFold(o.Name, name) })
+		if i < 0 {
+			ctx.NotFound(nil) // a hand-edited URL; showing everything under that name would be a lie
+			return
+		}
+		orgID = departments[i].ID
+		ctx.Data["Department"] = departments[i]
+	}
+	ctx.Data["Departments"] = departments
+
 	total, err := db.GetEngine(ctx).
-		In("repo_id", orgOwnedRepoIDs()).
-		Where(oneRowPerAction()).
+		In("repo_id", orgOwnedRepoIDs(orgID)).
+		Where(oneRowPerAction(orgID)).
 		Count(&activities_model.Action{})
 	if err != nil {
 		ctx.ServerError("count cross-department activity", err)
@@ -149,8 +186,8 @@ func AdminActivity(ctx *context.Context) {
 
 	var actions []*activities_model.Action
 	if err := db.GetEngine(ctx).
-		In("repo_id", orgOwnedRepoIDs()).
-		Where(oneRowPerAction()).
+		In("repo_id", orgOwnedRepoIDs(orgID)).
+		Where(oneRowPerAction(orgID)).
 		Desc("created_unix").
 		Limit(perPage, (page-1)*perPage).
 		Find(&actions); err != nil {
