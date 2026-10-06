@@ -224,7 +224,7 @@ func applyRlimits(limits AppLimits) error {
 		}
 		return nil
 	}
-	if err := set(unix.RLIMIT_NPROC, uint64(limits.Processes), "process"); err != nil {
+	if err := set(unix.RLIMIT_NPROC, nprocLimit(limits.Processes), "process"); err != nil {
 		return err
 	}
 	if err := set(unix.RLIMIT_NOFILE, uint64(limits.OpenFiles), "open file"); err != nil {

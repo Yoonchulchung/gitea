@@ -91,3 +91,27 @@ func SetDepartmentAccess(owner, repo, actor, mode string) error {
 	log.Info("company: %s/%s access set to %s by %s", owner, repo, mode, actor)
 	return nil
 }
+
+// clearDepartmentAccess drops the department's narrowing when an
+// administrator sets access, so the administrator's choice is what applies.
+// The department may narrow again afterwards.
+func clearDepartmentAccess(owner, repo, actor, mode string) error {
+	if _, ok := departmentAccess.Load(appKey(owner, repo)); !ok {
+		return nil
+	}
+	if err := MutateAppState(owner, repo, func(st *AppState) bool {
+		if st.AccessChoice == "" {
+			return false
+		}
+		st.AccessChoice = ""
+		st.AppendHistory(AppHistoryEntry{
+			Status: st.Actual, Actor: actor,
+			Reason: ReasonAccessChanged + ":" + mode,
+		})
+		return true
+	}); err != nil {
+		return err
+	}
+	departmentAccess.Delete(appKey(owner, repo))
+	return nil
+}

@@ -46,13 +46,49 @@ const (
 	MailEventApproved  = "deploy_approved"
 	MailEventRejected  = "deploy_rejected"
 	MailEventFailed    = "deploy_failed"
+	// MailEventSecurityAlert is sent by the platform AI itself, when its review
+	// of a deploy request decides an administrator must hear about it now.
+	MailEventSecurityAlert = "security_alert"
+	// MailEventApprovalNeeded is sent when AI auto-approval holds a request —
+	// above all one that asks for a permission — so a person is told to decide it.
+	MailEventApprovalNeeded = "approval_needed"
 )
 
 // MailEvents is the order the settings page lists them in: the life of a
-// request, start to finish.
+// request, start to finish, then what the platform AI raises on its own.
 func MailEvents() []string {
-	return []string{MailEventRequested, MailEventApproved, MailEventRejected, MailEventFailed}
+	return []string{MailEventRequested, MailEventApprovalNeeded, MailEventApproved, MailEventRejected, MailEventFailed, MailEventSecurityAlert}
 }
+
+// MailFieldsFor names the placeholders a rule for event can use.
+func MailFieldsFor(event string) []string {
+	fields := []string{"app", "title", "requester", "actor", "reason", "link"}
+	switch event {
+	case MailEventSecurityAlert:
+		fields = []string{"app", "title", "requester", "link", "severity", "summary", "details"}
+	case MailEventApprovalNeeded:
+		fields = []string{"app", "title", "requester", "reason", "permissions", "link"}
+	}
+	return fields
+}
+
+// A security alert rule starts with words already in it: the AI decides when
+// it goes out, so a rule left blank would silently swallow the first alert.
+const (
+	securityAlertDefaultSubject = "[보안 경고 · {{severity}}] {{app}} — {{summary}}"
+	securityAlertDefaultBody    = `<p>플랫폼 AI가 배포 요청을 검토하다 보안 문제를 발견해 이 메일을 보냈습니다.</p>
+<p><b>앱</b>: {{app}}<br><b>요청</b>: {{title}} ({{requester}})<br><b>심각도</b>: {{severity}}</p>
+<p><b>요약</b>: {{summary}}</p>
+<p style="white-space:pre-wrap">{{details}}</p>
+<p><a href="{{link}}">요청 열기</a></p>`
+
+	approvalNeededDefaultSubject = "[승인 필요] {{app}} — {{title}}"
+	approvalNeededDefaultBody    = `<p>AI 자동 승인이 이 배포 요청을 보류했습니다. 관리자가 확인하고 결정해야 합니다.</p>
+<p><b>앱</b>: {{app}}<br><b>요청</b>: {{title}} ({{requester}})</p>
+<p><b>보류 이유</b>: {{reason}}</p>
+<p><b>요청된 권한</b>: {{permissions}}</p>
+<p><a href="{{link}}">요청 열기</a></p>`
+)
 
 // MailRule is one standing instruction: when this happens, tell these people
 // this. Several may watch the same event — the people who approve a deploy
@@ -143,6 +179,12 @@ func AddMailRule(ctx context.Context, name, event string) (string, error) {
 	if rule.Name == "" {
 		rule.Name = event
 	}
+	switch event {
+	case MailEventSecurityAlert:
+		rule.Subject, rule.Body = securityAlertDefaultSubject, securityAlertDefaultBody
+	case MailEventApprovalNeeded:
+		rule.Subject, rule.Body = approvalNeededDefaultSubject, approvalNeededDefaultBody
+	}
 	return rule.ID, saveMailRules(ctx, append(MailRules(ctx), rule))
 }
 
@@ -197,11 +239,26 @@ type MailFields map[string]string
 // is down must not fail either. The failure is logged, with the event, so an
 // administrator can find it in the platform log.
 func NotifyMail(ctx context.Context, event string, fields MailFields) {
+	notifyMail(ctx, event, fields)
+}
+
+// MailEventReady reports whether a message for event would reach anyone.
+func MailEventReady(ctx context.Context, event string) bool {
+	if !MailSettings(ctx).Configured() {
+		return false
+	}
+	return slices.ContainsFunc(MailRules(ctx), func(r MailRule) bool {
+		return r.Event == event && r.Enabled && len(r.To) > 0 && strings.TrimSpace(r.Subject) != "" && strings.TrimSpace(r.Body) != ""
+	})
+}
+
+// notifyMail is NotifyMail that says how many rules actually sent.
+func notifyMail(ctx context.Context, event string, fields MailFields) (sent int) {
 	// Sending is a running-platform concern. The deploy worker calls this from
 	// a failure path that unit tests exercise directly, where there is no
 	// database to read a rule out of and nobody to send to.
 	if !platformRunning.Load() {
-		return
+		return 0
 	}
 	for _, rule := range MailRules(ctx) {
 		if rule.Event != event || !rule.Enabled || len(rule.To) == 0 {
@@ -214,8 +271,11 @@ func NotifyMail(ctx context.Context, event string, fields MailFields) {
 		}
 		if err := SendPlatformMail(ctx, rule.To, subject, body); err != nil {
 			log.Error("company: the %q notification (%s) could not be sent: %v", rule.Name, event, err)
+			continue
 		}
+		sent++
 	}
+	return sent
 }
 
 // renderMailText substitutes {{name}} placeholders.

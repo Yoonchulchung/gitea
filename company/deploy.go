@@ -5,6 +5,7 @@ package company
 
 import (
 	"bytes"
+	stdctx "context"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -19,8 +20,10 @@ import (
 	"gitea.dev/models/unit"
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/git"
+	"gitea.dev/modules/graceful"
 	"gitea.dev/modules/highlight"
 	"gitea.dev/modules/log"
+	"gitea.dev/modules/process"
 	"gitea.dev/modules/setting"
 	"gitea.dev/modules/templates"
 	"gitea.dev/modules/typesniffer"
@@ -744,7 +747,8 @@ func DeployPost(ctx *context.Context) {
 	// approve it. Still running: wait, the form says so. Failed: fix it. The
 	// check not being possible — packages awaiting approval, no sandbox — is
 	// not the department's to fix, and does not hold the request.
-	if check, ok := EnsureStartupCheck(ctx, deptRepo, false); ok && check.Blocks() {
+	check, checked := EnsureStartupCheck(ctx, deptRepo, false)
+	if checked && check.Blocks() {
 		key := "company.deploy.startup_failed"
 		if check.Pending() {
 			key = "company.deploy.startup_running"
@@ -870,7 +874,12 @@ func DeployPost(ctx *context.Context) {
 	// Best-effort: an admin still reviews and approves every Deploy
 	// Request regardless, so a slow/failing/unconfigured AI review must
 	// never block or fail the actual submission — see postAIReviewComment.
-	postAIReviewComment(ctx, central, centralOwner, pullIssue, newBranch, deptRepo, reviewContext)
+	// Both run on their own, not on this request: a reply that takes a while, or
+	// a browser that leaves, must not cancel the review it started.
+	ScheduleDeployAIReview(central, centralOwner, pullIssue.PullRequest.ID, deptRepo.OwnerName, deptRepo.Name)
+	if run, fresh := startCodeReview(pullIssue.PullRequest.ID, ""); fresh {
+		go postAIReviewComment(run, pullIssue.PullRequest.ID, central, centralOwner, pullIssue, newBranch, deptRepo.FullName(), reviewContext)
+	}
 
 	ctx.Redirect(deptRepo.Link() + "/deploy/submit")
 }
@@ -899,10 +908,9 @@ Actively look for these — they are the actual point of this review, not one it
 - Code that does something materially different from what the request's title/description claims.
 - Obviously broken or incomplete code.
 
-Structure your reply exactly like this:
-1. If you found ANY item from the list above: start with a "🔴 보안 확인 필요" section. For each finding, name the exact file, and explain the actual mechanism in a full sentence or two — not "확인이 필요합니다", but what the code concretely does and what an attacker or accident could get out of it (e.g. "a.py의 read_and_deploy_ac_file()이 /lib/ac 파일을 읽어 ./deploy/ac로 그대로 복사합니다 — 이 프로세스가 접근 가능한 시스템 파일 내용이 배포 결과물을 통해 그대로 유출됩니다"). Never soften this into a question when the code's behavior is unambiguous — if it reads and exposes something, or ships a general-purpose file-dumping capability, say so as a fact, not a thing to "check."
-2. Everything else (typos, unclear commit message, stray test files, naming oddities) goes in a separate section after, and can stay brief — a short bullet list is fine there.
-3. If nothing from the security list applies and nothing else stood out either, say so plainly in one line — don't manufacture concerns to fill space.
+Reply with only this JSON object and nothing else, every text in Korean:
+{"purpose": "what this code does for its users, one or two sentences", "summary": "the gist of the review in one or two sentences — say plainly when nothing stood out", "security": [{"file": "a.py", "issue": "..."}], "other": [{"file": "a.py", "issue": "..."}]}
+"security" holds every item from the list above. For each, name the exact file and state the mechanism as a fact in a sentence or two — not "확인이 필요합니다", but what the code concretely does and what an attacker or accident could get out of it (e.g. "read_and_deploy_ac_file()이 /lib/ac 파일을 읽어 ./deploy/ac로 그대로 복사합니다 — 이 프로세스가 접근 가능한 시스템 파일 내용이 배포 결과물을 통해 유출됩니다"). "other" is for typos, stray test files, naming oddities — brief. Leave a list empty rather than manufacture concerns.
 
 This is advisory context for the human reviewer, not a blocker — don't refuse to review and don't recommend rejecting it, just make sure a reviewer skimming quickly still can't miss a real finding.`
 
@@ -980,11 +988,12 @@ func splitDiffIntoChunks(diff string, maxChars int) []string {
 // Stops and returns what succeeded so far, plus the error, the moment any
 // one chunk's request fails — a transient failure on chunk 3 of 5 still
 // means chunks 1-2's real findings are worth keeping and posting.
-func generateAIReviews(ctx *context.Context, aiUserID int64, central *repo_model.Repository, headBranch, deptRepoFullName, message string) ([]string, error) {
-	gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, central)
+func generateAIReviews(ctx stdctx.Context, central *repo_model.Repository, headBranch, deptRepoFullName, message, footer string, run *codeReviewRun) ([]string, error) {
+	gitRepo, err := git.OpenRepository(ctx, central)
 	if err != nil {
 		return nil, fmt.Errorf("open central repo: %w", err)
 	}
+	defer gitRepo.Close()
 	var diffBuf bytes.Buffer
 	if err := gitRepo.GetDiff(ctx, central.DefaultBranch+"..."+headBranch, &diffBuf); err != nil {
 		return nil, fmt.Errorf("get diff: %w", err)
@@ -998,6 +1007,7 @@ func generateAIReviews(ctx *context.Context, aiUserID int64, central *repo_model
 	}
 
 	reviews := make([]string, 0, len(chunks)+1)
+	run.progress(0, len(chunks))
 	for i, chunk := range chunks {
 		userPrompt := fmt.Sprintf("Department repo: %s\nRequest message: %s\n\n", deptRepoFullName, message)
 		if len(chunks) > 1 {
@@ -1005,17 +1015,27 @@ func generateAIReviews(ctx *context.Context, aiUserID int64, central *repo_model
 		}
 		userPrompt += "Diff:\n" + chunk
 
-		review, err := aiChat(ctx, aiUserID, aiReviewSystemPrompt, userPrompt)
+		reply, err := platformAIChat(ctx, aiPurposeCodeReview, "", deptRepoFullName, aiReviewSystemPrompt, userPrompt)
 		if err != nil {
 			return reviews, err
 		}
+		card := aiReviewCard{Title: "코드 리뷰", Footer: footer, Model: PlatformAIModel(ctx)}
 		if len(chunks) > 1 {
-			review = fmt.Sprintf("**(파트 %d/%d)**\n\n%s", i+1, len(chunks), review)
+			card.Title = fmt.Sprintf("코드 리뷰 (%d/%d)", i+1, len(chunks))
 		}
-		reviews = append(reviews, review)
+		if r, ok := parseAICodeReview(reply); ok {
+			card.Purpose, card.Summary, card.Security, card.Other = r.Purpose, r.Summary, r.Security, r.Other
+		} else {
+			card.Summary = reply // not the asked-for JSON: shown as it came rather than lost
+		}
+		reviews = append(reviews, card.Markdown())
+		run.progress(i+1, len(chunks))
 	}
 	if omitted > 0 {
-		reviews = append(reviews, fmt.Sprintf("⚠️ 변경 사항이 많아 %d개 부분 중 처음 %d개만 자동 리뷰했습니다. 나머지 %d개 부분은 직접 확인해주세요.", len(chunks)+omitted, len(chunks), omitted))
+		reviews = append(reviews, aiReviewCard{
+			Title:   "코드 리뷰 (일부만)",
+			Summary: fmt.Sprintf("변경 사항이 많아 %d개 부분 중 처음 %d개만 검토했습니다. 나머지 %d개 부분은 직접 확인해 주세요.", len(chunks)+omitted, len(chunks), omitted),
+		}.Markdown())
 	}
 	return reviews, nil
 }
@@ -1031,24 +1051,26 @@ func generateAIReviews(ctx *context.Context, aiUserID int64, central *repo_model
 // said. An admin can also trigger a fresh one on demand, run as their own
 // AI settings instead of centralOwner's — see
 // company/pull_ai_review.go's TriggerDeployRequestAIReview.
-// aiReviewCommentMarker prefixes every AI review comment this package ever
-// posts (both the automatic one below and TriggerDeployRequestAIReview's
-// on-demand one, company/pull_ai_review.go) — a stable way to tell "an AI
-// review" apart from something a person actually typed, used by DeployForm
-// to keep the automatic pre-review (posted on every submission regardless
-// of outcome) out of its "why was this rejected" section.
-const aiReviewCommentMarker = "🤖 **AI Review**"
 
-func postAIReviewComment(ctx *context.Context, central *repo_model.Repository, centralOwner *user_model.User, pullIssue *issues_model.Issue, headBranch string, deptRepo *repo_model.Repository, message string) {
-	if !AIConfiguredFor(ctx, centralOwner.ID) {
+func postAIReviewComment(run *codeReviewRun, prID int64, central *repo_model.Repository, poster *user_model.User, pullIssue *issues_model.Issue, headBranch, deptRepoFullName, message string, footer ...string) {
+	ctx, _, finished := process.GetManager().AddContext(graceful.GetManager().ShutdownContext(), "company: AI review comment for "+deptRepoFullName)
+	defer finished()
+	defer recoverBackground("AI review comment for %s", deptRepoFullName)
+	failure := ""
+	defer func() { run.finish(prID, failure) }()
+	if PlatformAIUnavailableReason(ctx) != "" {
+		failure = "플랫폼 AI가 설정되지 않았습니다."
 		return
 	}
-	reviews, err := generateAIReviews(ctx, centralOwner.ID, central, headBranch, deptRepo.FullName(), message)
+	reviews, err := generateAIReviews(ctx, central, headBranch, deptRepoFullName, message, strings.Join(footer, ""), run)
 	if err != nil {
 		log.Error("company: AI review: %v", err) // still post whatever chunks succeeded before the error, below
+		if len(reviews) == 0 {
+			failure = err.Error()
+		}
 	}
 	for _, review := range reviews {
-		if _, err := issue_service.CreateIssueComment(ctx, centralOwner, central, pullIssue, aiReviewCommentMarker+"\n\n"+review, nil); err != nil {
+		if _, err := issue_service.CreateIssueComment(ctx, poster, central, pullIssue, review, nil); err != nil {
 			log.Error("company: AI review: post comment: %v", err)
 		}
 	}

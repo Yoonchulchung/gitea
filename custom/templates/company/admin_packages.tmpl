@@ -54,7 +54,19 @@
 			</p>
 			<form method="post" action="{{AppSubUrl}}/-/admin/company-packages/base" class="ui form">
 				{{.CsrfTokenHtml}}
-				<textarea name="packages" rows="6" class="tw-font-mono">{{.BasePackages}}</textarea>
+				{{/* One package per item, removed with its ×, like a mail rule's recipients —
+				     each chip posts its own hidden input (initCompanyTagInput). */}}
+				<div class="company-tags tw-font-mono" data-company-tags="packages">
+					{{range .BasePackageList}}
+						<span class="company-tag">
+							<input type="hidden" name="packages" value="{{.}}">
+							{{.}}
+							<button type="button" class="company-tag-remove" aria-label="{{ctx.Locale.Tr "remove"}}">&times;</button>
+						</span>
+					{{end}}
+					<input class="company-tag-entry" type="text" autocomplete="off" spellcheck="false"
+					       aria-label="{{ctx.Locale.Tr "company.pkg.add_placeholder"}}" placeholder="{{ctx.Locale.Tr "company.pkg.add_placeholder"}}">
+				</div>
 				<div class="tw-flex tw-items-center tw-gap-3 tw-mt-2">
 					<button class="ui primary button">{{ctx.Locale.Tr "save"}}</button>
 					<span class="text-grey tw-text-12">

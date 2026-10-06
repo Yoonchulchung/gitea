@@ -228,3 +228,17 @@ func TestBuildMessageIsWellFormedHTMLMail(t *testing.T) {
 	assert.NotContains(t, headers, "Subject: 배포 요청")
 	assert.Contains(t, headers, "Subject: =?utf-8?q?")
 }
+
+func TestMailSenderFallsBackToLogin(t *testing.T) {
+	assert.Equal(t, "platform@corp.example", MailServer{Username: "me@corp.example", From: "platform@corp.example"}.Sender())
+	assert.Equal(t, "me@corp.example", MailServer{Username: "me@corp.example"}.Sender())
+	assert.Empty(t, MailServer{Username: "svc_mail"}.Sender())
+	assert.True(t, MailServer{Host: "smtp", Port: 587, Username: "me@corp.example"}.Configured())
+	assert.False(t, MailServer{Host: "smtp", Port: 587, Username: "svc_mail"}.Configured())
+}
+
+func TestDefaultMailPort(t *testing.T) {
+	assert.Equal(t, 587, defaultMailPort(mailSecurityStartTLS))
+	assert.Equal(t, 465, defaultMailPort(mailSecurityTLS))
+	assert.Equal(t, 25, defaultMailPort(mailSecurityNone))
+}

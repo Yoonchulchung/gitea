@@ -54,8 +54,9 @@ import {initGlobalSelectorObserver} from './modules/observer.ts';
 import {initRepositorySearch} from './features/repo-search.ts';
 import {initColorPickers} from './features/colorpicker.ts';
 import {initCompanyWorkspace} from './features/company-workspace.ts';
-import {initCompanyDeployPreview, initCompanyDeployReview, initCompanyDeployReviewPackages} from './features/company-deploy-review.ts';
+import {initCompanyAIReviewProgress, initCompanyAutoApprove, initCompanyQueueCountdown, initCompanyDeployPreview, initCompanyDeployReview, initCompanyDeployReviewPackages} from './features/company-deploy-review.ts';
 import {initCompanyDeployStatus} from './features/company-deploy-status.ts';
+import {initCompanyAIUsageCharts} from './features/company-ai-usage-charts.ts';
 import {initCompanyAppCharts, initCompanyConfirmForms, initCompanyDependentToggles, initCompanyFleet, initCompanyKpiEdit, initCompanyMailPreview, initCompanyTagInput} from './features/company-app-charts.ts';
 import {initCompanyAppEnv} from './features/company-app-env.ts';
 import {initCompanyDeployForm, initCompanyDeploySubmit, initCompanyStartupCheck} from './features/company-deploy-form.ts';
@@ -166,11 +167,15 @@ const initPerformanceTracer = callInitFunctions([
   initRepoDiffView,
   initColorPickers,
   initCompanyDeployReview, // the assistant on a Deploy Request PR's sidebar — see web_src/js/features/company-deploy-review.ts
+  initCompanyAutoApprove, // the countdown before an AI approval merges
+  initCompanyAIReviewProgress, // a code review under way on a Deploy Request
+  initCompanyQueueCountdown, // the AI auto-deploy's state on each open request in the approval queue
   initCompanyDeployReviewPackages, // the packages ticked beside "Approve deploy" on the same page
   initCompanyDeployPreview, // reloads the page once a preview build ends
   initCompanyWorkspace, // company/'s multi-file editor needs Gitea's own bundled CodeMirror setup (modules/codeeditor), which only ships to the browser if something reachable from this entry point imports it — see web_src/js/features/company-workspace.ts
   initCompanyDeployStatus,
   initCompanyAppCharts,
+  initCompanyAIUsageCharts, // the platform AI's token usage on the AI admin page
   initCompanyAppEnv,
   initCompanyConfirmForms,
   initCompanyDependentToggles,

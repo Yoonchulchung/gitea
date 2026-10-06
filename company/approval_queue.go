@@ -42,6 +42,11 @@ type ApprovalQueueRow struct {
 	Canceller   *user_model.User
 	CancelledAt timeutil.TimeStamp
 	Cancelled   bool
+	// AI is where the AI auto-deploy stands on an open request, for a line
+	// under its title; "" when auto-approval is off or the request is decided.
+	AI         string // reviewing, waiting, queued, held, stopped
+	AIMergeAt  int64
+	AISecsLeft int
 }
 
 // SetApprovalQueueData marks the central repository's pull list as the
@@ -58,6 +63,7 @@ func SetApprovalQueueData(ctx *context.Context) {
 		return
 	}
 	ctx.Data["CompanyIsApprovalQueue"] = true
+	autoApproveOn := AutoApproveDelegate(ctx) != nil
 
 	// Requesters repeat across a page of requests — the same department sends
 	// several — so each account is read once however many rows it holds.
@@ -85,6 +91,9 @@ func SetApprovalQueueData(ctx *context.Context) {
 			return nil // a pull request that is not a Deploy Request; the row falls back
 		}
 		row := &ApprovalQueueRow{Dept: dept, App: app, Requester: person(requesterID)}
+		if autoApproveOn && !pr.HasMerged && pr.Issue != nil && !pr.Issue.IsClosed {
+			row.AI, row.AIMergeAt, row.AISecsLeft = autoApproveRowState(ctx, pr)
+		}
 		switch {
 		case pr.HasMerged:
 			row.Approver, row.ApprovedAt = person(pr.MergerID), pr.MergedUnix
@@ -128,4 +137,28 @@ func lastDecisionComment(ctx gocontext.Context, issueID int64) *issues_model.Com
 		}
 	}
 	return closed
+}
+
+// autoApproveRowState is the AI auto-deploy's state for one open request: a
+// review or countdown running now, else the card it left (held or stopped),
+// else waiting for the sweeper to pick it up.
+func autoApproveRowState(ctx gocontext.Context, pr *issues_model.PullRequest) (state string, mergeAt int64, secsLeft int) {
+	if s := autoApproveStatusFor(pr.ID); s.Phase == autoApprovePhaseReviewing || s.Phase == autoApprovePhaseWaiting {
+		return s.Phase, s.MergeAt, s.SecondsLeft
+	}
+	comments, err := issues_model.FindComments(ctx, &issues_model.FindCommentsOptions{IssueID: pr.Issue.ID, Type: issues_model.CommentTypeComment})
+	if err != nil {
+		return "", 0, 0
+	}
+	state = "queued"
+	for _, c := range comments {
+		switch {
+		case !strings.HasPrefix(c.Content, aiReviewCommentMarker):
+		case strings.Contains(c.Content, autoApproveDecisionTitle+" 중지"):
+			state = "stopped"
+		case strings.Contains(c.Content, autoApproveDecisionTitle+" 보류"):
+			state = "held"
+		}
+	}
+	return state, 0, 0
 }

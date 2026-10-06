@@ -166,12 +166,21 @@ func setDeployReviewData(ctx *gitea_context.Context, pr *issues_model.PullReques
 			ctx.Data["DeployPreflight"] = PreflightForRequest(ctx, gitRepo, pr, deptOwner, deptName)
 		}
 	}
+	// The platform's AI, not the viewing administrator's own: what a request is
+	// told should not depend on who happened to open it (company/platform_ai.go).
 	ctx.Data["CompanyAIOffered"] = AIOfferedTo(ctx)
-	ctx.Data["AIEnabled"] = AIConfiguredFor(ctx, ctx.Doer.ID)
-	if cfg, err := loadAIUserConfig(ctx, ctx.Doer.ID); err == nil {
-		ctx.Data["AIModel"] = cfg.modelID
-		ctx.Data["AIProvider"] = cfg.provider
+	ctx.Data["AIEnabled"] = PlatformAIUnavailableReason(ctx) == ""
+	// The countdown before an AI approval merges, and the way to stop it.
+	if status := autoApproveStatusFor(pr.ID); status.Phase != "" {
+		ctx.Data["AutoApproveStatus"] = status
+		ctx.Data["AutoApproveStatusURL"] = fmt.Sprintf("%s/company/deploy-request/%d/auto-approve", setting.AppSubURL, pr.ID)
+		ctx.Data["AutoApproveStopURL"] = fmt.Sprintf("%s/company/deploy-request/%d/auto-approve/stop", setting.AppSubURL, pr.ID)
+	} else if !pr.Issue.IsClosed && ctx.Doer.IsAdmin && AutoApproveDelegate(ctx) != nil && PlatformAIUnavailableReason(ctx) == "" {
+		// Nothing running for an open request: the review was missed, or lost
+		// to a restart during its countdown.
+		ctx.Data["AutoApproveStartURL"] = fmt.Sprintf("%s/company/deploy-request/%d/auto-approve/start", setting.AppSubURL, pr.ID)
 	}
+	ctx.Data["AIModel"] = PlatformAIModel(ctx)
 }
 
 // deployRequestMessage is what the department wrote, without the
@@ -419,7 +428,7 @@ func newDeployReviewMCPServer(gitRepo *git.Repository, branch, prefix, diff stri
 // (web_src/js/features/company-ai-chat.ts). Read-only: the tools can look
 // at the request, never touch it. Mounted at
 // /company/deploy-request/{id}/chat (company/routes.go), admin only, on the
-// administrator's own AI settings like TriggerDeployRequestAIReview.
+// platform AI like everything else on this page.
 func DeployRequestChat(ctx *gitea_context.Context) {
 	if !ctx.Doer.IsAdmin {
 		ctx.NotFound(nil)
@@ -439,8 +448,18 @@ func DeployRequestChat(ctx *gitea_context.Context) {
 		ctx.HTTPError(http.StatusServiceUnavailable, errAIDisabled.Error())
 		return
 	}
-	if !AIConfiguredFor(ctx, ctx.Doer.ID) {
-		ctx.HTTPError(http.StatusServiceUnavailable, "AI not set up yet — add your API key at /user/settings/ai")
+	st, err := loadPlatformAI(ctx)
+	if err != nil {
+		ctx.ServerError("loadPlatformAI", err)
+		return
+	}
+	if reason := st.unavailableReason(); reason != "" {
+		ctx.HTTPError(http.StatusServiceUnavailable, ctx.Locale.TrString(reason))
+		return
+	}
+	uc, err := st.config()
+	if err != nil {
+		ctx.ServerError("platform AI config", err)
 		return
 	}
 	var req workspaceAIRequest
@@ -494,13 +513,14 @@ func DeployRequestChat(ctx *gitea_context.Context) {
 	tools := mcpToolsToAI(toolsResult.Tools)
 
 	for range workspaceAIMaxTurns {
-		resp, err := aiChatTurnStream(ctx, ctx.Doer.ID, req.Model, messages, tools, func(delta string) {
+		resp, err := aiChatTurnStreamWith(ctx, uc, messages, tools, func(delta string) {
 			writeStreamEvent(ctx.Resp, map[string]any{"type": "text", "delta": delta})
 		})
 		if err != nil {
 			writeStreamEvent(ctx.Resp, map[string]any{"type": "error", "message": err.Error()})
 			return
 		}
+		recordAIUsage(ctx, aiPurposeReviewChat, uc.modelID, ctx.Doer.Name, fmt.Sprintf("%s/%s #%d", deptOwner, deptName, pr.Index), resp.Usage)
 		messages = append(messages, *resp)
 		if len(resp.ToolCalls) == 0 {
 			break

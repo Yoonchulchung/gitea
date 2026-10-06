@@ -6,6 +6,7 @@
 package company
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -152,4 +153,13 @@ func TestHandledRightsTrimsToABI(t *testing.T) {
 
 	fs5, _ := handledRights(5)
 	assert.NotZero(t, fs5&unix.LANDLOCK_ACCESS_FS_IOCTL_DEV)
+}
+
+// RLIMIT_NPROC counts every task of the user, so the app's allowance has to
+// sit on top of what that user is already running.
+func TestNprocLimitIsHeadroomOverTheUsersTasks(t *testing.T) {
+	running := uidTaskCount(os.Getuid())
+	assert.Positive(t, running) // this test itself is one
+	assert.GreaterOrEqual(t, nprocLimit(64), uint64(running+64+nprocUserGrowthMargin))
+	assert.Zero(t, nprocLimit(0))
 }

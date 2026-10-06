@@ -97,8 +97,48 @@
 					<div class="timeline-avatar">{{svg "octicon-sparkle-fill" 40}}</div>
 					<div class="content">
 						<div class="ui segment avatar-content-left-arrow tw-flex tw-items-center tw-justify-between tw-flex-wrap tw-gap-2">
-							<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.pulls.ai_review_hint"}}</span>
-							{{if .ShowDeployAIReview}}
+							{{/* A review takes tens of seconds; while one runs this says so and
+							     keeps count, and the page reloads when its comments land
+							     (company/ai_review_progress.go). */}}
+							{{$review := .DeployAIReviewStatus}}
+							{{$pending := .DeployAIReviewPending}}
+							{{if and $pending (not (and $review (eq $review.Phase "running")))}}
+							{{/* The AI auto-deploy is deciding this request: the review waits for it.
+							     Forcing it stops the auto-deploy first (company/pull_ai_review.go). */}}
+							<div class="flex-text-block tw-flex-1">
+								<span class="text-grey">{{svg "octicon-clock" 16}}</span>
+								<div>
+									<strong class="tw-text-14">{{ctx.Locale.Tr "company.pulls.ai_review_pending"}}</strong>
+									<div class="text-grey tw-text-12">
+										{{if eq $pending.Phase "waiting"}}{{ctx.Locale.Tr "company.pulls.ai_review_pending_countdown" (HTMLFormat `<span class="company-auto-approve-seconds">%d</span>` $pending.SecondsLeft)}}{{else}}{{ctx.Locale.Tr "company.pulls.ai_review_pending_reviewing"}}{{end}}
+									</div>
+								</div>
+							</div>
+							<form method="post" action="{{.DeployAIReviewURL}}" data-company-confirm="{{ctx.Locale.Tr "company.pulls.ai_review_force_confirm"}}">
+								<input type="hidden" name="force" value="true">
+								<button type="submit" class="ui basic button">{{svg "octicon-zap" 14 "tw-mr-1"}}{{ctx.Locale.Tr "company.pulls.ai_review_force"}}</button>
+							</form>
+							{{else if and $review (eq $review.Phase "running")}}
+							<div class="flex-text-block tw-flex-1" data-global-init="initCompanyAIReviewProgress" data-status-url="{{.DeployAIReviewURL}}" data-started-at="{{$review.StartedAt}}"
+							     data-i18n-part="{{ctx.Locale.Tr "company.pulls.ai_review_part" "%s" "%s"}}">
+								<span class="text-primary">{{svg "octicon-sync" 16 "rotate-clockwise"}}</span>
+								<div>
+									<strong class="tw-text-14">{{ctx.Locale.Tr "company.pulls.ai_review_running"}}</strong>
+									<div class="text-grey tw-text-12">
+										{{ctx.Locale.Tr "company.pulls.ai_review_elapsed" (HTMLFormat `<span class="company-aireview-elapsed">%d</span>` 0)}}
+										· {{if $review.By}}{{ctx.Locale.Tr "company.pulls.ai_review_by" $review.By}}{{else}}{{ctx.Locale.Tr "company.pulls.ai_review_auto"}}{{end}}
+										<span class="company-aireview-parts">{{if gt $review.Total 1}}· {{ctx.Locale.Tr "company.pulls.ai_review_part" $review.Done $review.Total}}{{end}}</span>
+									</div>
+								</div>
+							</div>
+							{{else}}
+							<span class="text-grey tw-text-13">
+								{{ctx.Locale.Tr "company.pulls.ai_review_hint"}}
+								{{if and $review (eq $review.Phase "failed")}}<br><span class="text-red">{{ctx.Locale.Tr "company.pulls.ai_review_failed" $review.Failed}}</span>{{end}}
+							</span>
+							{{end}}
+							{{if or $pending (and $review (eq $review.Phase "running"))}}
+							{{else if .ShowDeployAIReview}}
 								<form method="post" action="{{.DeployAIReviewURL}}">
 									<button type="submit" class="ui basic button">{{ctx.Locale.Tr "company.pulls.ai_review"}}</button>
 								</form>

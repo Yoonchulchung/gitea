@@ -989,6 +989,8 @@ export function initCompanyWorkspace() {
           showErrorToast(reason || (resp.status === 413 ? i18n.uploadRefused.replace('%s', path) : i18n.errorUpload.replace('%s', path)));
           return false;
         }
+        // Already committed, so a delete still queued for this path would remove it on the next Save.
+        if (pendingDeletes.delete(path)) clearTmpEditRemote(path);
         insertFilePathSorted(treeRoot, path);
         renderTree();
         fetchFileIcon(path);
@@ -1022,6 +1024,7 @@ export function initCompanyWorkspace() {
           showErrorToast(i18n.errorLoadFile.replace('%s', path));
           continue;
         }
+        pendingDeletes.delete(path); // a file deleted and then brought back in is replaced, not deleted
         insertFilePath(treeRoot, path, true);
         renderTree();
         writePendingLocal(path, content, Date.now()); // see the same call in commitNewItem for why this can't wait for openFile
@@ -1624,7 +1627,8 @@ export function initCompanyWorkspace() {
         // for, left alone for now.
         baseSha: tab.baseSha,
       }));
-      const deletes = [...pendingDeletes].map((path) => ({path, deleted: true}));
+      const written = new Set(files.map((f) => f.path));
+      const deletes = [...pendingDeletes].filter((path) => !written.has(path)).map((path) => ({path, deleted: true}));
       if (!files.length && !deletes.length) {
         setStatus(i18n.statusNoChanges);
         return;

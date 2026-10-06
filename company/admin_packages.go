@@ -65,7 +65,7 @@ func AdminPackages(ctx *context.Context) {
 	centralOwner, centralName, _ := centralDeployOwnerName()
 
 	ctx.Data["Title"] = ctx.Locale.TrString("company.title.packages")
-	ctx.Data["BasePackages"] = strings.Join(defaults.BasePackages, "\n")
+	ctx.Data["BasePackageList"] = defaults.BasePackages
 	ctx.Data["SharedAllow"] = defaults.Dependencies.Allow
 	ctx.Data["StackPackages"] = platformStackPackages(defaults.BasePackages)
 	ctx.Data["AppPackages"] = rows
@@ -89,7 +89,12 @@ func AdminPackages(ctx *context.Context) {
 // Committed to apps.yml rather than stored anywhere else, so the change is a
 // commit authored by the admin who made it.
 func AdminSetBasePackages(ctx *context.Context) {
-	packages, problems := ParseBasePackages(ctx.Locale, ctx.FormString("packages"))
+	// Read as a list, one item per chip; nothing above has parsed the form yet.
+	if err := ctx.Req.ParseForm(); err != nil {
+		ctx.HTTPError(http.StatusBadRequest, err.Error())
+		return
+	}
+	packages, problems := ParseBasePackages(ctx.Locale, strings.Join(ctx.Req.Form["packages"], "\n"))
 	if len(problems) > 0 {
 		ctx.Flash.Error(strings.Join(problems, " / "))
 		ctx.Redirect(setting.AppSubURL + "/-/admin/company-packages")

@@ -102,6 +102,11 @@ func EnsureStartupCheck(ctx *gitea_context.Context, repo *repo_model.Repository,
 	if err != nil {
 		return StartupCheck{}, false
 	}
+	return ensureStartupCheck(ctx, gitRepo, repo, force)
+}
+
+// ensureStartupCheck is EnsureStartupCheck for a caller with no web request.
+func ensureStartupCheck(ctx context.Context, gitRepo *git.Repository, repo *repo_model.Repository, force bool) (StartupCheck, bool) {
 	commit, err := gitRepo.GetBranchCommit(ctx, repo.DefaultBranch)
 	if err != nil {
 		return StartupCheck{}, false // an empty repository: nothing to run
@@ -435,4 +440,46 @@ func StartupCheckRerun(ctx *gitea_context.Context) {
 	}
 	EnsureStartupCheck(ctx, ctx.Repo.Repository, true)
 	ctx.Redirect(ctx.Repo.Repository.Link()+"/deploy", http.StatusSeeOther)
+}
+
+// requestStartupState is the startup check for the version a deploy request
+// carries. The check runs on the department repository as it is now, so it
+// only speaks for the request while the two hold the same files: mismatch is
+// true when the department changed its code after asking. A check still
+// running is waited for rather than read as a failure.
+func requestStartupState(ctx context.Context, snapshot *git.Commit, central *git.Repository, owner, name string) (state string, mismatch bool) {
+	repo, err := repo_model.GetRepositoryByOwnerAndName(ctx, owner, name)
+	if err != nil {
+		return "", false
+	}
+	gitRepo, err := git.OpenRepository(ctx, repo)
+	if err != nil {
+		return "", false
+	}
+	defer gitRepo.Close()
+	head, err := gitRepo.GetBranchCommit(ctx, repo.DefaultBranch)
+	if err != nil {
+		return "", false
+	}
+	tree, err := snapshot.SubTree(ctx, central, deployPathPrefix(owner, name))
+	if err != nil || tree.ID.String() != head.TreeID.String() {
+		return "", true
+	}
+	check, ok := ensureStartupCheck(ctx, gitRepo, repo, false)
+	if !ok {
+		return "", false
+	}
+	deadline := time.Now().Add(10 * time.Minute)
+	for check.Pending() && time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return check.State, false
+		case <-time.After(3 * time.Second):
+		}
+		rec := startupRecordFor(owner, name)
+		rec.mu.Lock()
+		check = rec.check
+		rec.mu.Unlock()
+	}
+	return check.State, false
 }

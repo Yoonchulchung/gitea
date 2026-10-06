@@ -49,11 +49,15 @@ func RegisterRoutes(m *web.Router) {
 		// company/permissions_decide.go.
 		m.Post("/deploy-request/{id}/permissions", DeployRequestPermissions)
 		m.Post("/deploy-request/{id}/ai-review", TriggerDeployRequestAIReview)
-		m.Post("/deploy-request/{id}/chat", DeployRequestChat)       // read-only assistant on the request page, see company/deploy_review.go
-		m.Post("/deploy-request/{id}/preview", DeployRequestPreview) // the requested version, run on its own — company/apppreview.go
+		m.Get("/deploy-request/{id}/ai-review", DeployRequestAIReviewStatus) // a review under way, for the request page — company/ai_review_progress.go
+		m.Post("/deploy-request/{id}/chat", DeployRequestChat)               // read-only assistant on the request page, see company/deploy_review.go
+		m.Post("/deploy-request/{id}/preview", DeployRequestPreview)         // the requested version, run on its own — company/apppreview.go
 		m.Post("/deploy-request/{id}/preview/stop", DeployRequestPreviewStop)
 		m.Get("/deploy-request/{id}/preview/status", DeployRequestPreviewStatus)
-		m.Post("/deploy-request/{id}/rebase", DeployRequestRebase) // a conflicting request, put on today's main — company/deploy_rebase.go
+		m.Post("/deploy-request/{id}/rebase", DeployRequestRebase)                 // a conflicting request, put on today's main — company/deploy_rebase.go
+		m.Get("/deploy-request/{id}/auto-approve", DeployRequestAutoApproveStatus) // the countdown before an AI approval merges — company/auto_approve_wait.go
+		m.Post("/deploy-request/{id}/auto-approve/stop", DeployRequestAutoApproveStop)
+		m.Post("/deploy-request/{id}/auto-approve/start", DeployRequestAutoApproveStart)
 	}, RequireSignIn)
 	// DeployRequests, DeployRequestFiles, and RepoCreateRedirect are NOT
 	// registered here — all three mount inside Gitea's own org route group
@@ -78,6 +82,11 @@ func RegisterAdminRoutes(m *web.Router) {
 	// to contact, which AI provider departments are offered.
 	m.Get("/company-settings", AdminSettings)
 	m.Post("/company-settings", AdminSettingsPost)
+	// The platform's own AI, and what it may decide without a person.
+	m.Get("/company-ai", AdminAI)
+	m.Post("/company-ai", AdminAIPost)
+	m.Post("/company-ai/test", AdminAITest)
+	m.Post("/company-ai/models", AdminAIModels)
 	// Where the platform's own mail goes out through, and who hears about
 	// what — see company/mail.go and company/mailrules.go.
 	m.Get("/company-mail", AdminMail)

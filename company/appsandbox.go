@@ -153,7 +153,7 @@ func prlimitArgs(limits AppLimits) []string {
 	}
 	args := []string{path}
 	if limits.Processes > 0 {
-		args = append(args, "--nproc="+strconv.Itoa(limits.Processes)) // fork bombs
+		args = append(args, "--nproc="+strconv.FormatUint(nprocLimit(limits.Processes), 10)) // fork bombs, on top of what this user already runs
 	}
 	if limits.OpenFiles > 0 {
 		args = append(args, "--nofile="+strconv.Itoa(limits.OpenFiles))

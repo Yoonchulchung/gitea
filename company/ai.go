@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -50,6 +51,16 @@ type aiUserConfig struct {
 	modelID         string
 	apiKey          string
 	reasoningEffort string
+	headers         http.Header
+	// baseURL overrides AI_API_URL for the OpenAI-compatible provider; only the platform AI sets it.
+	baseURL string
+}
+
+func (c aiUserConfig) gatewayURL() string {
+	if c.baseURL != "" {
+		return strings.TrimSuffix(c.baseURL, "/")
+	}
+	return aiGatewayURL()
 }
 
 func loadAIUserConfig(ctx context.Context, userID int64) (aiUserConfig, error) {
@@ -77,7 +88,15 @@ func loadAIUserConfig(ctx context.Context, userID int64) (aiUserConfig, error) {
 	if err != nil {
 		return aiUserConfig{}, err
 	}
-	return aiUserConfig{provider: provider, modelID: modelID, apiKey: apiKey, reasoningEffort: reasoningEffort}, nil
+	rawHeaders, err := getUserSecret(ctx, userID, userSettingAIHeaders)
+	if err != nil {
+		return aiUserConfig{}, err
+	}
+	headers, err := parseAIHeaders(rawHeaders) // validated on save; an error here means it was stored before a rule changed
+	if err != nil {
+		return aiUserConfig{}, fmt.Errorf("saved AI request headers: %w", err)
+	}
+	return aiUserConfig{provider: provider, modelID: modelID, apiKey: apiKey, reasoningEffort: reasoningEffort, headers: headers}, nil
 }
 
 // aiGatewayURL is the one instance-wide internal-AI endpoint (app.ini's
@@ -137,6 +156,9 @@ type aiChatMessage struct {
 	Content    string       `json:"content,omitempty"`
 	ToolCalls  []aiToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string       `json:"tool_call_id,omitempty"`
+	// Usage is what the provider reported for producing this reply; it is
+	// never sent back (company/ai_usage.go).
+	Usage aiUsage `json:"-"`
 }
 
 // aiTool is this package's provider-agnostic function-calling schema — see
@@ -207,13 +229,21 @@ func aiChatTurnStream(ctx context.Context, userID int64, model string, messages 
 		uc.modelID = model
 	}
 	if uc.apiKey == "" {
-		return nil, fmt.Errorf("AI not set up yet — add your API key at /user/settings/ai")
+		return nil, errors.New("AI not set up yet — add your API key at /user/settings/ai")
+	}
+	return aiChatTurnStreamWith(ctx, uc, messages, tools, onDelta)
+}
+
+// aiChatTurnStreamWith sends one turn with a configuration already in hand.
+func aiChatTurnStreamWith(ctx context.Context, uc aiUserConfig, messages []aiChatMessage, tools []aiTool, onDelta func(string)) (*aiChatMessage, error) {
+	if !AIEnabled() {
+		return nil, errAIDisabled
 	}
 	if uc.provider == aiProviderAnthropic {
 		return aiChatTurnStreamAnthropic(ctx, uc, messages, tools, onDelta)
 	}
-	if aiGatewayURL() == "" {
-		return nil, fmt.Errorf("AI not configured: an admin needs to set [company] AI_API_URL in app.ini")
+	if uc.gatewayURL() == "" {
+		return nil, errors.New("AI not configured: an admin needs to set [company] AI_API_URL in app.ini")
 	}
 	return aiChatTurnStreamOpenAI(ctx, uc, messages, tools, onDelta)
 }
@@ -226,6 +256,12 @@ type openAIChatRequest struct {
 	Tools           []aiTool        `json:"tools,omitempty"`
 	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
 	Stream          bool            `json:"stream"`
+	// Without this a streamed reply carries no token counts at all.
+	StreamOptions *openAIStreamOptions `json:"stream_options,omitempty"`
+}
+
+type openAIStreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 // openAIStreamDelta/openAIStreamChunk mirror the OpenAI-compatible
@@ -248,6 +284,11 @@ type openAIStreamChunk struct {
 	Choices []struct {
 		Delta openAIStreamDelta `json:"delta"`
 	} `json:"choices"`
+	// Usage arrives on its own final chunk, with no choices.
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
@@ -260,19 +301,22 @@ func aiChatTurnStreamOpenAI(ctx context.Context, uc aiUserConfig, messages []aiC
 		Tools:           tools,
 		ReasoningEffort: uc.reasoningEffort,
 		Stream:          true,
+		StreamOptions:   &openAIStreamOptions{IncludeUsage: true},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := doAIRequest(ctx, aiGatewayURL()+"/chat/completions", body, func(req *http.Request) {
+	resp, err := doAIRequest(ctx, uc.gatewayURL()+"/chat/completions", body, func(req *http.Request) {
 		req.Header.Set("Authorization", "Bearer "+uc.apiKey)
+		applyAIHeaders(req, uc.headers)
 	})
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	var usage aiUsage
 	var contentBuilder strings.Builder
 	type toolCallBuilder struct {
 		id, name string
@@ -298,6 +342,9 @@ func aiChatTurnStreamOpenAI(ctx context.Context, uc aiUserConfig, messages []aiC
 		}
 		if chunk.Error != nil {
 			return nil, fmt.Errorf("AI error: %s", chunk.Error.Message)
+		}
+		if chunk.Usage != nil {
+			usage = aiUsage{Input: chunk.Usage.PromptTokens, Output: chunk.Usage.CompletionTokens}
 		}
 		if len(chunk.Choices) == 0 {
 			continue
@@ -329,7 +376,7 @@ func aiChatTurnStreamOpenAI(ctx context.Context, uc aiUserConfig, messages []aiC
 		return nil, fmt.Errorf("reading AI stream: %w", err)
 	}
 
-	result := &aiChatMessage{Role: "assistant", Content: contentBuilder.String()}
+	result := &aiChatMessage{Role: "assistant", Content: contentBuilder.String(), Usage: usage}
 	for _, idx := range toolCallOrder {
 		b := toolCalls[idx]
 		tc := aiToolCall{ID: b.id, Type: "function"}
@@ -380,6 +427,13 @@ type anthropicTool struct {
 type anthropicThinking struct {
 	Type         string `json:"type"` // "enabled"
 	BudgetTokens int    `json:"budget_tokens"`
+}
+
+type anthropicUsage struct {
+	InputTokens              int `json:"input_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
 }
 
 type anthropicRequest struct {
@@ -494,12 +548,14 @@ func aiChatTurnStreamAnthropic(ctx context.Context, uc aiUserConfig, messages []
 	resp, err := doAIRequest(ctx, anthropicAPIBase+"/v1/messages", body, func(req *http.Request) {
 		req.Header.Set("x-api-key", uc.apiKey)
 		req.Header.Set("anthropic-version", anthropicVersion)
+		applyAIHeaders(req, uc.headers)
 	})
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	var usage aiUsage
 	var contentBuilder strings.Builder
 	type blockState struct {
 		toolUse  bool
@@ -533,12 +589,27 @@ func aiChatTurnStreamAnthropic(ctx context.Context, uc aiUserConfig, messages []
 			Error *struct {
 				Message string `json:"message"`
 			} `json:"error"`
+			// message_start carries the input side, message_delta the output.
+			Message *struct {
+				Usage anthropicUsage `json:"usage"`
+			} `json:"message"`
+			Usage *anthropicUsage `json:"usage"`
 		}
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}
 
 		switch event.Type {
+		case "message_start":
+			if event.Message != nil {
+				u := event.Message.Usage
+				usage.Input = u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+				usage.Output = u.OutputTokens
+			}
+		case "message_delta":
+			if event.Usage != nil {
+				usage.Output = event.Usage.OutputTokens // cumulative for the message
+			}
 		case "error":
 			if event.Error != nil {
 				return nil, fmt.Errorf("AI error: %s", event.Error.Message)
@@ -571,7 +642,7 @@ func aiChatTurnStreamAnthropic(ctx context.Context, uc aiUserConfig, messages []
 		return nil, fmt.Errorf("reading AI stream: %w", err)
 	}
 
-	result := &aiChatMessage{Role: "assistant", Content: contentBuilder.String()}
+	result := &aiChatMessage{Role: "assistant", Content: contentBuilder.String(), Usage: usage}
 	for _, idx := range toolOrder {
 		b := blocks[idx]
 		tc := aiToolCall{ID: b.id, Type: "function"}

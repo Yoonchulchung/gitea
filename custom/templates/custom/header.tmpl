@@ -258,6 +258,21 @@
 	gap: 2px;
 }
 .company-kpi b { font-size: 1.5rem; line-height: 1.1; }
+/* Platform AI token usage (custom/templates/company/admin_ai.tmpl): the month's
+   headline in large figures, then the charts in cards
+   (web_src/js/features/company-ai-usage-charts.ts). */
+.company-usage-hero .company-kpi { padding: 14px 16px; border-radius: 8px; }
+.company-usage-hero .company-kpi b { font-size: 1.9rem; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.company-usage-hero .company-kpi span { color: var(--color-text-light-2); font-size: .86rem; display: inline-flex; align-items: center; gap: 6px; }
+.company-usage-swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.company-usage-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; margin-top: 12px; }
+@media (max-width: 900px) { .company-usage-grid { grid-template-columns: 1fr; } }
+.company-usage-card { border: 1px solid var(--color-secondary); border-radius: 8px; padding: 14px 16px 10px; margin-top: 12px; }
+.company-usage-grid .company-usage-card { margin-top: 0; }
+.company-usage-card h5 { margin: 0; font-size: .95rem; }
+.company-usage-card .company-usage-sub { color: var(--color-text-light-2); font-size: .82rem; margin: 2px 0 8px; }
+.company-usage-canvas { position: relative; height: 260px; }
+.company-usage-canvas.short { height: 210px; }
 /* A limit card is a form: the pencil turns the number after the slash into
    a field on the same line, with a tick and a cross beside it
    (web_src/js/features/company-app-charts.ts). */
@@ -441,6 +456,46 @@
 .company-ai-chat-message.rendered p { margin: .4em 0; }
 .company-ai-chat-message.rendered hr { margin: .6em 0; }
 .company-ai-chat-message.rendered pre { font-size: .85em; }
+/* The AI auto-deploy's state on an open request in the approval queue
+   (custom/templates/company/approval_queue.tmpl). */
+.company-queue-ai { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--color-secondary-alpha-40); color: var(--color-text-light-1); }
+.company-queue-ai.reviewing, .company-queue-ai.waiting { background: var(--color-primary-alpha-20); color: var(--color-primary-dark-2); }
+.company-queue-ai.held { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.company-queue-ai b { font-variant-numeric: tabular-nums; }
+/* The AI at work (web_src/js/features/company-ai-chat.ts): a turning glyph,
+   a changing verb with a light passing over it, and the seconds so far. */
+.company-ai-chat-working {
+	align-self: flex-start;
+	display: inline-flex;
+	align-items: baseline;
+	gap: .45rem;
+	font-size: .92rem;
+	flex-shrink: 0;
+	padding: .1rem 0;
+}
+.company-ai-chat-working-glyph {
+	color: var(--color-primary);
+	width: 1em;
+	text-align: center;
+	font-weight: 600;
+}
+.company-ai-chat-working-verb {
+	font-weight: 500;
+	background: linear-gradient(90deg, var(--color-text-light-2) 0%, var(--color-text-light-2) 35%, var(--color-text) 50%, var(--color-text-light-2) 65%, var(--color-text-light-2) 100%);
+	background-size: 250% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: company-ai-shimmer 1.8s linear infinite;
+}
+.company-ai-chat-working-time { color: var(--color-text-light-3); font-size: .82rem; font-variant-numeric: tabular-nums; }
+@keyframes company-ai-shimmer {
+	from { background-position: 100% 0; }
+	to { background-position: -150% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.company-ai-chat-working-verb { animation: none; color: var(--color-text-light-2); background: none; }
+}
 .company-ai-chat-message-status {
 	align-self: flex-start;
 	font-size: .85rem;

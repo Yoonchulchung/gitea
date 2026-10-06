@@ -3,6 +3,57 @@ import {createElementFromHTML} from '../utils/dom.ts';
 import {svg} from '../svg.ts';
 import {ANTHROPIC_MODEL_SUGGESTIONS} from './company-settings-ai.ts';
 
+// While a turn runs, a line at the bottom of the conversation says the AI is
+// at work: a glyph that keeps turning, a verb that changes, and the seconds
+// so far. A reply that takes a minute otherwise looks exactly like a reply
+// that has died.
+const WORKING_VERBS = [
+  'Thinking', 'Transmuting', 'Forging', 'Churning', 'Enchanting', 'Pondering', 'Cerebrating',
+  'Elucidating', 'Doing', 'Brewing', 'Conjuring', 'Mulling', 'Synthesizing', 'Percolating', 'Crafting',
+];
+const WORKING_GLYPHS = ['·', '✢', '✳', '✶', '✻', '✽', '✽', '✻', '✶', '✳', '✢', '·'];
+
+type WorkingIndicator = {keepLast: () => void, stop: () => void};
+
+function startWorkingIndicator(container: HTMLElement): WorkingIndicator {
+  const el = createElementFromHTML<HTMLElement>(
+    '<div class="company-ai-chat-working" role="status" aria-live="polite">' +
+    '<span class="company-ai-chat-working-glyph" aria-hidden="true"></span>' +
+    '<span class="company-ai-chat-working-verb"></span>' +
+    '<span class="company-ai-chat-working-time"></span></div>',
+  );
+  const glyph = el.querySelector<HTMLElement>('.company-ai-chat-working-glyph')!;
+  const verb = el.querySelector<HTMLElement>('.company-ai-chat-working-verb')!;
+  const time = el.querySelector<HTMLElement>('.company-ai-chat-working-time')!;
+  const startedAt = Date.now();
+  const slow = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let frame = 0;
+  let word = Math.floor(Math.random() * WORKING_VERBS.length);
+  const showVerb = () => { verb.textContent = `${WORKING_VERBS[word]}…` };
+  const nextVerb = () => {
+    word = (word + 1 + Math.floor(Math.random() * (WORKING_VERBS.length - 1))) % WORKING_VERBS.length; // never the same twice running
+    showVerb();
+  };
+  glyph.textContent = WORKING_GLYPHS[0];
+  showVerb();
+  const timers = [
+    setInterval(() => { glyph.textContent = WORKING_GLYPHS[++frame % WORKING_GLYPHS.length] }, slow ? 600 : 120),
+    setInterval(nextVerb, 2500),
+    setInterval(() => {
+      const s = Math.round((Date.now() - startedAt) / 1000);
+      time.textContent = s >= 1 ? `(${s}s)` : '';
+    }, 1000),
+  ];
+  container.append(el);
+  return {
+    keepLast: () => { if (el.isConnected) container.append(el); },
+    stop: () => {
+      for (const t of timers) clearInterval(t);
+      el.remove();
+    },
+  };
+}
+
 // Shared chat-sidebar module for both AI surfaces (docs/company/ai-agent.md):
 // the workspace editor's "Ask AI" panel (web_src/js/features/company-workspace.ts)
 // and, later, the PR-review sidebar. Talks to a streaming ndjson endpoint —
@@ -142,6 +193,7 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
 
   const history: ChatTurn[] = [];
   let abortController: AbortController | null = null;
+  let working: WorkingIndicator | null = null;
   let emptyStateEl: HTMLElement | null = null;
   // Messages sent while a previous one is still streaming — send() itself
   // can't just start a second, overlapping request (abortController is one
@@ -202,7 +254,7 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
       form.append('text', text);
       form.append('mode', 'markdown');
       const resp = await POST(`${window.config.appSubUrl}/-/markup`, {data: form});
-      if (!resp.ok) return;
+      if (!resp.ok || resp.redirected) return; // a redirect lands on a whole page, not the rendered reply
       const html = await resp.text();
       el.innerHTML = html;
       el.classList.add('render-content', 'markup', 'rendered');
@@ -221,6 +273,7 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
     const textTarget = bubble;
     textTarget.textContent = text;
     messagesEl.append(bubble);
+    working?.keepLast(); // the working line stays under whatever arrived last
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return textTarget;
   }
@@ -298,6 +351,8 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
 
     abortController = new AbortController();
     setSending(true);
+    working = startWorkingIndicator(messagesEl);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
     try {
       const resp = await POST(opts.sendUrl, {
         data: {instruction, history: history.slice(0, -1), ...opts.getContext?.() ?? {activePath: null, openFiles: []}},
@@ -351,6 +406,8 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
       // Whatever ended the stream — done, Stop, a dropped connection — the
       // last segment is rendered too; only a segment still streaming stays text.
       if (replyTarget) renderMarkdown(replyTarget, segmentText);
+      working?.stop();
+      working = null;
       abortController = null;
       setSending(false);
       inputEl.focus();

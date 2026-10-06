@@ -67,6 +67,8 @@ cpu.out
 !/custom/templates
 !/custom/public
 /data
+# copies of the data directory (backups, old test instances) hold keys and sessions too
+/data-*
 /indexers
 /log
 /public/assets/img/avatar

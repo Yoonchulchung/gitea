@@ -23,6 +23,8 @@ export const ANTHROPIC_MODEL_SUGGESTIONS = [
 ];
 
 export function initCompanySettingsAI(): void {
+  registerGlobalInitFunc('initCompanyHeaderRows', initHeaderRows);
+  registerGlobalInitFunc('initCompanyPlatformAI', initPlatformAIModels);
   registerGlobalInitFunc('initCompanySettingsAI', (form: HTMLFormElement) => {
     const modelsUrl = form.getAttribute('data-models-url')!;
     const providerInput = form.querySelector<HTMLInputElement>('.company-settings-ai-provider input[name="provider"]')!;
@@ -101,5 +103,92 @@ export function initCompanySettingsAI(): void {
         fetchButton.disabled = false;
       }
     });
+  });
+}
+
+function initHeaderRows(field: HTMLElement): void {
+  const template = field.querySelector<HTMLTemplateElement>('.company-settings-ai-header-template')!;
+  const addButton = field.querySelector<HTMLButtonElement>('.company-settings-ai-header-add')!;
+  const addRow = () => {
+    addButton.before(template.content.cloneNode(true));
+    return addButton.previousElementSibling!.querySelector<HTMLInputElement>('input[name="header_name"]')!;
+  };
+  addButton.addEventListener('click', () => addRow().focus());
+  field.addEventListener('click', (e) => {
+    (e.target as Element).closest('.company-settings-ai-header-remove')?.closest('.company-settings-ai-header-row')!.remove();
+  });
+  if (!field.querySelector('.company-settings-ai-header-row')) addRow();
+}
+
+// /-/admin/company-ai (company/admin_ai.go): the model is picked from what the
+// provider lists for the form's current URL, key and headers — never typed.
+function initPlatformAIModels(form: HTMLFormElement): void {
+  const field = form.querySelector<HTMLElement>('.company-platform-ai-model-field')!;
+  const dropdown = field.querySelector<HTMLElement>('.company-platform-ai-model')!;
+  const value = dropdown.querySelector<HTMLInputElement>('input[name="model"]')!;
+  const menu = dropdown.querySelector<HTMLElement>('.menu')!;
+  const help = field.querySelector<HTMLElement>('.company-platform-ai-model-help')!;
+  const fetchButton = field.querySelector<HTMLButtonElement>('.company-platform-ai-fetch')!;
+  fomanticQuery(dropdown).dropdown();
+
+  initPriceHint(form, value);
+
+  const setModels = (models: string[]) => {
+    menu.replaceChildren(...models.map((id) => {
+      const item = document.createElement('div');
+      item.className = 'item';
+      item.setAttribute('data-value', id);
+      item.textContent = id;
+      return item;
+    }));
+    const keep = models.includes(value.value) ? value.value : '';
+    fomanticQuery(dropdown).dropdown('refresh');
+    if (keep) {
+      fomanticQuery(dropdown).dropdown('set selected', keep);
+    } else {
+      fomanticQuery(dropdown).dropdown('clear');
+    }
+  };
+
+  // Another provider lists other models; what was picked for the old one no longer applies.
+  const provider = form.querySelector<HTMLSelectElement>('select[name="provider"]')!;
+  provider.addEventListener('change', () => {
+    for (const el of form.querySelectorAll('.company-platform-ai-openai-only')) {
+      el.classList.toggle('tw-hidden', provider.value === 'anthropic');
+    }
+    setModels([]);
+    help.textContent = '';
+  });
+
+  fetchButton.addEventListener('click', async () => {
+    fetchButton.classList.add('is-loading');
+    help.textContent = field.getAttribute('data-i18n-loading')!;
+    try {
+      const resp = await POST(field.getAttribute('data-models-url')!, {data: new FormData(form)});
+      if (!resp.ok) {
+        help.textContent = await resp.text();
+        return;
+      }
+      const {models} = await resp.json() as {models: string[]};
+      setModels(models);
+      help.textContent = models.length ? field.getAttribute('data-i18n-found')!.replace('%d', () => String(models.length)) : field.getAttribute('data-i18n-none')!;
+    } finally {
+      fetchButton.classList.remove('is-loading');
+    }
+  });
+}
+
+// The price line under the model: the known list price the moment a model is
+// picked; any other model is priced by the platform AI once it is saved.
+function initPriceHint(form: HTMLFormElement, model: HTMLInputElement): void {
+  const line = form.querySelector<HTMLElement>('.company-platform-ai-price');
+  if (!line) return;
+  const known = JSON.parse(line.getAttribute('data-known-prices')!) as Record<string, [number, number]>;
+  model.addEventListener('change', () => {
+    const id = model.value.trim().toLowerCase();
+    const match = Object.keys(known).filter((k) => id === k || id.startsWith(`${k}-`)).sort((a, b) => b.length - a.length)[0];
+    line.textContent = match ?
+      line.getAttribute('data-i18n-known')!.replace('%s', () => String(known[match][0])).replace('%s', () => String(known[match][1])) :
+      line.getAttribute('data-i18n-unsaved')!;
   });
 }

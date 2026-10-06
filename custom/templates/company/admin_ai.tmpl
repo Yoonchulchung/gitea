@@ -1,0 +1,194 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-ai")}}
+	<div class="admin-setting-content">
+		<form class="ui form" method="post" action="{{AppSubUrl}}/-/admin/company-ai" data-global-init="initCompanyPlatformAI">
+			{{.CsrfTokenHtml}}
+			<h4 class="ui top attached header">{{ctx.Locale.Tr "company.platform_ai.header"}}</h4>
+			<div class="ui attached segment">
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.platform_ai.explain"}}</p>
+				<div class="field">
+					<label for="provider">{{ctx.Locale.Tr "company.settings_ai.provider"}}</label>
+					<select id="provider" name="provider" class="ui selection dropdown">
+						<option value="openai" {{if ne .PlatformAI.Provider "anthropic"}}selected{{end}}>{{ctx.Locale.Tr "company.settings_ai.provider_openai"}}</option>
+						<option value="anthropic" {{if eq .PlatformAI.Provider "anthropic"}}selected{{end}}>{{ctx.Locale.Tr "company.settings_ai.provider_anthropic"}}</option>
+					</select>
+				</div>
+				{{/* Claude's endpoint is fixed and it needs only the key; these are for a gateway. */}}
+				<div class="company-platform-ai-openai-only {{if eq .PlatformAI.Provider "anthropic"}}tw-hidden{{end}}">
+					<div class="field">
+						<label for="base_url">{{ctx.Locale.Tr "company.platform_ai.base_url"}}</label>
+						<input id="base_url" name="base_url" value="{{.PlatformAI.BaseURL}}" autocomplete="off"
+						       placeholder="{{or .GatewayURL "https://ai-gateway.example.com/v1"}}">
+						<p class="help">{{ctx.Locale.Tr "company.platform_ai.base_url_help"}}</p>
+					</div>
+				</div>
+				<div class="field">
+					<label for="api_key">{{ctx.Locale.Tr "company.settings_ai.api_key"}}</label>
+					<input id="api_key" name="api_key" type="password" autocomplete="new-password"
+					       placeholder="{{if .PlatformAIKeySet}}{{ctx.Locale.Tr "company.settings_ai.api_key_unchanged"}}{{else}}{{ctx.Locale.Tr "company.settings_ai.api_key_placeholder"}}{{end}}">
+				</div>
+				{{if .PlatformAIKeySet}}
+					{{/* Blank keeps what is stored, so removing it needs its own action. */}}
+					<div class="field">
+						<div class="ui checkbox">
+							<input id="clear_key" type="checkbox" name="clear_key" value="true">
+							<label for="clear_key">{{ctx.Locale.Tr "company.platform_ai.clear_key"}}</label>
+						</div>
+					</div>
+				{{end}}
+				<div class="company-platform-ai-openai-only {{if eq .PlatformAI.Provider "anthropic"}}tw-hidden{{end}}">
+					{{template "company/header_rows" .}}
+				</div>
+				{{/* Picked from what the provider lists, never typed: "custom" keeps the global
+				     dropdown init off it, company-settings-ai.ts fills and initializes it. */}}
+				<div class="field company-platform-ai-model-field" data-models-url="{{AppSubUrl}}/-/admin/company-ai/models"
+				     data-i18n-loading="{{ctx.Locale.Tr "company.platform_ai.models_loading"}}" data-i18n-found="{{ctx.Locale.Tr "company.platform_ai.models_found"}}" data-i18n-none="{{ctx.Locale.Tr "company.platform_ai.models_none"}}">
+					<label>{{ctx.Locale.Tr "company.settings_ai.model_id"}}</label>
+					<div class="flex-text-block">
+						<div class="ui selection dropdown custom company-platform-ai-model tw-flex-1">
+							<input type="hidden" name="model" value="{{.PlatformAI.Model}}">
+							<div class="default text">{{ctx.Locale.Tr "company.platform_ai.model_pick"}}</div>
+							{{svg "octicon-triangle-down" 14 "dropdown icon"}}
+							<div class="menu">
+								{{if .PlatformAI.Model}}<div class="item" data-value="{{.PlatformAI.Model}}">{{.PlatformAI.Model}}</div>{{end}}
+							</div>
+						</div>
+						<button type="button" class="ui basic button company-platform-ai-fetch">{{ctx.Locale.Tr "company.settings_ai.fetch_models"}}</button>
+					</div>
+					<p class="help tw-block company-platform-ai-model-help"></p>
+					{{/* What the model costs, for the usage below: Anthropic's list, or the
+					     platform AI's own estimate for a model the list does not know
+					     (company/ai_prices.go). Nothing to enter. */}}
+					<p class="help tw-block company-platform-ai-price" data-known-prices="{{.KnownPricesJSON}}"
+					   data-i18n-known="{{ctx.Locale.Tr "company.platform_ai.price_line_known" "%s" "%s" .KnownPricesAsOf}}"
+					   data-i18n-unsaved="{{ctx.Locale.Tr "company.platform_ai.price_line_unsaved"}}">
+						{{with .ModelPrice}}
+							{{if eq .Source "known"}}{{ctx.Locale.Tr "company.platform_ai.price_line_known" .In .Out $.KnownPricesAsOf}}
+							{{else}}{{ctx.Locale.Tr "company.platform_ai.price_line_ai" .In .Out .Note}}{{end}}
+						{{else}}{{if .ModelPriceEstimating}}{{ctx.Locale.Tr "company.platform_ai.price_line_estimating"}}{{end}}{{end}}
+					</p>
+				</div>
+				<div class="flex-text-block">
+					{{if .PlatformAIUnavailable}}
+						<span class="text-red tw-text-13">{{ctx.Locale.Tr .PlatformAIUnavailable}}</span>
+					{{else}}
+						<span class="text-green tw-text-13">{{ctx.Locale.Tr "company.platform_ai.ready"}}</span>
+					{{end}}
+					<button class="ui basic button tw-ml-auto" formaction="{{AppSubUrl}}/-/admin/company-ai/test">{{ctx.Locale.Tr "company.platform_ai.test"}}</button>
+				</div>
+			</div>
+
+			<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminsettings.auto_approve_header"}}</h4>
+			<div class="ui attached segment">
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.auto_approve_explain"}}</p>
+				{{/* Not offered until the platform AI works; once on, it stays changeable so it can be turned off.
+				     Saving the AI above in the same press counts: the switch is checked after it is stored. */}}
+				<div class="field">
+					<div class="ui checkbox">
+						<input id="ai_auto_approve" type="checkbox" name="ai_auto_approve" value="true" {{if .AutoApproveDelegate}}checked{{else if .PlatformAIUnavailable}}disabled{{end}}>
+						<label for="ai_auto_approve">{{ctx.Locale.Tr "company.adminsettings.auto_approve"}}</label>
+					</div>
+				</div>
+				<div class="inline field tw-mt-2">
+					<label for="auto_approve_delay">{{ctx.Locale.Tr "company.platform_ai.delay"}}</label>
+					<input id="auto_approve_delay" name="auto_approve_delay" type="number" min="0" max="3600" step="1" class="tw-w-24" value="{{.AutoApproveDelay}}">
+					<span class="text-grey tw-text-13 tw-ml-2">{{ctx.Locale.Tr "company.platform_ai.delay_help"}}</span>
+				</div>
+				{{if .AutoApproveDelegate}}
+					<p class="text-grey tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.adminsettings.auto_approve_delegate" .AutoApproveDelegate.Name}}</p>
+					{{if .PlatformAIUnavailable}}<p class="text-red tw-text-13">{{ctx.Locale.Tr "company.adminsettings.auto_approve_ai_missing"}}</p>{{end}}
+				{{else if .PlatformAIUnavailable}}
+					<p class="text-grey tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.adminsettings.auto_approve_unavailable"}}</p>
+				{{end}}
+				<button class="ui primary button tw-mt-3">{{ctx.Locale.Tr "company.adminsettings.save"}}</button>
+			</div>
+		</form>
+
+		<h4 class="ui top attached header tw-mt-4">
+			{{ctx.Locale.Tr "company.platform_ai.usage_header"}}
+			{{if .UsageMonths}}
+				<div class="ui right">
+					{{range .UsageMonths}}<a class="ui tiny {{if eq . $.Usage.Month}}primary{{else}}basic{{end}} button" href="?month={{.}}">{{.}}</a>{{end}}
+				</div>
+			{{end}}
+		</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.platform_ai.usage_explain"}}</p>
+			{{if not .Usage.Total.Calls}}
+				<p class="text-grey">{{ctx.Locale.Tr "company.platform_ai.usage_none" .Usage.Month}}</p>
+			{{else}}
+				<div class="company-usage-charts" data-global-init="initCompanyAIUsageCharts" data-usage="{{.Usage.ChartJSON}}"
+				     data-i18n-input="{{ctx.Locale.Tr "company.platform_ai.usage_input"}}" data-i18n-output="{{ctx.Locale.Tr "company.platform_ai.usage_output"}}"
+				     data-i18n-total="{{ctx.Locale.Tr "company.platform_ai.usage_total"}}" data-i18n-calls="{{ctx.Locale.Tr "company.platform_ai.usage_calls"}}"
+				     data-i18n-cost="{{ctx.Locale.Tr "company.platform_ai.usage_cost"}}" data-i18n-tokens="{{ctx.Locale.Tr "company.platform_ai.usage_tokens"}}">
+					<div class="company-kpis company-usage-hero">
+						<div class="company-kpi"><b>{{if .Usage.Priced}}{{.Usage.Total.CostText}}{{else}}-{{end}}</b><span>{{ctx.Locale.Tr "company.platform_ai.usage_cost"}}</span></div>
+						<div class="company-kpi"><b>{{.Usage.Total.InputText}}</b><span><i class="company-usage-swatch" data-swatch="input"></i>{{ctx.Locale.Tr "company.platform_ai.usage_input"}}</span></div>
+						<div class="company-kpi"><b>{{.Usage.Total.OutputText}}</b><span><i class="company-usage-swatch" data-swatch="output"></i>{{ctx.Locale.Tr "company.platform_ai.usage_output"}}</span></div>
+						<div class="company-kpi"><b>{{.Usage.Total.Calls}}</b><span>{{ctx.Locale.Tr "company.platform_ai.usage_calls"}}</span></div>
+					</div>
+					{{if not .Usage.Priced}}<p class="text-grey tw-text-12 tw-mt-2">{{ctx.Locale.Tr "company.platform_ai.usage_no_price"}}</p>
+					{{else if .Usage.Unpriced}}<p class="text-grey tw-text-12 tw-mt-2">{{ctx.Locale.Tr "company.platform_ai.usage_unpriced" (StringUtils.Join .Usage.Unpriced ", ")}}</p>{{end}}
+
+					<div class="company-usage-card">
+						<h5>{{ctx.Locale.Tr "company.platform_ai.usage_daily_title"}}</h5>
+						<p class="company-usage-sub">{{if gt (len .Usage.ByModel) 1}}{{ctx.Locale.Tr "company.platform_ai.usage_daily_sub_models"}}{{else}}{{ctx.Locale.Tr "company.platform_ai.usage_daily_sub"}}{{end}}</p>
+						<div class="company-usage-canvas"><canvas data-chart="daily" role="img" aria-label="{{ctx.Locale.Tr "company.platform_ai.usage_daily_title"}}"></canvas></div>
+					</div>
+					<div class="company-usage-grid">
+						{{if .Usage.Priced}}
+							<div class="company-usage-card">
+								<h5>{{ctx.Locale.Tr "company.platform_ai.usage_cost_title"}}</h5>
+								<p class="company-usage-sub">{{ctx.Locale.Tr "company.platform_ai.usage_cost_sub"}}</p>
+								<div class="company-usage-canvas short"><canvas data-chart="cost" role="img" aria-label="{{ctx.Locale.Tr "company.platform_ai.usage_cost_title"}}"></canvas></div>
+							</div>
+						{{end}}
+						<div class="company-usage-card">
+							<h5>{{ctx.Locale.Tr "company.platform_ai.usage_by_model"}}</h5>
+							<p class="company-usage-sub">{{ctx.Locale.Tr "company.platform_ai.usage_model_sub"}}</p>
+							<div class="company-usage-canvas short"><canvas data-chart="models" role="img" aria-label="{{ctx.Locale.Tr "company.platform_ai.usage_by_model"}}"></canvas></div>
+						</div>
+						<div class="company-usage-card">
+							<h5>{{ctx.Locale.Tr "company.platform_ai.usage_by_purpose"}}</h5>
+							<p class="company-usage-sub">{{ctx.Locale.Tr "company.platform_ai.usage_purpose_sub"}}</p>
+							<div class="company-usage-canvas short"><canvas data-chart="purposes" role="img" aria-label="{{ctx.Locale.Tr "company.platform_ai.usage_by_purpose"}}"></canvas></div>
+						</div>
+					</div>
+				</div>
+
+				{{/* The same numbers as a table, for exact values and for readers the charts do not serve. */}}
+				<details class="tw-mt-4">
+					<summary class="tw-cursor-pointer text-grey">{{ctx.Locale.Tr "company.platform_ai.usage_tables"}}</summary>
+					<h5>{{ctx.Locale.Tr "company.platform_ai.usage_by_model"}}</h5>
+					<table class="ui very basic compact table">
+						<thead><tr><th>{{ctx.Locale.Tr "company.settings_ai.model_id"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_calls"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_input"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_output"}}</th>{{if .Usage.Priced}}<th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_cost"}}</th>{{end}}</tr></thead>
+						<tbody>
+							{{range .Usage.ByModel}}<tr><td class="tw-font-mono">{{.Label}}</td><td class="tw-text-right">{{.Calls}}</td><td class="tw-text-right">{{.InputText}}</td><td class="tw-text-right">{{.OutputText}}</td>{{if $.Usage.Priced}}<td class="tw-text-right">{{.CostText}}</td>{{end}}</tr>{{end}}
+						</tbody>
+					</table>
+					<h5>{{ctx.Locale.Tr "company.platform_ai.usage_by_purpose"}}</h5>
+					<table class="ui very basic compact table">
+						<thead><tr><th>{{ctx.Locale.Tr "company.platform_ai.usage_purpose"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_calls"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_input"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_output"}}</th>{{if .Usage.Priced}}<th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_cost"}}</th>{{end}}</tr></thead>
+						<tbody>
+							{{range .Usage.ByPurpose}}<tr><td>{{.Label}}</td><td class="tw-text-right">{{.Calls}}</td><td class="tw-text-right">{{.InputText}}</td><td class="tw-text-right">{{.OutputText}}</td>{{if $.Usage.Priced}}<td class="tw-text-right">{{.CostText}}</td>{{end}}</tr>{{end}}
+						</tbody>
+					</table>
+					<h5>{{ctx.Locale.Tr "company.platform_ai.usage_by_day"}}</h5>
+					<table class="ui very basic compact table">
+						<thead><tr><th>{{ctx.Locale.Tr "company.platform_ai.usage_day"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_calls"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_input"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_output"}}</th>{{if .Usage.Priced}}<th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_cost"}}</th>{{end}}</tr></thead>
+						<tbody>
+							{{range .Usage.ByDay}}<tr><td>{{.Label}}</td><td class="tw-text-right">{{.Calls}}</td><td class="tw-text-right">{{.InputText}}</td><td class="tw-text-right">{{.OutputText}}</td>{{if $.Usage.Priced}}<td class="tw-text-right">{{.CostText}}</td>{{end}}</tr>{{end}}
+						</tbody>
+					</table>
+				</details>
+
+				<h5>{{ctx.Locale.Tr "company.platform_ai.usage_recent"}}</h5>
+				<table class="ui very basic compact table tw-text-13">
+					<thead><tr><th>{{ctx.Locale.Tr "company.platform_ai.usage_when"}}</th><th>{{ctx.Locale.Tr "company.platform_ai.usage_purpose"}}</th><th>{{ctx.Locale.Tr "company.platform_ai.usage_ref"}}</th><th>{{ctx.Locale.Tr "company.settings_ai.model_id"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_input"}}</th><th class="tw-text-right">{{ctx.Locale.Tr "company.platform_ai.usage_output"}}</th></tr></thead>
+					<tbody>
+						{{range .Usage.Recent}}<tr><td class="tw-whitespace-nowrap">{{.When}}</td><td>{{.Purpose}}</td><td>{{.Ref}}{{if .Actor}} <span class="text-grey">@{{.Actor}}</span>{{end}}</td><td class="tw-font-mono tw-text-12">{{.Model}}</td><td class="tw-text-right">{{.InputText}}</td><td class="tw-text-right">{{.OutputText}}</td></tr>{{end}}
+					</tbody>
+				</table>
+			{{end}}
+		</div>
+	</div>
+{{template "admin/layout_footer" .}}

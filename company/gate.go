@@ -67,6 +67,10 @@ var uiWhitelist = []string{
 	// (public/login/org) is what decides. Listed explicitly rather than left
 	// to fall through, so it is a decision rather than an accident.
 	"/apps/",
+	// Markdown rendering for the AI chat's replies (company-ai-chat.ts). It
+	// only turns the posted text into sanitised HTML; blocked, it answered
+	// with a redirect to the dashboard, and the chat showed that page as a reply.
+	"/-/markup",
 	// footer theme switcher (list/apply) — cosmetic per-user preference,
 	// no git/admin concepts involved. optSignIn only, same as anonymous
 	// visitors already get.

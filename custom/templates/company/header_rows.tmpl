@@ -1,0 +1,22 @@
+{{/* Name/value rows for extra AI request headers; posts header_name/header_value
+     (company/settings_ai_headers.go's formAIHeaders). Expects .HeaderNames. */}}
+<div class="field company-settings-ai-headers" data-global-init="initCompanyHeaderRows">
+	<label>{{ctx.Locale.Tr "company.settings_ai.headers"}}</label>
+	{{/* Saved values are never sent back: a saved row shows its name with a blank value, which keeps it. */}}
+	{{range .HeaderNames}}
+		<div class="flex-text-block tw-mb-2 company-settings-ai-header-row">
+			<input class="tw-flex-1" name="header_name" value="{{.}}" autocomplete="off" spellcheck="false" aria-label="{{ctx.Locale.Tr "company.settings_ai.header_name"}}">
+			<input class="tw-flex-1" name="header_value" autocomplete="off" spellcheck="false" placeholder="{{ctx.Locale.Tr "company.settings_ai.header_value_kept"}}" aria-label="{{ctx.Locale.Tr "company.settings_ai.header_value"}}">
+			<button type="button" class="ui icon basic button company-settings-ai-header-remove" aria-label="{{ctx.Locale.Tr "remove"}}">{{svg "octicon-trash"}}</button>
+		</div>
+	{{end}}
+	<template class="company-settings-ai-header-template">
+		<div class="flex-text-block tw-mb-2 company-settings-ai-header-row">
+			<input class="tw-flex-1" name="header_name" autocomplete="off" spellcheck="false" placeholder="{{ctx.Locale.Tr "company.settings_ai.header_name"}} (X-Team-Id)" aria-label="{{ctx.Locale.Tr "company.settings_ai.header_name"}}">
+			<input class="tw-flex-1" name="header_value" autocomplete="off" spellcheck="false" placeholder="{{ctx.Locale.Tr "company.settings_ai.header_value"}}" aria-label="{{ctx.Locale.Tr "company.settings_ai.header_value"}}">
+			<button type="button" class="ui icon basic button company-settings-ai-header-remove" aria-label="{{ctx.Locale.Tr "remove"}}">{{svg "octicon-trash"}}</button>
+		</div>
+	</template>
+	<button type="button" class="ui small basic button company-settings-ai-header-add">{{svg "octicon-plus"}} {{ctx.Locale.Tr "company.settings_ai.header_add"}}</button>
+	<p class="help tw-block tw-mt-2">{{ctx.Locale.Tr (or .HeadersHelp "company.settings_ai.headers_help")}}</p>
+</div>

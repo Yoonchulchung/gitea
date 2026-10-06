@@ -72,13 +72,14 @@ func TestDynamicTrKeysComeFromOurOwnVocabulary(t *testing.T) {
 		".What":                 true,                                                    // historyStatusLabel: HasKey-guarded in history_table.tmpl
 		".DeployFormHeadingKey": true,                                                    // one of two constants in DeployForm
 		".Label":                true, ".Value": true, ".Reason": true, ".Explain": true, // PermissionRow/accessOption: keys by construction; stored request labels are HasKey-guarded
-		"$r.Label":   true, // admin_packages pending list: HasKey-guarded
-		".Evidence":  true, // stored request evidence: HasKey-guarded
-		".DetailKey": true, // PermissionRequest.DetailKey: written only by our own code, never from a form
-		".OpKey":     true, // describeActivity: looked up in activityOpKeys, never assembled from the stored op_type
-		".State":     true, // deployAttempt.State: departmentStatusLabel, a constant set
-		".Heading":   true, // appUnavailable: one of its own constant keys
-		".Hint":      true, // LogFinding: taken from failureHints, never from the log; its argument is escaped by Tr
+		"$r.Label":               true, // admin_packages pending list: HasKey-guarded
+		".Evidence":              true, // stored request evidence: HasKey-guarded
+		".DetailKey":             true, // PermissionRequest.DetailKey: written only by our own code, never from a form
+		".OpKey":                 true, // describeActivity: looked up in activityOpKeys, never assembled from the stored op_type
+		".State":                 true, // deployAttempt.State: departmentStatusLabel, a constant set
+		".Heading":               true, // appUnavailable: one of its own constant keys
+		".Hint":                  true, // LogFinding: taken from failureHints, never from the log; its argument is escaped by Tr
+		".PlatformAIUnavailable": true, // platformAIState.unavailableReason: a constant set
 	}
 	for _, path := range companyTemplateRoots(t) {
 		body, err := os.ReadFile(path)
@@ -120,6 +121,12 @@ func TestLabelFunctionsReturnKeysOrPlainText(t *testing.T) {
 		if cause.Detail != "" {
 			assert.True(t, strings.HasPrefix(cause.Detail, "company.app.cause."), reason)
 		}
+	}
+
+	// Whatever is stored, the platform AI's reason is one of its own keys.
+	for _, st := range []platformAIState{{}, {PlatformAI: PlatformAI{Provider: hostile, Model: hostile, BaseURL: hostile}, keySet: true, key: hostile}} {
+		reason := st.unavailableReason()
+		assert.True(t, reason == "" || strings.HasPrefix(reason, "company.platform_ai.unavailable."), reason)
 	}
 
 	// A finding's hint is picked from a table; what the app printed only ever

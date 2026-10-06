@@ -504,12 +504,22 @@ func AdminSetNetwork(ctx *context.Context) {
 		return
 	}
 
-	if err := SetAppNetworkPolicy(ctx, ctx.Doer, owner, repo, subject, mutate); err != nil {
+	what := ctx.FormString("what")
+	err := SetAppNetworkPolicy(ctx, ctx.Doer, owner, repo, subject, mutate)
+	if err == nil && what == "access" {
+		// The page promises the administrator decides both ways; a department's
+		// earlier narrowing would otherwise keep winning over this choice.
+		err = clearDepartmentAccess(owner, repo, ctx.Doer.Name, ctx.FormString("access"))
+	}
+	if err != nil {
 		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 	} else {
 		// Inbound and download take effect on the next request; outbound is
-		// read when the app starts, so it does not.
-		ctx.Flash.Success(ctx.Locale.TrString("company.flash.policy_changed") + note + " " + ctx.Locale.TrString("company.flash.policy_restart_note"))
+		// read when the app starts, so only it needs a restart.
+		if what == "outbound-add" || what == "outbound-remove" {
+			note += " " + ctx.Locale.TrString("company.flash.policy_restart_note")
+		}
+		ctx.Flash.Success(ctx.Locale.TrString("company.flash.policy_changed") + note)
 	}
 	ctx.Redirect(back)
 }

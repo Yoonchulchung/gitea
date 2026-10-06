@@ -3,7 +3,7 @@
      comparing requests, and things that are compared belong in columns.
      Rows resolved by company.SetApprovalQueueData — the requester and the
      department live in the branch name, not on the issue. */}}
-<table class="ui very basic table company-approval-queue">
+<table class="ui very basic table company-approval-queue" data-global-init="initCompanyQueueCountdown">
 	<thead>
 		<tr>
 			<th>{{ctx.Locale.Tr "company.review.col_request"}}</th>
@@ -34,6 +34,16 @@
 							{{ctx.Locale.Tr (Iif $row.Cancelled "company.review.cancelled_by_on" "company.review.rejected_by_on") (HTMLFormat `<a href="%[1]s">%[2]s</a>` $row.Canceller.HomeLink $row.Canceller.GetDisplayName) (DateUtils.AbsoluteShort $row.CancelledAt)}}
 						{{else}}
 							{{DateUtils.AbsoluteShort .GetLastEventTimestamp}}
+							{{/* Where the AI auto-deploy stands on it (company/approval_queue.go). */}}
+							{{if and $row $row.AI}}
+								<span class="company-queue-ai {{$row.AI}}">
+									{{if eq $row.AI "reviewing"}}{{svg "octicon-sync" 12 "rotate-clockwise"}} {{ctx.Locale.Tr "company.review.queue_ai_reviewing"}}
+									{{else if eq $row.AI "waiting"}}{{svg "octicon-clock" 12}} {{ctx.Locale.Tr "company.review.queue_ai_waiting" (HTMLFormat `<b class="company-queue-seconds" data-merge-at="%d">%d</b>` $row.AIMergeAt $row.AISecsLeft)}}
+									{{else if eq $row.AI "queued"}}{{svg "octicon-hourglass" 12}} {{ctx.Locale.Tr "company.review.queue_ai_queued"}}
+									{{else if eq $row.AI "held"}}{{svg "octicon-alert" 12}} {{ctx.Locale.Tr "company.review.queue_ai_held"}}
+									{{else if eq $row.AI "stopped"}}{{svg "octicon-stop" 12}} {{ctx.Locale.Tr "company.review.queue_ai_stopped"}}{{end}}
+								</span>
+							{{end}}
 						{{end}}
 					</div>
 				</td>

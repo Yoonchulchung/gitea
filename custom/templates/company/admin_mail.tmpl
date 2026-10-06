@@ -12,11 +12,11 @@
 					</div>
 					<div class="field">
 						<label for="port">{{ctx.Locale.Tr "company.mail.port"}}</label>
-						<input id="port" name="port" type="number" min="1" max="65535" value="{{if .MailServer.Port}}{{.MailServer.Port}}{{end}}" placeholder="587">
+						<input id="port" name="port" type="number" min="1" max="65535" value="{{if .MailServer.Port}}{{.MailServer.Port}}{{end}}" placeholder="{{ctx.Locale.Tr "company.mail.port_default"}}">
 					</div>
 					<div class="field">
 						<label for="security">{{ctx.Locale.Tr "company.mail.security"}}</label>
-						<select id="security" name="security">
+						<select id="security" name="security" class="ui selection dropdown">
 							<option value="starttls" {{if eq .MailServer.Security "starttls"}}selected{{end}}>STARTTLS</option>
 							<option value="tls" {{if eq .MailServer.Security "tls"}}selected{{end}}>TLS</option>
 							<option value="none" {{if eq .MailServer.Security "none"}}selected{{end}}>{{ctx.Locale.Tr "company.mail.security_none"}}</option>
@@ -43,16 +43,20 @@
 						</div>
 					</div>
 				{{end}}
-				<div class="inline fields">
-					<div class="field tw-flex-1">
-						<label for="from">{{ctx.Locale.Tr "company.mail.from"}}</label>
-						<input id="from" name="from" value="{{.MailServer.From}}" placeholder="platform@example.com">
+				{{/* Folded: the login is the sender on most servers, so these only matter when it is not. */}}
+				<details class="field" {{if or .MailServer.From .MailServer.FromName}}open{{end}}>
+					<summary class="tw-cursor-pointer">{{ctx.Locale.Tr "company.mail.sender_optional"}}</summary>
+					<div class="inline fields tw-mt-2">
+						<div class="field tw-flex-1">
+							<label for="from">{{ctx.Locale.Tr "company.mail.from"}}</label>
+							<input id="from" name="from" value="{{.MailServer.From}}" placeholder="{{ctx.Locale.Tr "company.mail.from_default"}}">
+						</div>
+						<div class="field tw-flex-1">
+							<label for="from_name">{{ctx.Locale.Tr "company.mail.from_name"}}</label>
+							<input id="from_name" name="from_name" value="{{.MailServer.FromName}}">
+						</div>
 					</div>
-					<div class="field tw-flex-1">
-						<label for="from_name">{{ctx.Locale.Tr "company.mail.from_name"}}</label>
-						<input id="from_name" name="from_name" value="{{.MailServer.FromName}}">
-					</div>
-				</div>
+				</details>
 				<div class="field">
 					<div class="ui checkbox">
 						<input id="skip_verify" type="checkbox" name="skip_verify" value="true" {{if .MailServer.SkipVerify}}checked{{end}}>
@@ -86,10 +90,10 @@
 
 			{{/* Adding one opens it: an empty row on a list is something somebody
 			     has to remember to come back and fill in. */}}
-			<form class="ui form company-mail-add" method="post" action="{{AppSubUrl}}/-/admin/company-mail/add">
+			<form class="ui form company-mail-add flex-text-block tw-mb-4" method="post" action="{{AppSubUrl}}/-/admin/company-mail/add">
 				{{.CsrfTokenHtml}}
-				<input name="name" placeholder="{{ctx.Locale.Tr "company.mail.rule_name_placeholder"}}">
-				<select name="event">
+				<input class="tw-flex-1" name="name" placeholder="{{ctx.Locale.Tr "company.mail.rule_name_placeholder"}}">
+				<select name="event" class="ui selection dropdown">
 					{{range .MailEventList}}<option value="{{.}}">{{ctx.Locale.Tr (printf "company.mail.event.%s" .)}}</option>{{end}}
 				</select>
 				<button class="ui primary button">{{ctx.Locale.Tr "company.mail.rule_add"}}</button>

@@ -153,7 +153,7 @@ func rejectionReasons(ctx *context.Context, pr *issues_model.PullRequest) ([]*is
 	}
 	reasons := make([]*issues_model.Comment, 0, len(comments))
 	for _, c := range comments {
-		if strings.HasPrefix(c.Content, aiReviewCommentMarker) {
+		if isAIReviewComment(c.Content) {
 			continue
 		}
 		// A withdrawal is stored with the marker CancelDeployRequest writes so

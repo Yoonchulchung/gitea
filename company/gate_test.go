@@ -29,3 +29,10 @@ func TestLocalPasswordChangeIsNeverReachable(t *testing.T) {
 		assert.True(t, isUserSettingsAllowed(p), "%s stays allowed", p)
 	}
 }
+
+// The AI chat renders its replies through /-/markup; blocked, the gate's
+// redirect put the whole dashboard into the conversation.
+func TestAIChatCanRenderReplies(t *testing.T) {
+	assert.True(t, isPrefixAllowed("/-/markup"))
+	assert.False(t, isPrefixAllowed("/-/admin"))
+}

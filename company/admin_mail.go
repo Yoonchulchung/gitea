@@ -45,7 +45,7 @@ func AdminMailRule(ctx *context.Context) {
 	ctx.Data["Title"] = rule.Name
 	ctx.Data["Rule"] = rule
 	ctx.Data["RuleTo"] = strings.Join(rule.To, "\n")
-	ctx.Data["MailFields"] = []string{"app", "title", "requester", "actor", "reason", "link"}
+	ctx.Data["MailFields"] = MailFieldsFor(rule.Event)
 	ctx.Data["MailConfigured"] = MailSettings(ctx).Configured()
 	ctx.HTML(http.StatusOK, tplAdminMailRule)
 }
@@ -108,12 +108,16 @@ func AdminMailRulePreview(ctx *context.Context) {
 // message rather than empty gaps where the values will be.
 func mailPreviewFields(ctx *context.Context) MailFields {
 	return MailFields{
-		"app":       "PO/report",
-		"title":     ctx.Locale.TrString("company.mail.preview_title"),
-		"requester": ctx.Locale.TrString("company.mail.preview_requester"),
-		"actor":     ctx.Locale.TrString("company.mail.preview_actor"),
-		"reason":    ctx.Locale.TrString("company.mail.preview_reason"),
-		"link":      setting.AppURL + "yoonchul/central-deploy/pulls/12",
+		"app":         "PO/report",
+		"title":       ctx.Locale.TrString("company.mail.preview_title"),
+		"requester":   ctx.Locale.TrString("company.mail.preview_requester"),
+		"actor":       ctx.Locale.TrString("company.mail.preview_actor"),
+		"reason":      ctx.Locale.TrString("company.mail.preview_reason"),
+		"link":        setting.AppURL + "yoonchul/central-deploy/pulls/12",
+		"severity":    "high",
+		"permissions": ctx.Locale.TrString("company.mail.preview_permissions"),
+		"summary":     ctx.Locale.TrString("company.mail.preview_summary"),
+		"details":     ctx.Locale.TrString("company.mail.preview_details"),
 	}
 }
 
@@ -135,6 +139,17 @@ func AdminMailRuleDelete(ctx *context.Context) {
 	ctx.Redirect(mailPage())
 }
 
+// defaultMailPort is the standard submission port for each security mode.
+func defaultMailPort(security string) int {
+	switch security {
+	case mailSecurityTLS:
+		return 465
+	case mailSecurityNone:
+		return 25
+	}
+	return 587
+}
+
 func mailPage() string { return setting.AppSubURL + "/-/admin/company-mail" }
 
 // AdminMailServerPost saves where mail goes out through.
@@ -153,6 +168,9 @@ func AdminMailServerPost(ctx *context.Context) {
 	default:
 		server.Security = mailSecurityStartTLS
 	}
+	if server.Port == 0 {
+		server.Port = defaultMailPort(server.Security) // the field's placeholder is not a value
+	}
 	// Parsed rather than pattern-matched, for the same reason the support
 	// address is: every message the platform sends carries this, and a typo
 	// here is a bounce nobody sees.
@@ -162,6 +180,11 @@ func AdminMailServerPost(ctx *context.Context) {
 			ctx.Redirect(mailPage())
 			return
 		}
+	}
+	if server.Host != "" && server.Sender() == "" {
+		ctx.Flash.Error(ctx.Locale.TrString("company.mail.from_required"))
+		ctx.Redirect(mailPage())
+		return
 	}
 	if ctx.FormBool("clear_password") {
 		if err := ClearMailPassword(ctx); err != nil {

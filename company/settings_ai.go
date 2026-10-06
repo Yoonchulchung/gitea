@@ -63,6 +63,13 @@ func AISettings(ctx *gitea_context.Context) {
 		return
 	}
 
+	if raw, err := getUserSecret(ctx, ctx.Doer.ID, userSettingAIHeaders); err != nil {
+		ctx.ServerError("getUserSecret", err)
+		return
+	} else if headers, err := parseAIHeaders(raw); err == nil {
+		ctx.Data["HeaderNames"] = aiHeaderNames(headers)
+	}
+
 	ctx.Data["Title"] = string(ctx.Locale.Tr("company.settings_ai.nav_title"))
 	ctx.Data["PageIsSettingsAI"] = true
 	ctx.Data["Provider"] = provider
@@ -104,6 +111,18 @@ func AISettingsPost(ctx *gitea_context.Context) {
 	modelID := strings.TrimSpace(ctx.Req.FormValue("model_id"))
 	reasoningEffort := strings.TrimSpace(ctx.Req.FormValue("reasoning_effort"))
 	apiKey := strings.TrimSpace(ctx.Req.FormValue("api_key"))
+	savedHeaders, err := getUserSecret(ctx, ctx.Doer.ID, userSettingAIHeaders)
+	if err != nil {
+		ctx.ServerError("getUserSecret", err)
+		return
+	}
+	saved, _ := parseAIHeaders(savedHeaders) // unreadable saved headers are replaced by whatever the form says
+	headersText, err := formAIHeaders(ctx.Req.Form["header_name"], ctx.Req.Form["header_value"], saved)
+	if err != nil {
+		ctx.Flash.Error(ctx.Locale.TrString("company.settings_ai.headers_invalid", err.Error()))
+		ctx.Redirect(setting.AppSubURL + "/user/settings/ai")
+		return
+	}
 
 	if err := user_model.SetUserSetting(ctx, ctx.Doer.ID, userSettingAIProvider, provider); err != nil {
 		ctx.ServerError("SetUserSetting", err)
@@ -119,6 +138,12 @@ func AISettingsPost(ctx *gitea_context.Context) {
 	}
 	if apiKey != "" {
 		if err := setUserSecret(ctx, ctx.Doer.ID, userSettingAIAPIKey, apiKey); err != nil {
+			ctx.ServerError("SetUserSetting", err)
+			return
+		}
+	}
+	if headersText != savedHeaders {
+		if err := setUserSecret(ctx, ctx.Doer.ID, userSettingAIHeaders, headersText); err != nil {
 			ctx.ServerError("SetUserSetting", err)
 			return
 		}
@@ -174,6 +199,11 @@ func AIListModels(ctx *gitea_context.Context) {
 		return
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if raw, err := getUserSecret(ctx, ctx.Doer.ID, userSettingAIHeaders); err == nil {
+		if headers, err := parseAIHeaders(raw); err == nil {
+			applyAIHeaders(req, headers)
+		}
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

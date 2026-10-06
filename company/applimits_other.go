@@ -9,3 +9,11 @@ package company
 // OOM score, and a priority nudge that only matters next to the sandbox and
 // watchdog this platform only has on Linux. Development hosts do without.
 func deprioritizeAndProtect(int) {}
+
+// nprocLimit has no per-user task accounting to work around off Linux.
+func nprocLimit(allowance int) uint64 {
+	if allowance <= 0 {
+		return 0
+	}
+	return uint64(allowance)
+}

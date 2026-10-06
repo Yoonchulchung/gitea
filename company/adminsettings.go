@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/mail"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -34,18 +35,22 @@ const (
 	settingKeyAnthropicVisible = "company.ai.anthropic_visible"
 	settingKeySupportEmail     = "company.support_email"
 	settingKeyHelpURL          = "company.help_url"
+	// The administrator who delegated approval to the AI; empty when nobody has.
+	settingKeyAutoApproveBy = "company.deploy.auto_approve_by"
 )
 
 // platformSettings is read on pages people load constantly — the settings
 // navbar, the department gate — so it is cached rather than queried each
 // time. Invalidated by the only writer there is, below.
 var (
-	platformSettingsMu     sync.RWMutex
-	platformSettingsLoaded bool
-	aiUsersEnabled         bool
-	anthropicVisible       bool
-	supportEmail           string
-	helpURL                string
+	platformSettingsMu      sync.RWMutex
+	platformSettingsLoaded  bool
+	aiUsersEnabled          bool
+	anthropicVisible        bool
+	supportEmail            string
+	helpURL                 string
+	autoApproveBy           int64
+	autoApproveDelaySeconds = -1
 )
 
 func loadPlatformSettings(ctx context.Context) {
@@ -74,6 +79,8 @@ func loadPlatformSettings(ctx context.Context) {
 	anthropicVisible = all[settingKeyAnthropicVisible] == "true"
 	supportEmail = all[settingKeySupportEmail]
 	helpURL = all[settingKeyHelpURL]
+	autoApproveBy, _ = strconv.ParseInt(all[settingKeyAutoApproveBy], 10, 64)
+	autoApproveDelaySeconds = parseAutoApproveDelay(all[settingKeyAutoApproveDelay])
 	platformSettingsLoaded = true
 }
 
@@ -125,6 +132,25 @@ func AnthropicVisibleToUsers(ctx context.Context) bool {
 	platformSettingsMu.RLock()
 	defer platformSettingsMu.RUnlock()
 	return anthropicVisible
+}
+
+// AutoApproveDelegate is the administrator on whose behalf the AI approves
+// deploy requests (company/deploy_auto_approve.go), or nil when approval is
+// not delegated. Checked on every use: an account that stopped being an
+// active administrator takes the delegation with it.
+func AutoApproveDelegate(ctx context.Context) *user_model.User {
+	loadPlatformSettings(ctx)
+	platformSettingsMu.RLock()
+	id := autoApproveBy
+	platformSettingsMu.RUnlock()
+	if id == 0 {
+		return nil
+	}
+	u, err := user_model.GetUserByID(ctx, id)
+	if err != nil || !u.IsAdmin || !u.IsActive || u.ProhibitLogin {
+		return nil
+	}
+	return u
 }
 
 // SupportEmail is who a person stuck at the department gate should write to,

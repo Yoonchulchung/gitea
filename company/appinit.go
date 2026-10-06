@@ -23,6 +23,9 @@ func InitAppPlatform(ctx context.Context) {
 	// From here on there is a database behind the platform's own reads, so
 	// notifications may go out (company/mailrules.go).
 	platformRunning.Store(true)
+	// Open requests the AI has not decided yet are picked up on their own —
+	// one missed at submission or cut off by a restart (company/auto_approve_sweep.go).
+	go runAutoApproveSweeper()
 
 	// The policy in force comes from git, so a restart has to read it back —
 	// otherwise every app silently reverts to built-in defaults and the

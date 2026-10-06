@@ -7,6 +7,34 @@
 <div class="issue-content-right company-deploy-review" data-global-init="initCompanyDeployReviewPackages" data-i18n-ai-author="{{ctx.Locale.Tr "company.review.ai_author"}}" data-i18n-platform-author="{{ctx.Locale.Tr "company.review.platform_author"}}" data-central-owner-link="{{.DeployCentralOwnerLink}}">
 	<div class="ui segment company-deploy-review-panel">
 		<h4 class="tw-mb-3">{{if .DeployRemoval}}{{svg "octicon-trash" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.title_removal"}}{{else}}{{svg "octicon-rocket" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.title"}}{{end}}</h4>
+		{{with .AutoApproveStatus}}
+			{{/* An AI approval does not merge on the spot: it counts down here first
+			     (company/auto_approve_wait.go). The script keeps the number live and
+			     reloads the page when the phase changes. */}}
+			<div class="ui {{if eq .Phase "stopped"}}message{{else}}info message{{end}} company-auto-approve tw-mb-3"
+			     data-global-init="initCompanyAutoApprove" data-status-url="{{$.AutoApproveStatusURL}}"
+			     data-phase="{{.Phase}}" data-merge-at="{{.MergeAt}}">
+				{{if eq .Phase "reviewing"}}
+					<div class="header">{{ctx.Locale.Tr "company.review.auto_approve_reviewing"}}</div>
+					<p class="tw-text-13 tw-my-1">{{ctx.Locale.Tr "company.review.auto_approve_reviewing_help"}}</p>
+				{{else if eq .Phase "waiting"}}
+					<div class="header">{{ctx.Locale.Tr "company.review.auto_approve_countdown" (HTMLFormat `<span class="company-auto-approve-seconds">%d</span>` .SecondsLeft)}}</div>
+					<p class="tw-text-13 tw-my-1">{{ctx.Locale.Tr "company.review.auto_approve_countdown_help"}}</p>
+				{{else}}
+					<div class="header">{{ctx.Locale.Tr "company.review.auto_approve_stopped"}}</div>
+				{{end}}
+				{{if ne .Phase "stopped"}}
+					<form method="post" action="{{$.AutoApproveStopURL}}" class="tw-mt-2">
+						<button class="ui small red button">{{svg "octicon-stop" 14 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.auto_approve_stop"}}</button>
+					</form>
+				{{end}}
+			</div>
+		{{end}}
+		{{if .AutoApproveStartURL}}
+			<form method="post" action="{{.AutoApproveStartURL}}" class="tw-mb-3">
+				<button class="ui small basic button">{{svg "octicon-sync" 14 "tw-mr-1"}}{{ctx.Locale.Tr "company.review.auto_approve_start"}}</button>
+			</form>
+		{{end}}
 		<div class="company-deploy-review-facts">
 			<span class="text-grey">{{ctx.Locale.Tr "company.review.department"}}</span>
 			<a href="{{.DeployDeptLink}}">{{.DeployDeptOwner}}/{{.DeployDeptName}}</a>
@@ -212,9 +240,9 @@
 		<div class="company-deploy-review-chat" data-global-init="initCompanyDeployReview" data-ai-ready="{{.AIEnabled}}"
 			data-send-url="{{.DeployChatURL}}"
 			data-ai-empty-state="{{ctx.Locale.Tr "company.review.ai_empty_state"}}"
-			data-ai-not-configured="{{ctx.Locale.Tr "company.workspace.ai_not_configured"}}"
-			data-ai-not-configured-link="{{ctx.Locale.Tr "company.workspace.ai_not_configured_link"}}"
-			data-ai-not-configured-url="{{printf "%s/user/settings/ai" AppSubUrl}}"
+			data-ai-not-configured="{{ctx.Locale.Tr "company.review.platform_ai_not_configured"}}"
+			data-ai-not-configured-link="{{ctx.Locale.Tr "company.review.platform_ai_setup"}}"
+			data-ai-not-configured-url="{{printf "%s/-/admin/company-ai" AppSubUrl}}"
 			data-ai-not-configured-placeholder="{{ctx.Locale.Tr "company.workspace.ai_not_configured_placeholder"}}"
 			data-ai-stop="{{ctx.Locale.Tr "company.workspace.ai_stop"}}"
 			data-ai-request-failed="{{ctx.Locale.Tr "company.workspace.ai_request_failed"}}"
@@ -232,11 +260,8 @@
 					<textarea class="company-ai-chat-input" rows="1" placeholder="{{ctx.Locale.Tr "company.review.ai_placeholder"}}"></textarea>
 					<div class="company-ai-chat-inputtoolbar">
 						<span class="company-ai-chat-context tw-hidden"></span>
-						<select class="company-ai-chat-model" aria-label="{{ctx.Locale.Tr "company.workspace.ai_model"}}"
-						        data-models-url="{{printf "%s/user/settings/ai/models" AppSubUrl}}"
-						        data-provider="{{.AIProvider}}">
-							{{if .AIModel}}<option value="{{.AIModel}}" selected>{{.AIModel}}</option>{{end}}
-						</select>
+						{{/* The platform AI's model is set on 관리 → AI; this chat does not pick one. */}}
+						{{if .AIModel}}<span class="text-grey tw-text-12">{{.AIModel}} · {{ctx.Locale.Tr "company.platform_ai.title"}}</span>{{end}}
 						<button type="button" class="company-ai-chat-send" aria-label="{{ctx.Locale.Tr "company.workspace.ai_send"}}"></button>
 					</div>
 				</div>

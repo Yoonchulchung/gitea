@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"mime"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strconv"
 	"strings"
@@ -64,8 +65,20 @@ type MailServer struct {
 	SkipVerify bool `json:"skipVerify"`
 }
 
+// Sender is the address mail goes out as: From when it is set, otherwise the
+// login, which on most servers is the mailbox itself.
+func (m MailServer) Sender() string {
+	if m.From != "" {
+		return m.From
+	}
+	if addr, err := mail.ParseAddress(m.Username); err == nil {
+		return addr.Address
+	}
+	return ""
+}
+
 // Configured reports whether there is enough here to send anything.
-func (m MailServer) Configured() bool { return m.Host != "" && m.Port > 0 && m.From != "" }
+func (m MailServer) Configured() bool { return m.Host != "" && m.Port > 0 && m.Sender() != "" }
 
 // Addr is the host:port to dial.
 func (m MailServer) Addr() string { return net.JoinHostPort(m.Host, strconv.Itoa(m.Port)) }
@@ -200,9 +213,9 @@ func SendPlatformMail(ctx context.Context, to []string, subject, htmlBody string
 // buildMessage assembles the wire format: an HTML body, declared as such,
 // with the headers a mail server expects to see.
 func buildMessage(server MailServer, to []string, subject, htmlBody string) []byte {
-	from := server.From
+	from := server.Sender()
 	if server.FromName != "" {
-		from = mime.QEncoding.Encode("utf-8", server.FromName) + " <" + server.From + ">"
+		from = mime.QEncoding.Encode("utf-8", server.FromName) + " <" + from + ">"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", from)
@@ -258,7 +271,7 @@ func sendSMTP(ctx context.Context, server MailServer, password string, to []stri
 			return fmt.Errorf("signing in as %s: %w", server.Username, err)
 		}
 	}
-	if err := client.Mail(server.From); err != nil {
+	if err := client.Mail(server.Sender()); err != nil {
 		return err
 	}
 	for _, addr := range to {
