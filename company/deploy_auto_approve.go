@@ -271,7 +271,7 @@ func reviewDeployRequest(ctx context.Context, delegate *user_model.User, alertin
 	postAutoApproveComment(ctx, delegate, central, pr.Issue, aiReviewCard{Title: "자동 승인", Purpose: verdict.Purpose, Summary: verdict.Reason, Footer: "보안상 문제가 발견되지 않아 배포를 승인했습니다.", Model: model, Checked: checked})
 	mergeMessage := pr.Issue.Title + "\n\n승인자: AI 자동 승인 (위임: " + delegate.Name + ")\n" + body
 	// headID pins the merge to the exact change the AI read; a newer push fails it.
-	if err := pull_service.Merge(pr, delegate, repo_model.MergeStyleMerge, headID, mergeMessage, false); err != nil {
+	if err := pull_service.Merge(ctx, pr.ID, delegate, repo_model.MergeStyleMerge, headID, mergeMessage, false); err != nil {
 		log.Error("company: AI auto-approval of deploy request %d: merge: %v", pr.ID, err)
 		hold("승인 후 병합에 실패했습니다. 관리자가 직접 승인해 주세요.")
 		return

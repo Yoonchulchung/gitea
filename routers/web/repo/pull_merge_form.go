@@ -136,7 +136,7 @@ func (prInfo *pullRequestViewInfo) prepareMergeBoxFormProps(ctx *context.Context
 		textDoMerge = companyApproveLabel
 	}
 	var mergeStyles []any
-	if pull.IsStatusMergeable() {
+	if pull.IsStatusMergeable() || pull.IsEmpty() {
 		mergeStyles = []any{
 			map[string]any{
 				"name":                  "merge",
@@ -203,7 +203,7 @@ func (prInfo *pullRequestViewInfo) prepareMergeBoxFormProps(ctx *context.Context
 	if len(mergeStyles) > 0 {
 		mergeFormProps["mergeStyles"] = mergeStyles
 		prInfo.MergeBoxData.MergeFormProps = mergeFormProps
-	} else if pull.IsStatusMergeable() {
+	} else if pull.IsStatusMergeable() || pull.IsEmpty() {
 		// no merge style was set in repo setting
 		prInfo.MergeBoxData.infoCommitBlockers.AddInfoItem(
 			svg.RenderHTML("octicon-x", 16, "tw-text-red"),

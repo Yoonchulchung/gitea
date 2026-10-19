@@ -24,7 +24,6 @@ import (
 	"gitea.dev/modules/svg"
 	"gitea.dev/modules/system"
 	"gitea.dev/modules/translation"
-	"gitea.dev/modules/util"
 	"gitea.dev/modules/web"
 	"gitea.dev/modules/web/routing"
 	actions_router "gitea.dev/routers/api/actions"
@@ -40,11 +39,11 @@ import (
 	"gitea.dev/services/automerge"
 	"gitea.dev/services/cron"
 	feed_service "gitea.dev/services/feed"
+	gitproxy_service "gitea.dev/services/gitproxy"
 	indexer_service "gitea.dev/services/indexer"
 	"gitea.dev/services/mailer"
 	mailer_incoming "gitea.dev/services/mailer/incoming"
 	markup_service "gitea.dev/services/markup"
-	repo_migrations "gitea.dev/services/migrations"
 	mirror_service "gitea.dev/services/mirror"
 	"gitea.dev/services/oauth2_provider"
 	packages_spec "gitea.dev/services/packages/pkgspec"
@@ -117,7 +116,7 @@ func InitWebInstalled(ctx context.Context) {
 	mustInit(git.InitFull)
 	log.Info("Git version: %s (home: %s)", git.DefaultFeatures().VersionInfo(), gitcmd.HomeDir())
 	if !git.DefaultFeatures().SupportHashSha256 {
-		log.Warn("sha256 hash support is disabled - requires Git >= 2.42." + util.Iif(git.DefaultFeatures().UsingGogit, " Gogit is currently unsupported.", ""))
+		log.Warn("sha256 hash support is disabled - requires Git >= 2.42.")
 	}
 
 	// Setup i18n
@@ -148,6 +147,7 @@ func InitWebInstalled(ctx context.Context) {
 	mustInit(packages_spec.InitManager)
 
 	// Booting long running goroutines.
+	mustInitCtx(ctx, gitproxy_service.Run) // must start before mirror/migration services spawn git
 	mustInit(indexer_service.Init)
 
 	mirror_service.InitSyncMirrors()
@@ -155,7 +155,6 @@ func InitWebInstalled(ctx context.Context) {
 	mustInit(pull_service.Init)
 	mustInitCtx(ctx, automerge.Init)
 	mustInit(task.Init)
-	mustInit(repo_migrations.Init)
 	mustInit(websocket_service.Init)
 	mustInitCtx(ctx, mailer_incoming.Init)
 

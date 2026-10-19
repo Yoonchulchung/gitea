@@ -141,7 +141,7 @@ func applyLandlock(spec sandboxSpec) error {
 		netRights = 0 // nothing to restrict, so nothing to handle
 	}
 
-	attr := unix.LandlockRulesetAttr{Access_fs: fsRights, Access_net: netRights}
+	attr := unix.LandlockRulesetAttr{Handled_access_fs: fsRights, Handled_access_net: netRights}
 	fd, _, errno := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET,
 		uintptr(unsafe.Pointer(&attr)), unsafe.Sizeof(attr), 0)
 	if errno != 0 {
