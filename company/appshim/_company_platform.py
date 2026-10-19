@@ -118,6 +118,161 @@ def _autosave():
     threading.Thread(target=loop, name="platform-state-autosave", daemon=True).start()
 
 
+# TCP: under bubblewrap the app has no network, only the broker's socket, so
+# a library dialing a host itself (LDAP to the company directory, a database)
+# is sent there instead: names resolve to placeholder addresses that remember
+# the name, and a connect becomes CONNECT host:port, which the broker allows
+# or refuses by the app's outbound rules (company/broker_tcp.go).
+_BROKER = os.environ.get("BROKER_SOCKET")
+_FAKE_NET = "198.18.0.0"  # RFC 2544 benchmarking range: never a real host here
+
+
+def _install_tcp_redirect():
+    import errno
+    import ipaddress
+    import socket
+    import threading
+
+    real_getaddrinfo = socket.getaddrinfo
+    real_connect = socket.socket.connect
+    real_getpeername = socket.socket.getpeername
+    real_close = socket.socket.close
+    real_setsockopt = socket.socket.setsockopt
+    real_getsockopt = socket.socket.getsockopt
+    lock = threading.Lock()
+    by_name, by_ip, peers = {}, {}, {}
+    announced = set()
+
+    def is_name(host):
+        if not host or host.lower() in ("localhost", "localhost.localdomain"):
+            return False
+        try:
+            ipaddress.ip_address(host.split("%")[0])
+            return False
+        except ValueError:
+            return True
+
+    def placeholder(name):
+        name = name.lower().rstrip(".")
+        with lock:
+            ip = by_name.get(name)
+            if ip is None:
+                ip = str(ipaddress.IPv4Address(_FAKE_NET) + len(by_name) + 1)
+                by_name[name], by_ip[ip] = ip, name
+            return ip
+
+    def getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        name = host.decode() if isinstance(host, bytes) else host
+        if isinstance(name, str) and is_name(name) and family in (0, socket.AF_INET):
+            # AI_ADDRCONFIG would drop the answer: the sandbox has only loopback.
+            return real_getaddrinfo(placeholder(name), port, socket.AF_INET, type, proto, flags & ~socket.AI_ADDRCONFIG)
+        return real_getaddrinfo(host, port, family, type, proto, flags)
+
+    def gethostbyname(host):
+        return placeholder(host) if is_name(host) else real_gethostbyname(host)
+
+    real_gethostbyname = socket.gethostbyname
+
+    def destination(sock, address):
+        if sock.family not in (socket.AF_INET, socket.AF_INET6) or sock.type != socket.SOCK_STREAM:
+            return None
+        host, port = address[0], address[1]
+        if host in by_ip:
+            return by_ip[host], port
+        if is_name(host):
+            return host, port
+        if ipaddress.ip_address(host.split("%")[0]).is_loopback:
+            return None
+        return host, port
+
+    def tunnel(sock, host, port):
+        authority = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+        broker = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            broker.settimeout(sock.gettimeout() or 30)
+            real_connect(broker, _BROKER)
+            broker.sendall(f"CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\n\r\n".encode())
+            head = b""
+            while not head.endswith(b"\r\n\r\n"):  # a byte at a time: what follows is the server's
+                byte = broker.recv(1)
+                if not byte or len(head) > 8192:
+                    raise ConnectionRefusedError(errno.ECONNREFUSED, f"[platform] the outbound broker closed the connection to {authority}")
+                head += byte
+            status = head.split(b"\r\n", 1)[0].split(b" ")
+            if len(status) < 2 or status[1] != b"200":
+                try:
+                    body = broker.recv(4096).decode(errors="replace").strip()
+                except OSError:
+                    body = ""
+                reason = body or b" ".join(status[1:]).decode(errors="replace")
+                if authority not in announced:
+                    announced.add(authority)
+                    print(f"[platform] outbound TCP to {authority} refused: {reason}", flush=True)
+                raise ConnectionRefusedError(errno.ECONNREFUSED, f"[platform] {reason}")
+            os.dup2(broker.fileno(), sock.fileno(), inheritable=sock.get_inheritable())
+            sock.settimeout(sock.gettimeout())  # the descriptor came with the broker's blocking mode
+        finally:
+            broker.close()
+
+    def connect(self, address):
+        target = destination(self, address)
+        if target is None:
+            return real_connect(self, address)
+        tunnel(self, *target)
+        with lock:
+            peers[self.fileno()] = tuple(address)
+
+    def connect_ex(self, address):
+        try:
+            connect(self, address)
+            return 0
+        except OSError as e:
+            return e.errno or errno.ECONNREFUSED
+
+    def getpeername(self):
+        peer = real_getpeername(self)
+        if isinstance(peer, (str, bytes)):  # a tunnel is a unix socket underneath
+            with lock:
+                return peers.get(self.fileno(), peer)
+        return peer
+
+    def tunneled(sock):
+        with lock:
+            return sock.fileno() in peers
+
+    # TCP_NODELAY, keepalive tuning: asyncio and LDAP clients set them, and a
+    # unix socket refuses them. They mean nothing on the app's side of a tunnel.
+    def setsockopt(self, level, option, *value):
+        try:
+            return real_setsockopt(self, level, option, *value)
+        except OSError:
+            if not tunneled(self):
+                raise
+
+    def getsockopt(self, level, option, *buflen):
+        if level == socket.IPPROTO_TCP and tunneled(self):
+            return bytes(buflen[0]) if buflen else 0
+        return real_getsockopt(self, level, option, *buflen)
+
+    def close(self):
+        with lock:
+            peers.pop(self.fileno(), None)
+        real_close(self)
+
+    socket.getaddrinfo = getaddrinfo
+    socket.gethostbyname = gethostbyname
+    socket.socket.connect = connect
+    socket.socket.connect_ex = connect_ex
+    socket.socket.getpeername = getpeername
+    socket.socket.close = close
+    socket.socket.setsockopt = setsockopt
+    socket.socket.getsockopt = getsockopt
+
+
+if _BROKER and _APP_DIR and os.environ.get("BROKER_TCP") == "1":
+    _install_tcp_redirect()
+
+
 if _DB_PATH and _APP_DIR:
     import atexit
     import sqlite3

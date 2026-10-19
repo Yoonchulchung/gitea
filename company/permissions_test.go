@@ -428,7 +428,10 @@ func TestOutboundHostAcceptsAPastedURL(t *testing.T) {
 		"http://erp.internal.company.com/api/v1/employees":   "erp.internal.company.com",
 		"https://erp.internal.company.com":                   "erp.internal.company.com",
 		"erp.internal.company.com/api":                       "erp.internal.company.com",
-		"erp.internal.company.com:8443":                      "erp.internal.company.com",
+		"erp.internal.company.com:8443":                      "erp.internal.company.com:8443",
+		"https://erp.internal.company.com:8443/api":          "erp.internal.company.com:8443",
+		"ldap://ad.corp.local":                               "ad.corp.local:389",
+		"ldaps://ad.corp.local":                              "ad.corp.local:636",
 		"  erp.internal.company.com  ":                       "erp.internal.company.com",
 		"erp.internal.company.com.":                          "erp.internal.company.com",
 	}
@@ -440,7 +443,7 @@ func TestOutboundHostAcceptsAPastedURL(t *testing.T) {
 
 	// Still refused: a wildcard the broker would ignore while this screen
 	// showed it as applied, and anything with no host in it at all.
-	for _, in := range []string{"", "   ", "*.internal", "ftp://erp.internal", "/api/v1"} {
+	for _, in := range []string{"", "   ", "*.internal", "ftp://erp.internal", "/api/v1", "erp.internal:0", "erp.internal:http"} {
 		_, ok := normalizeOutboundHost(in)
 		assert.False(t, ok, in)
 	}

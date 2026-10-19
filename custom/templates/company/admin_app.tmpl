@@ -318,6 +318,7 @@
 						<div class="menu">
 							<div class="item" data-value="GET">{{ctx.Locale.Tr "company.adminapp.method_get"}}</div>
 							<div class="item" data-value="GET,POST">{{ctx.Locale.Tr "company.adminapp.method_getpost"}}</div>
+							<div class="item" data-value="TCP">{{ctx.Locale.Tr "company.adminapp.method_tcp"}}</div>
 						</div>
 					</div>
 					<button class="ui button">{{ctx.Locale.Tr "company.adminapp.allow"}}</button>
@@ -410,6 +411,33 @@
 				</div>
 			</form>
 		</div>
+
+		{{if .AppRepo}}
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminapp.copy_header"}}</h4>
+		<div class="ui attached segment">
+			<form method="post" action="{{.AdminAppLink}}/copy" class="ui form">
+				{{.CsrfTokenHtml}}
+				<div class="tw-flex tw-items-end tw-gap-2 tw-flex-wrap">
+					<div class="field tw-m-0">
+						<label for="copy-owner">{{ctx.Locale.Tr "company.adminapp.copy_owner"}}</label>
+						<select id="copy-owner" name="owner_id" class="ui selection dropdown">
+							{{range .CopyOwners}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+						</select>
+					</div>
+					<div class="field tw-m-0">
+						<label for="copy-name">{{ctx.Locale.Tr "company.adminapp.copy_name"}}</label>
+						<input id="copy-name" name="name" value="{{.CopyName}}" required>
+					</div>
+					<button class="ui tiny primary button">{{ctx.Locale.Tr "company.adminapp.copy"}}</button>
+				</div>
+				<div class="flex-text-block tw-mt-2">
+					<label class="flex-text-inline"><input type="checkbox" name="with_data" checked> {{ctx.Locale.Tr "company.adminapp.copy_with_data"}}</label>
+					<label class="flex-text-inline"><input type="checkbox" name="with_env" checked> {{ctx.Locale.Tr "company.adminapp.copy_with_env"}}</label>
+				</div>
+				<div class="text-grey tw-text-12 tw-mt-2">{{ctx.Locale.Tr "company.adminapp.copy_note"}}</div>
+			</form>
+		</div>
+		{{end}}
 
 		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.adminapp.recent_history"}}</h4>
 		<div class="ui attached table segment">

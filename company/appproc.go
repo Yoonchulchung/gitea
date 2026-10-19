@@ -263,6 +263,11 @@ func buildEnv(p appPaths, rootPath, dataDir string, appEnv map[string]string, br
 		// the sandbox this is the corresponding path inside the mount; the
 		// run directory is the one thing bind-mounted read-write either way.
 		env = append(env, "BROKER_SOCKET="+filepath.Join(filepath.Dir(appSocketForProcess(p)), filepath.Base(p.broker)))
+		// Only bubblewrap leaves the app with no network of its own, so only
+		// there does the shim send its TCP through the broker.
+		if mode, _ := sandboxMode(); mode == SandboxBubblewrap {
+			env = append(env, brokerTCPEnv+"=1")
+		}
 	}
 	for k, v := range appEnv {
 		// Names are validated on the way in (see envstore.go); this is a
@@ -985,7 +990,7 @@ func isReservedEnvName(name string) bool {
 		return true
 	}
 	switch upper {
-	case "PATH", "HOME", "LANG", "SOCKET", "ROOT_PATH", "IFS", "SHELL", "TMPDIR", "DATA_DIR", "DB_PATH", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", platformShimEnv:
+	case "PATH", "HOME", "LANG", "SOCKET", "ROOT_PATH", "IFS", "SHELL", "TMPDIR", "DATA_DIR", "DB_PATH", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", platformShimEnv, brokerTCPEnv:
 		return true
 	}
 	return false

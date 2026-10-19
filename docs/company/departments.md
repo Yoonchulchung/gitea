@@ -56,3 +56,14 @@ if user.IsAdmin || user.ID == repo.OwnerID {
     return perm, nil
 }
 ```
+
+## An administrator's copy for testing
+
+Personal namespaces are closed to departments, and testing on a
+department's own repository touches what it is serving. So the admin app
+page (`/-/admin/company-deploys/{owner}/{repo}`) copies a department
+repository to any department or the administrator's own namespace
+(`company/admin_copy.go`): every branch, tag and LFS object, and optionally
+the app's database and environment variables. A running app's database is
+copied from a fresh snapshot, never as a live file. The apps.yml policy is
+not copied — the copy gets its own through a deploy request.

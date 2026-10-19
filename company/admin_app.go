@@ -6,13 +6,13 @@ package company
 import (
 	"net"
 	"net/http"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/json"
 	"gitea.dev/modules/setting"
 	"gitea.dev/modules/templates"
@@ -240,6 +240,10 @@ func AdminApp(ctx *context.Context) {
 	// placeholder so the instance default is visible without being typed.
 	ctx.Data["DefaultDataQuotaMB"] = companySettingPositiveInt("APP_DATA_QUOTA_MB", appDataQuotaMBDefault)
 	ctx.Data["MaxDataQuotaMB"] = maxDataQuotaMB
+	if repo != nil {
+		ctx.Data["CopyOwners"] = append([]*user_model.User{ctx.Doer}, allDepartments(ctx)...)
+		ctx.Data["CopyName"] = repo.Name + "-copy"
+	}
 	ctx.HTML(http.StatusOK, tplAdminApp)
 }
 
@@ -482,6 +486,11 @@ func AdminSetNetwork(ctx *context.Context) {
 			return
 		}
 		methods := parseMethods(ctx.FormString("methods"))
+		if slices.Contains(methods, outboundTCP) && !strings.Contains(host, ":") {
+			ctx.Flash.Error(ctx.Locale.TrString("company.flash.tcp_needs_port"))
+			ctx.Redirect(back)
+			return
+		}
 		subject, mutate = "allow outbound to "+host, addOutbound(host, methods)
 		// Said back, because what was applied is not always what was typed: a
 		// pasted URL becomes a host, and the rule opens the whole site rather
@@ -532,37 +541,49 @@ func AdminSetNetwork(ctx *context.Context) {
 // would read on this screen as though the rest of the site were still closed
 // when it is not. What was applied is said back for that reason.
 //
-// A port is dropped for the same reason, and anything that is still not a
-// hostname is refused rather than silently ignored.
+// A port is kept: the broker connects to it, and no port means 443. Anything
+// that is still not a hostname is refused rather than silently ignored.
 func normalizeOutboundHost(raw string) (string, bool) {
 	host := strings.TrimSpace(raw)
 	if host == "" {
 		return "", false
 	}
+	defaultPort := ""
 	if scheme, rest, found := strings.Cut(host, "://"); found {
-		// A scheme that is not http(s) is not a web address, and salvaging a
-		// hostname out of it would grant something nobody asked for — "ftp"
-		// would have become the host.
-		if !strings.EqualFold(scheme, "http") && !strings.EqualFold(scheme, "https") {
+		// A scheme this platform cannot reach is not salvaged into a hostname
+		// — "ftp" would have become the host, granting something nobody asked for.
+		switch strings.ToLower(scheme) {
+		case "http", "https":
+		case "ldap":
+			defaultPort = "389"
+		case "ldaps":
+			defaultPort = "636"
+		default:
 			return "", false
 		}
 		host = rest
 	}
-	if parsed, err := url.Parse("http://" + host); err == nil && parsed.Host != "" {
-		host = parsed.Hostname()
-	} else if i := strings.IndexAny(host, "/?#"); i >= 0 {
-		// Scheme-less but still a URL, "example.com/api" — the host is the
-		// part before the first separator.
+	if i := strings.IndexAny(host, "/?#"); i >= 0 {
 		host = host[:i]
 	}
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
+	port := ""
+	if h, p, err := net.SplitHostPort(host); err == nil {
+		host, port = h, p
 	}
 	host = strings.TrimSuffix(host, ".")
 	if !validOutboundHost(host) {
 		return "", false
 	}
-	return host, true
+	if port == "" {
+		port = defaultPort
+	}
+	if port == "" {
+		return host, true
+	}
+	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		return "", false
+	}
+	return net.JoinHostPort(host, port), true
 }
 
 // validOutboundHost accepts a hostname and nothing else.

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +57,11 @@ type appBroker struct {
 	owner, repo string
 	server      *http.Server
 	listener    net.Listener
+
+	// Hijacked tunnels, which server.Close does not reach.
+	tunnelsMu sync.Mutex
+	tunnels   map[net.Conn]struct{}
+	closed    bool
 }
 
 var (
@@ -81,7 +87,7 @@ func startBroker(owner, repo string, p appPaths) error {
 	// wider than it has to be.
 	_ = os.Chmod(socket, 0o600)
 
-	b := &appBroker{owner: owner, repo: repo}
+	b := &appBroker{owner: owner, repo: repo, tunnels: map[net.Conn]struct{}{}}
 	b.server = &http.Server{
 		Handler:           http.HandlerFunc(b.serve),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -108,6 +114,7 @@ func stopBroker(owner, repo string) {
 	brokersMu.Unlock()
 	if b != nil {
 		_ = b.server.Close()
+		b.closeTunnels()
 	}
 }
 
@@ -119,7 +126,15 @@ var hopByHopHeaders = []string{
 
 // serve handles one outbound request from the app.
 func (b *appBroker) serve(w http.ResponseWriter, r *http.Request) {
-	host := hostWithoutPort(r.Host)
+	if r.Method == http.MethodConnect {
+		b.tunnel(w, r)
+		return
+	}
+	host, port := hostAndPort(r.Host)
+	target := host + r.URL.RequestURI()
+	if port != 443 {
+		target = net.JoinHostPort(host, strconv.Itoa(port)) + r.URL.RequestURI()
+	}
 	// Only a plain path, as the policy will match it and the destination
 	// will read it. An opaque request-URI ("x:@evil/…") would have been
 	// pasted behind the allowed host and parsed as a different host; a
@@ -127,23 +142,22 @@ func (b *appBroker) serve(w http.ResponseWriter, r *http.Request) {
 	// another there.
 	if r.URL.Opaque != "" || !strings.HasPrefix(r.URL.Path, "/") || path.Clean(r.URL.Path) != r.URL.Path ||
 		strings.Contains(strings.ToLower(r.URL.RawPath), "%2f") {
-		b.audit(r, host, http.StatusBadRequest, 0, "request path refused")
+		b.audit(r.Method, target, http.StatusBadRequest, 0, "request path refused")
 		http.Error(w, "the broker only accepts a plain path", http.StatusBadRequest)
 		return
 	}
 	// The company's block list first, above the app's own policy and above
 	// "open": a destination on it is refused for everyone (company/blocklist.go).
-	_, port := hostAndPort(r.Host)
 	if entry := blockedBy(Blocklist(), host, port); entry != "" {
-		b.audit(r, host, http.StatusForbidden, 0, "blocked for every app by the platform list ("+entry+")")
+		b.audit(r.Method, target, http.StatusForbidden, 0, "blocked for every app by the platform list ("+entry+")")
 		http.Error(w, "the platform blocks "+host+" for every app ("+entry+"); it cannot be approved per app", http.StatusForbidden)
 		return
 	}
 	// Policy is read per request, not captured at listener start, so an
 	// admin's change applies to the next call rather than the next restart.
-	if !outboundRuleFor(SettingsFor(b.owner, b.repo), host, r.Method, r.URL.Path) {
-		b.audit(r, host, http.StatusForbidden, 0, "refused by policy")
-		http.Error(w, "the platform's outbound policy does not allow "+r.Method+" "+host+r.URL.Path+
+	if !outboundRuleFor(SettingsFor(b.owner, b.repo), host, port, r.Method, r.URL.Path) {
+		b.audit(r.Method, target, http.StatusForbidden, 0, "refused by policy")
+		http.Error(w, "the platform's outbound policy does not allow "+r.Method+" "+target+
 			"; an administrator can approve it on the app's admin page", http.StatusForbidden)
 		return
 	}
@@ -151,10 +165,14 @@ func (b *appBroker) serve(w http.ResponseWriter, r *http.Request) {
 	// Always https out. The traffic crosses a real network from here; an app
 	// that genuinely needs plaintext http to an internal legacy box is a
 	// decision an admin should have to make knowingly, not a default.
-	outURL := (&url.URL{Scheme: "https", Host: host, Path: r.URL.Path, RawQuery: r.URL.RawQuery}).String()
+	outHost := host
+	if port != 443 {
+		outHost = net.JoinHostPort(host, strconv.Itoa(port))
+	}
+	outURL := (&url.URL{Scheme: "https", Host: outHost, Path: r.URL.Path, RawQuery: r.URL.RawQuery}).String()
 	out, err := http.NewRequestWithContext(r.Context(), r.Method, outURL, r.Body)
 	if err != nil {
-		b.audit(r, host, http.StatusBadGateway, 0, "bad request: "+err.Error())
+		b.audit(r.Method, target, http.StatusBadGateway, 0, "bad request: "+err.Error())
 		http.Error(w, "the broker could not build that request", http.StatusBadGateway)
 		return
 	}
@@ -169,7 +187,7 @@ func (b *appBroker) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := client.Do(out)
 	if err != nil {
-		b.audit(r, host, http.StatusBadGateway, 0, err.Error())
+		b.audit(r.Method, target, http.StatusBadGateway, 0, err.Error())
 		http.Error(w, "the destination did not respond: "+host, http.StatusBadGateway)
 		return
 	}
@@ -186,7 +204,7 @@ func (b *appBroker) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	n, _ := io.Copy(w, resp.Body)
-	b.audit(r, host, resp.StatusCode, n, "")
+	b.audit(r.Method, target, resp.StatusCode, n, "")
 }
 
 // copyBrokerHeaders forwards the app's headers minus what must not cross.
@@ -213,7 +231,7 @@ func copyBrokerHeaders(dst, src http.Header) {
 // Everything is matched, not just the host: "may read the employee list" and
 // "may POST to the payroll endpoint" are different approvals, and the
 // per-method, per-path grain is the thing a firewall cannot do and this can.
-func outboundRuleFor(settings AppSettings, host, method, path string) bool {
+func outboundRuleFor(settings AppSettings, host string, port int, method, path string) bool {
 	// A committed "open" does not stay open once the instance forbids it.
 	// It falls through to the check below and, not being "broker", is
 	// refused outright — nothing goes out. That is deliberate: the app was
@@ -226,7 +244,16 @@ func outboundRuleFor(settings AppSettings, host, method, path string) bool {
 		return false
 	}
 	for _, rule := range settings.Network.Allow {
-		if !strings.EqualFold(rule.Host, host) {
+		ruleHost, rulePort := hostAndPort(rule.Host)
+		if !strings.EqualFold(ruleHost, host) || rulePort != port {
+			continue
+		}
+		if method == http.MethodConnect {
+			// A raw connection carries whatever the app sends, so only a rule
+			// granting exactly that opens one — never a GET-only approval.
+			if containsFold(rule.Methods, outboundTCP) {
+				return true
+			}
 			continue
 		}
 		if len(rule.Methods) > 0 && !containsFold(rule.Methods, method) {
@@ -273,7 +300,7 @@ func pathAllowed(patterns []string, path string) bool {
 // whole mode exists to answer after the fact — an audit trail with holes in
 // it answers nothing. Written to the app's own log directory so it rotates
 // with everything else and is read on the same admin screen.
-func (b *appBroker) audit(r *http.Request, host string, status int, bytes int64, note string) {
+func (b *appBroker) audit(method, target string, status int, bytes int64, note string) {
 	p := appPathsFor(b.owner, b.repo)
 	f, err := openRotatingLog(p.logs, brokerLogName)
 	if err != nil {
@@ -281,8 +308,8 @@ func (b *appBroker) audit(r *http.Request, host string, status int, bytes int64,
 		return
 	}
 	defer func() { _ = f.Close() }()
-	line := fmt.Sprintf("%s %s %s%s -> %d (%d bytes)", time.Now().Format(logTimeLayout),
-		r.Method, host, r.URL.RequestURI(), status, bytes)
+	line := fmt.Sprintf("%s %s %s -> %d (%d bytes)", time.Now().Format(logTimeLayout),
+		method, target, status, bytes)
 	if note != "" {
 		line += " " + note
 	}

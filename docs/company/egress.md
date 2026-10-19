@@ -48,8 +48,26 @@ pip가 대표 사례다. 인덱스가 비어 있을 때 선택지는 둘이다: 
 브로커가 먼저 거부하는 목적지다 — 앱의 allow 목록이나 승인보다 위. 항목: `host`,
 `*.domain`(그 아래 전부), `host:port`, `:port`. 관리자 네트워크 화면에서 추가·제거하고,
 변경은 커밋으로 남는다. 거부는 앱의 아웃바운드 로그에 `blocked for every app by the
-platform list (…)`로 적힌다. 브로커는 항상 443으로 나가므로 443 이외의 포트 항목은
-오늘은 아무것도 거부하지 않는다 — 회사의 뜻을 목록이 말하게 두는 것이다.
+platform list (…)`로 적힌다. 포트 항목은 아래 포트 규칙과 TCP 터널에도 그대로 적용된다.
+
+## 포트와 TCP — HTTP가 아닌 목적지 (2026-10-19)
+
+허용 규칙의 호스트에는 포트를 붙일 수 있다(`erp.internal:8443`, `ad.company.local:389`;
+`ldap://`·`ldaps://`를 붙여 넣으면 389·636). 포트가 없으면 443이다.
+
+- **HTTP 규칙**은 그 포트로 나간다. 앱이 `http://erp.internal:8443/…`을 부르면
+  `https://erp.internal:8443/…`이 되고, `erp.internal`(443) 규칙으로는 열리지 않는다.
+- **TCP 규칙**(메서드 `TCP`)은 그 host:port로 바이트 파이프 하나를 연다 — LDAP, DB처럼
+  HTTP가 아닌 것. 앱이 브로커 소켓에 `CONNECT host:port`를 보내면 브로커가 규칙을 보고
+  접속한다(`company/broker_tcp.go`). GET만 허용된 규칙은 터널을 열지 못한다. 터널은
+  닫힐 때 `broker.log`에 남고, 앱이 멈추면 끊긴다.
+
+앱 코드는 바꿀 필요가 없다. bubblewrap에서는 앱에 네트워크가 아예 없으므로, 플랫폼 shim이
+Python의 소켓 연결을 브로커로 돌린다: 호스트 이름은 이름을 기억하는 자리표시 주소
+(198.18.0.0/15)로 풀리고, 그 주소로의 connect가 `CONNECT 이름:포트`가 된다. ldap3 같은
+순수 Python 라이브러리는 그대로 동작한다. C로 소켓을 여는 라이브러리(python-ldap 등)는
+이 경로를 타지 않는다. 거부되면 앱 로그에 `[platform] outbound TCP to … refused: …`가 한 번
+찍힌다.
 
 ## 코드가 할 수 없는 것 — 호스트 방화벽
 

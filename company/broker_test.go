@@ -4,6 +4,7 @@
 package company
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"net"
@@ -26,7 +27,7 @@ func TestOutboundRuleMatchesHostMethodAndPath(t *testing.T) {
 	}}}
 
 	allowed := func(host, method, path string) bool {
-		return outboundRuleFor(settings, host, method, path)
+		return outboundRuleFor(settings, host, 443, method, path)
 	}
 	assert.True(t, allowed("erp.internal", "GET", "/api/v1/employees"))
 	assert.True(t, allowed("ERP.Internal", "get", "/api/v1/employees"), "host and method are case-insensitive")
@@ -36,7 +37,7 @@ func TestOutboundRuleMatchesHostMethodAndPath(t *testing.T) {
 	assert.True(t, allowed("files.internal", "DELETE", "/anything"), "a bare rule covers the host")
 
 	// none blocks everything.
-	assert.False(t, outboundRuleFor(AppSettings{Network: AppNetwork{Mode: NetworkNone}}, "erp.internal", "GET", "/"))
+	assert.False(t, outboundRuleFor(AppSettings{Network: AppNetwork{Mode: NetworkNone}}, "erp.internal", 443, "GET", "/"))
 
 	// open allows everything — but only where the instance permits the mode
 	// at all. A committed "open" on an instance that forbids it goes out
@@ -44,9 +45,24 @@ func TestOutboundRuleMatchesHostMethodAndPath(t *testing.T) {
 	// is no list to fall back to (company/inbound_policy.go).
 	open := AppSettings{Network: AppNetwork{Mode: NetworkOpen}}
 	withCompanyINI(t, "APP_NETWORK_ALLOW_OPEN = true")
-	assert.True(t, outboundRuleFor(open, "anywhere.example", "POST", "/"), "the explicit exception, when permitted")
+	assert.True(t, outboundRuleFor(open, "anywhere.example", 443, "POST", "/"), "the explicit exception, when permitted")
 	withCompanyINI(t, "")
-	assert.False(t, outboundRuleFor(open, "anywhere.example", "POST", "/"), "forbidden by default: nothing goes out")
+	assert.False(t, outboundRuleFor(open, "anywhere.example", 443, "POST", "/"), "forbidden by default: nothing goes out")
+}
+
+// A port is part of the approval, and a raw connection is its own one: a
+// GET-only rule must not become an open pipe to the same host.
+func TestOutboundRuleMatchesPortAndTCP(t *testing.T) {
+	settings := AppSettings{Network: AppNetwork{Mode: NetworkBroker, Allow: []AppNetworkRule{
+		{Host: "erp.internal:8443", Methods: []string{"GET"}},
+		{Host: "ad.corp.local:389", Methods: []string{outboundTCP}},
+	}}}
+	assert.True(t, outboundRuleFor(settings, "erp.internal", 8443, "GET", "/"))
+	assert.False(t, outboundRuleFor(settings, "erp.internal", 443, "GET", "/"), "another port")
+	assert.False(t, outboundRuleFor(settings, "erp.internal", 8443, http.MethodConnect, ""), "an HTTP approval opens no tunnel")
+	assert.True(t, outboundRuleFor(settings, "ad.corp.local", 389, http.MethodConnect, ""))
+	assert.False(t, outboundRuleFor(settings, "ad.corp.local", 636, http.MethodConnect, ""), "another port")
+	assert.False(t, outboundRuleFor(settings, "ad.corp.local", 389, "GET", "/"), "a TCP approval is not an HTTP one")
 }
 
 // "/api/v1*" must not quietly cover "/api/v1000" — a prefix that ignores the
@@ -98,6 +114,61 @@ func TestBrokerRefusesAndAudits(t *testing.T) {
 	require.NoError(t, err)
 	_ = resp2.Body.Close()
 	assert.Equal(t, http.StatusForbidden, resp2.StatusCode)
+}
+
+// CONNECT over the broker socket: an approved host:port gets a byte pipe, and
+// anything else is refused with the reason the app will log.
+func TestBrokerTunnel(t *testing.T) {
+	withTempAppData(t)
+	const owner, repo = "PO", "app"
+	p := appPathsFor(owner, repo)
+	require.NoError(t, os.MkdirAll(p.run, 0o700))
+	require.NoError(t, os.MkdirAll(p.logs, 0o700))
+
+	server, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = server.Close() })
+	go func() {
+		for {
+			conn, err := server.Accept()
+			if err != nil {
+				return
+			}
+			go func() { _, _ = io.Copy(conn, conn); _ = conn.Close() }()
+		}
+	}()
+	withPolicy(t, "apps:\n  PO/app:\n    network: {mode: broker, allow: [{host: \""+server.Addr().String()+"\", methods: [TCP]}]}\n")
+
+	require.NoError(t, startBroker(owner, repo, p))
+	t.Cleanup(func() { stopBroker(owner, repo) })
+
+	dial := func(target string) (net.Conn, string) {
+		conn, err := net.Dial("unix", p.broker)
+		require.NoError(t, err)
+		_, err = conn.Write([]byte("CONNECT " + target + " HTTP/1.1\r\nHost: " + target + "\r\n\r\n"))
+		require.NoError(t, err)
+		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		require.NoError(t, err)
+		return conn, resp.Status
+	}
+
+	conn, status := dial(server.Addr().String())
+	assert.Equal(t, "200 Connection Established", status)
+	_, err = conn.Write([]byte("ping"))
+	require.NoError(t, err)
+	got := make([]byte, 4)
+	_, err = io.ReadFull(conn, got)
+	require.NoError(t, err)
+	assert.Equal(t, "ping", string(got))
+	_ = conn.Close()
+
+	refused, status := dial("127.0.0.1:1")
+	_ = refused.Close()
+	assert.Equal(t, "403 Forbidden", status)
+
+	audit, err := os.ReadFile(p.logs + "/" + brokerLogName)
+	require.NoError(t, err)
+	assert.Contains(t, string(audit), "CONNECT 127.0.0.1:1 -> 403")
 }
 
 // The app's Host header names the destination; hop-by-hop headers stay home.

@@ -240,6 +240,7 @@ func outboundEvidence(host string) string {
 	if i := strings.Index(name, "/"); i >= 0 {
 		name = name[:i]
 	}
+	name = hostWithoutPort(name)
 	// Matched per label rather than as a suffix: the usual internal name is
 	// erp.internal.company.com, where the marker is in the middle and a
 	// suffix test would call it an internet address.
