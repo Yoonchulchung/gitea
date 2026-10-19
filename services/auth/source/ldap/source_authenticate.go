@@ -20,6 +20,9 @@ import (
 	user_service "gitea.dev/services/user"
 )
 
+// AfterAuthenticate runs after every successful login; see docs/company/patches.md
+var AfterAuthenticate func(ctx context.Context, user *user_model.User, sr *SearchResult)
+
 // Authenticate queries if login/password is valid against the LDAP directory pool,
 // and create a local user if success when enabled.
 func (source *Source) Authenticate(ctx context.Context, user *user_model.User, userName, password string) (*user_model.User, error) {
@@ -125,5 +128,8 @@ func (source *Source) Authenticate(ctx context.Context, user *user_model.User, u
 		}
 	}
 
+	if AfterAuthenticate != nil {
+		AfterAuthenticate(ctx, user, sr)
+	}
 	return user, nil
 }

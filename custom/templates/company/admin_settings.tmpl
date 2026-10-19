@@ -50,6 +50,16 @@
 				     broken. */}}
 				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.ai_admin_note"}}</p>
 
+				<div class="ui divider"></div>
+
+				<h5>{{ctx.Locale.Tr "company.adminsettings.ldap_header"}}</h5>
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.ldap_explain"}}</p>
+				<div class="field">
+					<label for="ldap_department_attribute">{{ctx.Locale.Tr "company.adminsettings.ldap_attr_label"}}</label>
+					<input id="ldap_department_attribute" name="ldap_department_attribute" value="{{.LDAPDepartmentAttr}}" placeholder="department" autocomplete="off">
+					<p class="help">{{ctx.Locale.Tr "company.adminsettings.ldap_attr_help"}}</p>
+				</div>
+
 
 				<button class="ui primary button tw-mt-3">{{ctx.Locale.Tr "company.adminsettings.save"}}</button>
 			</form>

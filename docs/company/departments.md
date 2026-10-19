@@ -67,3 +67,17 @@ repository to any department or the administrator's own namespace
 the app's database and environment variables. A running app's database is
 copied from a fresh snapshot, never as a live file. The apps.yml policy is
 not copied — the copy gets its own through a deploy request.
+
+## Departments from the directory
+
+With a department attribute named in Admin → company settings (usually
+`department` in Active Directory), every LDAP login puts the person in that
+department (`company/ldap_department.go`, hooked into the login search — see
+[patches.md](patches.md)). An organization is found by its name or its
+display name; if there is none it is created, owned by the first
+administrator, named `dept-<hash>` when the department name cannot be an
+organization name (Korean ones cannot), with the department as its display
+name. Renaming an existing organization's display name to the directory's
+department name maps it. A person whose department changes in the directory
+is moved at their next login, out of the department the directory last put
+them in and no other; an owner is never removed.
