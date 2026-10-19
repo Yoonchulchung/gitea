@@ -78,6 +78,7 @@ func InitAppPlatform(ctx context.Context) {
 
 	StartDeployWorkers()
 	StartMetricsFlusher()
+	StartSystemMetrics()
 	StartLivenessChecks()
 	StartAppDataGC()
 	StartProxyGuard()

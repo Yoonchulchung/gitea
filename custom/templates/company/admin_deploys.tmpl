@@ -37,6 +37,37 @@
 				<div class="company-kpi{{if eq .Fleet.RoomApps 0}} warn{{end}}"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_room"}}</h3><b>{{.Fleet.RoomApps}}<small> {{ctx.Locale.Tr "company.admin.kpi_room_unit"}} · {{.Fleet.RoomMB}}MB</small></b></div>
 			{{end}}
 		</div>
+		<h4 class="ui top attached header tw-mt-4">
+			{{ctx.Locale.Tr "company.admin.system_header"}}
+			<div class="ui right tw-flex tw-gap-1">
+				{{range $r := (StringUtils.Split "1h,24h,7d" ",")}}
+					<a class="ui mini {{if eq $r $.SystemRange}}primary{{else}}basic{{end}} button" href="?sys={{$r}}">{{$r}}</a>
+				{{end}}
+			</div>
+		</h4>
+		<div class="ui attached segment">
+			{{if .System}}
+				<div class="company-kpis company-kpis-titled">
+					<div class="company-kpi{{if ge .System.CPU 90.0}} full{{else if ge .System.CPU 70.0}} warn{{end}}"><h3 class="company-kpi-title">CPU</h3><b>{{printf "%.0f" .System.CPU}}<small>%</small></b><span>{{ctx.Locale.Tr "company.admin.system_load" (printf "%.2f" .System.Load1)}}</span></div>
+					<div class="company-kpi{{if ge .System.MemPercent 90.0}} full{{else if ge .System.MemPercent 75.0}} warn{{end}}"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.system_memory"}}</h3><b>{{printf "%.0f" .System.MemPercent}}<small>% · {{.System.MemUsedMB}} / {{.System.MemTotalMB}}MB</small></b><span>{{ctx.Locale.Tr "company.admin.system_apps_memory" .System.Apps .System.AppsMemMB}}</span></div>
+					<div class="company-kpi{{if ge .System.DiskPercent 90.0}} full{{else if ge .System.DiskPercent 80.0}} warn{{end}}"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.system_disk"}}</h3><b>{{printf "%.0f" .System.DiskPercent}}<small>% · {{.System.DiskUsedMB}} / {{.System.DiskTotalMB}}MB</small></b><span>{{ctx.Locale.Tr "company.admin.system_disk_note"}}</span></div>
+				</div>
+			{{end}}
+			<div class="company-system-charts"
+				data-points="{{.SystemPoints}}"
+				data-i18n-empty="{{ctx.Locale.Tr "company.admin.system_empty"}}"
+				data-i18n-cpu="CPU %"
+				data-i18n-load="{{ctx.Locale.Tr "company.admin.system_load_series"}}"
+				data-i18n-memory="{{ctx.Locale.Tr "company.admin.system_memory_series"}}"
+				data-i18n-apps="{{ctx.Locale.Tr "company.admin.system_apps_series"}}"
+				data-i18n-total="{{ctx.Locale.Tr "company.admin.system_total_series"}}"
+				data-i18n-disk="{{ctx.Locale.Tr "company.admin.system_disk_series"}}">
+				<div class="company-chart"><div class="company-chart-canvas"><canvas data-chart="cpu"></canvas></div></div>
+				<div class="company-chart"><div class="company-chart-canvas"><canvas data-chart="memory"></canvas></div></div>
+				<div class="company-chart"><div class="company-chart-canvas"><canvas data-chart="disk"></canvas></div></div>
+			</div>
+		</div>
+
 		{{/* Which wall holds the limits: the kernel (a systemd scope) or the
 		     watchdog alone. An operator sizing limits has to know which. */}}
 		<p class="text-grey tw-text-12 tw-mt-2">{{if .CgroupOK}}{{svg "octicon-shield-check" 12}}{{else}}{{svg "octicon-shield" 12}}{{end}} {{ctx.Locale.Tr "company.admin.limits_enforced_by"}} {{.CgroupDetail}}</p>

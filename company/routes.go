@@ -131,6 +131,7 @@ func RegisterAdminRoutes(m *web.Router) {
 		m.Get("/logs", AdminAppLogs)
 		m.Post("/logs/diagnose", AdminAppLogDiagnose)
 		m.Get("/history", AdminAppHistory)
+		m.Post("/history/diagnose", AdminAppHistoryDiagnose) // why one deploy failed — company/deploy_diagnose.go
 		// Before the {verb} catch-all below, which would otherwise swallow it.
 		m.Post("/approve-packages", AdminApprovePackages)
 		m.Post("/revoke-package", AdminRevokePackage)

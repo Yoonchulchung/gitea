@@ -57,7 +57,7 @@ import {initCompanyWorkspace} from './features/company-workspace.ts';
 import {initCompanyAIReviewProgress, initCompanyAutoApprove, initCompanyQueueCountdown, initCompanyDeployPreview, initCompanyDeployReview, initCompanyDeployReviewPackages} from './features/company-deploy-review.ts';
 import {initCompanyDeployStatus} from './features/company-deploy-status.ts';
 import {initCompanyAIUsageCharts} from './features/company-ai-usage-charts.ts';
-import {initCompanyAppCharts, initCompanyConfirmForms, initCompanyDependentToggles, initCompanyFleet, initCompanyKpiEdit, initCompanyMailPreview, initCompanyTagInput} from './features/company-app-charts.ts';
+import {initCompanyAppCharts, initCompanySystemCharts, initCompanyConfirmForms, initCompanyDependentToggles, initCompanyFleet, initCompanyKpiEdit, initCompanyMailPreview, initCompanyTagInput} from './features/company-app-charts.ts';
 import {initCompanyAppEnv} from './features/company-app-env.ts';
 import {initCompanyDeployForm, initCompanyDeploySubmit, initCompanyStartupCheck} from './features/company-deploy-form.ts';
 import {initCompanySettingsAI} from './features/company-settings-ai.ts';
@@ -176,6 +176,7 @@ const initPerformanceTracer = callInitFunctions([
   initCompanyWorkspace, // company/'s multi-file editor needs Gitea's own bundled CodeMirror setup (modules/codeeditor), which only ships to the browser if something reachable from this entry point imports it — see web_src/js/features/company-workspace.ts
   initCompanyDeployStatus,
   initCompanyAppCharts,
+  initCompanySystemCharts, // the host's CPU, memory and disk on the admin app list
   initCompanyAIUsageCharts, // the platform AI's token usage on the AI admin page
   initCompanyAppEnv,
   initCompanyConfirmForms,

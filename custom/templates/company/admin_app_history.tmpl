@@ -35,7 +35,7 @@
 				<tbody>
 					{{range .Attempts}}
 						<tr{{if .InProgress}} class="company-attempt-live"{{end}}>
-							<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
+							<td title="{{DateUtils.FullTime .At}}">{{DateUtils.TimeSince .At}}</td>
 							<td>
 								{{/* A deploy that has not finished has no build-log entry yet,
 								     so without this row the page implies nothing is happening. */}}
@@ -68,6 +68,14 @@
 								{{/* Offered for failures too: what a build was refused for is
 								     usually policy, and policy has since changed — the package
 								     it needed is approved now. */}}
+								{{if and .Failed $.AIEnabled}}
+									<form method="post" action="{{$.AdminAppLink}}/history/diagnose" class="tw-mb-1">
+										{{$.CsrfTokenHtml}}
+										<input type="hidden" name="at" value="{{.At}}">
+										<input type="hidden" name="page" value="{{$.CurPage}}">
+										<button class="ui tiny basic button" title="{{ctx.Locale.Tr "company.history.diagnose_hint"}}">{{svg "octicon-sparkle-fill" 14}} {{ctx.Locale.Tr "company.history.diagnose"}}</button>
+									</form>
+								{{end}}
 								{{if and .SHA (and (not .Current) (not .InProgress))}}
 									<form method="post" action="{{$.AdminAppLink}}/deploy-version"
 										data-company-confirm="{{ctx.Locale.Tr "company.history.deploy_confirm" (ShortSha .SHA)}}">

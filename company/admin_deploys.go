@@ -14,6 +14,7 @@ import (
 
 	"gitea.dev/models/db"
 	repo_model "gitea.dev/models/repo"
+	"gitea.dev/modules/json"
 	"gitea.dev/modules/templates"
 	"gitea.dev/services/context"
 )
@@ -280,6 +281,7 @@ func AdminDeploys(ctx *context.Context) {
 	ctx.Data["ListQuery"] = "state=" + url.QueryEscape(kind) + "&owner=" + url.QueryEscape(owner) + "&sort=" + url.QueryEscape(sortBy)
 	ctx.Data["CountStopped"] = stopped
 	ctx.Data["CountFailed"] = failed
+	setSystemData(ctx)
 	ctx.HTML(http.StatusOK, tplAdminDeploys)
 }
 
@@ -448,4 +450,39 @@ func summarizeFleet(rows []*adminDeployRow, since time.Time) fleetSummary {
 		out.P95 = p95Sum / p95Count
 	}
 	return out
+}
+
+// systemPoint is a SystemSample as the chart reads it.
+type systemPoint struct {
+	T          int64   `json:"t"` // milliseconds, for chart.js's time scale
+	CPU        float64 `json:"cpu"`
+	Load1      float64 `json:"load1"`
+	MemUsedMB  int64   `json:"memUsedMB"`
+	MemTotalMB int64   `json:"memTotalMB"`
+	AppsMemMB  int64   `json:"appsMemMB"`
+	DiskPct    float64 `json:"diskPct"`
+}
+
+// setSystemData puts the host's own readings on the dashboard.
+func setSystemData(ctx *context.Context) {
+	window := map[string]time.Duration{"1h": time.Hour, "24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour}
+	name := ctx.FormString("sys")
+	span, known := window[name]
+	if !known {
+		name, span = "24h", 24*time.Hour
+	}
+	samples := SystemSamplesSince(time.Now().Add(-span), 360)
+	points := make([]systemPoint, 0, len(samples))
+	for _, s := range samples {
+		points = append(points, systemPoint{
+			T: s.T * 1000, CPU: s.CPU, Load1: s.Load1,
+			MemUsedMB: s.MemUsedMB, MemTotalMB: s.MemTotalMB, AppsMemMB: s.AppsMemMB, DiskPct: s.DiskPercent(),
+		})
+	}
+	body, _ := json.Marshal(points)
+	ctx.Data["SystemPoints"] = string(body)
+	ctx.Data["SystemRange"] = name
+	if latest, ok := LatestSystemSample(); ok {
+		ctx.Data["System"] = latest
+	}
 }

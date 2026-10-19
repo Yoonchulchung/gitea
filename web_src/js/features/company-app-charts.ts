@@ -203,6 +203,65 @@ export function initCompanyAppCharts() {
   }
 }
 
+type SystemPoint = {
+  t: number;
+  cpu: number;
+  load1: number;
+  memUsedMB: number;
+  memTotalMB: number;
+  appsMemMB: number;
+  diskPct: number;
+};
+
+// The host itself, above the app list: CPU, memory and disk over the chosen
+// window (company/systemmetrics.go).
+export function initCompanySystemCharts() {
+  const root = document.querySelector<HTMLElement>('.company-system-charts');
+  if (!root) return;
+  const points = parseJSON<SystemPoint[]>(root.getAttribute('data-points'), []);
+  const text = (name: string) => root.getAttribute(`data-i18n-${name}`) ?? name;
+  if (!points.length) {
+    root.textContent = text('empty');
+    return;
+  }
+
+  registerOnce();
+  const at = (key: keyof SystemPoint) => points.map((p) => ({x: p.t, y: p[key]}));
+  const line = {tension: 0.3, pointRadius: 0};
+  const base = baseOptions([]);
+  const x = {...base.scales.x, ticks: {...base.scales.x.ticks, maxTicksLimit: 6}};
+  const options = {...base, scales: {...base.scales, x}};
+  const percent = {...options, scales: {x, y: {...base.scales.y, max: 100}}};
+  const charts: Record<string, {options: any; datasets: any[]}> = {
+    cpu: {
+      options,
+      datasets: [
+        {label: text('cpu'), data: at('cpu'), borderColor: chartJsColors.commits, ...line},
+        {label: text('load'), data: at('load1'), borderColor: chartJsColors.text, borderDash: [3, 3], ...line},
+      ],
+    },
+    memory: {
+      options,
+      datasets: [
+        {label: text('memory'), data: at('memUsedMB'), borderColor: chartJsColors.deletions, ...line},
+        {label: text('apps'), data: at('appsMemMB'), borderColor: chartJsColors.commits, ...line},
+        {label: text('total'), data: at('memTotalMB'), borderColor: chartJsColors.text, borderDash: [3, 3], ...line},
+      ],
+    },
+    disk: {
+      options: percent,
+      datasets: [
+        {label: text('disk'), data: at('diskPct'), borderColor: chartJsColors.deletions, ...line},
+      ],
+    },
+  };
+  for (const canvas of root.querySelectorAll<HTMLCanvasElement>('canvas[data-chart]')) {
+    const spec = charts[canvas.getAttribute('data-chart')!];
+    if (!spec) continue;
+    new Chart(canvas, {type: 'line', data: {datasets: spec.datasets}, options: spec.options});
+  }
+}
+
 // A limit card on the admin app page: the pencil swaps the number after
 // the slash for a field on the same line; the tick (or Enter) submits the
 // card's own form, the cross (or Escape) puts the number back. The field

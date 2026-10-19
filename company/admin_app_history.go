@@ -148,6 +148,8 @@ func AdminAppHistory(ctx *context.Context) {
 	ctx.Data["Running"] = running
 	ctx.Data["StatusLabel"] = departmentStatusLabel(st)
 	ctx.Data["AdminAppLink"] = setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo
+	ctx.Data["AIEnabled"] = AIEnabled() && AIConfiguredFor(ctx, ctx.Doer.ID) && AILogAccess() != AILogAccessOff
+	ctx.Data["CurPage"] = page
 	ctx.HTML(http.StatusOK, tplAdminAppHistory)
 }
 
