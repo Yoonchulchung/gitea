@@ -80,10 +80,14 @@ Reply in Korean, under 200 words, structured as:
 3. 조치 — what to do: either what the department must change in its code or requirements.txt, or what the administrator can do on the platform (approve a package, raise a memory limit, allow an outbound host, retry when the package index was unreachable). Say which of the two it is.
 If the output does not show the cause, say so plainly rather than guessing.`
 
-// DiagnoseDeployFailure asks the model why one attempt failed.
-func DiagnoseDeployFailure(ctx context.Context, userID int64, owner, repo string, at int64) (string, error) {
+// DiagnoseDeployFailure asks the platform AI why one attempt failed: it is an
+// administrator's question about the platform, not one for their own key.
+func DiagnoseDeployFailure(ctx context.Context, actor, owner, repo string, at int64) (string, error) {
 	if AILogAccess() == AILogAccessOff {
 		return "", userKeyError("company.logs.diagnose_policy_off")
+	}
+	if reason := PlatformAIUnavailableReason(ctx); reason != "" {
+		return "", userKeyError(reason)
 	}
 	build := deployAttemptOutput(appPathsFor(owner, repo), at)
 	if len(build) == 0 {
@@ -110,7 +114,7 @@ func DiagnoseDeployFailure(ctx context.Context, userID int64, owner, repo string
 			b.WriteByte('\n')
 		}
 	}
-	return aiChat(ctx, userID, deployDiagnosePrompt, b.String())
+	return platformAIChat(ctx, aiPurposeDeployDiagnose, actor, owner+"/"+repo, deployDiagnosePrompt, b.String())
 }
 
 // AdminAppHistoryDiagnose answers the button on a failed row of the history.
@@ -118,7 +122,7 @@ func AdminAppHistoryDiagnose(ctx *gitea_context.Context) {
 	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")
 	back := setting.AppSubURL + "/-/admin/company-deploys/" + owner + "/" + repo + "/history"
 	at, _ := strconv.ParseInt(ctx.FormString("at"), 10, 64)
-	answer, err := DiagnoseDeployFailure(ctx, ctx.Doer.ID, owner, repo, at)
+	answer, err := DiagnoseDeployFailure(ctx, ctx.Doer.Name, owner, repo, at)
 	if err != nil {
 		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 	} else {

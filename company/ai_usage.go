@@ -48,11 +48,12 @@ type aiUsageEntry struct {
 
 // Purposes, as the usage table labels them.
 const (
-	aiPurposeDeployReview  = "배포 검토"
-	aiPurposeCodeReview    = "코드 리뷰"
-	aiPurposeReviewChat    = "검토 채팅"
-	aiPurposeTest          = "연결 테스트"
-	aiPurposePriceEstimate = "단가 추정"
+	aiPurposeDeployReview   = "배포 검토"
+	aiPurposeCodeReview     = "코드 리뷰"
+	aiPurposeReviewChat     = "검토 채팅"
+	aiPurposeTest           = "연결 테스트"
+	aiPurposePriceEstimate  = "단가 추정"
+	aiPurposeDeployDiagnose = "배포 실패 진단"
 )
 
 var (
