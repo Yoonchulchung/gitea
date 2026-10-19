@@ -76,7 +76,10 @@ func probeHealth(ctx context.Context, client *http.Client, path string) (own boo
 	if err != nil {
 		return false, err
 	}
-	resp, err := client.Do(req)
+	// A redirect is an answer: following it judges the page behind a login wall, where a client without cookies can loop.
+	noFollow := *client
+	noFollow.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := noFollow.Do(req)
 	if err != nil {
 		return false, err
 	}

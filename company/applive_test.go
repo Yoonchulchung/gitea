@@ -29,12 +29,16 @@ func TestProbeHealth(t *testing.T) {
 		{"own endpoint, healthy", http.StatusOK, true, false},
 		{"own endpoint, reporting a problem", http.StatusServiceUnavailable, true, true},
 		{"no endpoint", http.StatusNotFound, false, false},
+		{"login wall redirecting to itself", http.StatusSeeOther, true, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "/health", r.URL.Path)
 				assert.Equal(t, "1", r.URL.Query().Get("platform-health-check"), "marked, so the log can leave it out")
+				if c.status == http.StatusSeeOther {
+					w.Header().Set("Location", "/health")
+				}
 				w.WriteHeader(c.status)
 			}))
 			defer srv.Close()
