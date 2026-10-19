@@ -125,8 +125,10 @@ func AdminAppHistoryDiagnose(ctx *gitea_context.Context) {
 	answer, err := DiagnoseDeployFailure(ctx, ctx.Doer.Name, owner, repo, at)
 	if err != nil {
 		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
-	} else {
-		ctx.Flash.Info(ctx.Locale.TrString("company.history.diagnose_result", time.Unix(at, 0).In(setting.DefaultUILocation).Format("2006-01-02 15:04:05")) + "\n" + answer)
+		ctx.Redirect(back + "?page=" + ctx.FormString("page"))
+		return
 	}
-	ctx.Redirect(back + "?page=" + ctx.FormString("page"))
+	// Rendered on this response: a Korean answer outgrows the 4 KB flash cookie, which the browser then drops.
+	ctx.Flash.Info(ctx.Locale.TrString("company.history.diagnose_result", time.Unix(at, 0).In(setting.DefaultUILocation).Format("2006-01-02 15:04:05"))+"\n"+answer, true)
+	AdminAppHistory(ctx)
 }
