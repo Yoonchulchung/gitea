@@ -207,7 +207,31 @@ func SendPlatformMail(ctx context.Context, to []string, subject, htmlBody string
 	if len(to) == 0 {
 		return userKeyError("company.mail.err_no_recipients")
 	}
-	return sendSMTP(ctx, server, pass, to, buildMessage(server, to, subject, htmlBody))
+	return sendSMTP(ctx, server, pass, to, buildMessage(server, to, subject, htmlBody), nil)
+}
+
+// SendTestMail is SendPlatformMail for the test form, which also wants every
+// step of the conversation, so a failure says where it stopped.
+func SendTestMail(ctx context.Context, to []string, subject, htmlBody string) ([]string, error) {
+	loadMailSettings(ctx)
+	mailMu.RLock()
+	server, pass := mailServer, mailPass
+	mailMu.RUnlock()
+
+	if !server.Configured() {
+		return nil, userKeyError("company.mail.err_unconfigured")
+	}
+	to = cleanAddresses(to)
+	if len(to) == 0 {
+		return nil, userKeyError("company.mail.err_no_recipients")
+	}
+	var steps []string
+	trace := func(format string, args ...any) { steps = append(steps, fmt.Sprintf(format, args...)) }
+	err := sendSMTP(ctx, server, pass, to, buildMessage(server, to, subject, htmlBody), trace)
+	if err != nil {
+		trace("FAILED: %v", err)
+	}
+	return steps, err
 }
 
 // buildMessage assembles the wire format: an HTML body, declared as such,
@@ -235,7 +259,10 @@ func buildMessage(server MailServer, to []string, subject, htmlBody string) []by
 // net/smtp rather than a mail library: Gitea's own sender is built on it
 // (services/mailer/sender/smtp.go), so this adds no dependency and behaves
 // the same way against the same servers.
-func sendSMTP(ctx context.Context, server MailServer, password string, to []string, msg []byte) error {
+func sendSMTP(ctx context.Context, server MailServer, password string, to []string, msg []byte, trace func(string, ...any)) error {
+	if trace == nil {
+		trace = func(string, ...any) {}
+	}
 	dialer := &net.Dialer{Timeout: mailTimeout}
 	tlsConfig := &tls.Config{ServerName: server.Host, InsecureSkipVerify: server.SkipVerify} //nolint:gosec // the administrator asked for it, explicitly, on the form
 
@@ -251,6 +278,7 @@ func sendSMTP(ctx context.Context, server MailServer, password string, to []stri
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(mailTimeout))
+	trace("connected to %s (security: %s)", server.Addr(), server.Security)
 
 	client, err := smtp.NewClient(conn, server.Host)
 	if err != nil {
@@ -265,19 +293,28 @@ func sendSMTP(ctx context.Context, server MailServer, password string, to []stri
 		if err := client.StartTLS(tlsConfig); err != nil {
 			return err
 		}
+		trace("STARTTLS ok")
+	}
+	if ok, mechs := client.Extension("AUTH"); ok {
+		trace("server offers AUTH: %s", mechs)
+	} else {
+		trace("server offers no AUTH")
 	}
 	if server.Username != "" {
 		if err := client.Auth(smtp.PlainAuth("", server.Username, password, server.Host)); err != nil {
 			return fmt.Errorf("signing in as %s: %w", server.Username, err)
 		}
+		trace("AUTH PLAIN as %s ok", server.Username)
 	}
 	if err := client.Mail(server.Sender()); err != nil {
-		return err
+		return fmt.Errorf("MAIL FROM %s: %w", server.Sender(), err)
 	}
+	trace("MAIL FROM %s ok", server.Sender())
 	for _, addr := range to {
 		if err := client.Rcpt(addr); err != nil {
 			return fmt.Errorf("the server refused %s: %w", addr, err)
 		}
+		trace("RCPT TO %s ok", addr)
 	}
 	w, err := client.Data()
 	if err != nil {
@@ -289,6 +326,7 @@ func sendSMTP(ctx context.Context, server MailServer, password string, to []stri
 	if err := w.Close(); err != nil {
 		return err
 	}
+	trace("message accepted (%d bytes)", len(msg))
 	return client.Quit()
 }
 

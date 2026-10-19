@@ -73,15 +73,30 @@
 			<form class="ui form company-mail-test" method="post" action="{{AppSubUrl}}/-/admin/company-mail/test">
 				{{.CsrfTokenHtml}}
 				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.mail.test_explain"}}</p>
-				<div class="inline fields">
-					<div class="field tw-flex-1">
-						<input name="test_to" placeholder="{{ctx.Locale.Tr "company.mail.test_to"}}">
-					</div>
-					<div class="field">
-						<button class="ui button" {{if not .MailConfigured}}disabled{{end}}>{{ctx.Locale.Tr "company.mail.test_send"}}</button>
-					</div>
+				<div class="field">
+					<label for="test_to">{{ctx.Locale.Tr "company.mail.test_to_label"}}</label>
+					<input id="test_to" name="test_to" value="{{.TestTo}}" placeholder="{{ctx.Locale.Tr "company.mail.test_to"}}">
 				</div>
+				<div class="field">
+					<label for="test_subject">{{ctx.Locale.Tr "company.mail.subject"}}</label>
+					<input id="test_subject" name="test_subject" value="{{.TestSubject}}" placeholder="{{ctx.Locale.Tr "company.mail.test_subject"}}">
+				</div>
+				<div class="field">
+					<label for="test_body">{{ctx.Locale.Tr "company.mail.body"}}</label>
+					<textarea id="test_body" name="test_body" rows="3" placeholder="{{ctx.Locale.Tr "company.mail.test_body"}}">{{.TestBody}}</textarea>
+				</div>
+				<button class="ui button" {{if not .MailConfigured}}disabled{{end}}>{{ctx.Locale.Tr "company.mail.test_send"}}</button>
+				{{if not .MailConfigured}}<span class="text-grey tw-text-12 tw-ml-2">{{ctx.Locale.Tr "company.mail.err_unconfigured"}}</span>{{end}}
 			</form>
+			{{if .TestSteps}}
+				<div class="ui {{if .TestOK}}positive{{else}}negative{{end}} message">
+					<div class="header">{{if .TestOK}}{{ctx.Locale.Tr "company.mail.test_sent" .TestTo}}{{else}}{{.TestError}}{{end}}</div>
+					<pre class="tw-text-12 tw-mt-2 tw-mb-0 tw-whitespace-pre-wrap">{{range .TestSteps}}{{.}}
+{{end}}</pre>
+				</div>
+			{{else if .TestError}}
+				<div class="ui negative message">{{.TestError}}</div>
+			{{end}}
 		</div>
 
 		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.mail.rules_header"}}</h4>

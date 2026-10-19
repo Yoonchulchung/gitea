@@ -211,13 +211,24 @@ func AdminMailTest(ctx *context.Context) {
 	if len(to) == 0 && ctx.Doer != nil {
 		to = SplitAddresses(ctx.Doer.Email)
 	}
-	err := SendPlatformMail(ctx, to,
-		ctx.Locale.TrString("company.mail.test_subject"),
-		ctx.Locale.TrString("company.mail.test_body"))
-	if err != nil {
-		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
-	} else {
-		ctx.Flash.Success(ctx.Locale.TrString("company.mail.test_sent", strings.Join(to, ", ")))
+	subject := strings.TrimSpace(ctx.FormString("test_subject"))
+	if subject == "" {
+		subject = ctx.Locale.TrString("company.mail.test_subject")
 	}
-	ctx.Redirect(mailPage())
+	body := ctx.FormString("test_body")
+	if strings.TrimSpace(body) == "" {
+		body = ctx.Locale.TrString("company.mail.test_body")
+	}
+	steps, err := SendTestMail(ctx, to, subject, body)
+	// Rendered rather than redirected: the steps are the point, and they do
+	// not fit in a flash.
+	ctx.Data["TestTo"] = strings.Join(to, ", ")
+	ctx.Data["TestSubject"] = ctx.FormString("test_subject")
+	ctx.Data["TestBody"] = ctx.FormString("test_body")
+	ctx.Data["TestSteps"] = steps
+	ctx.Data["TestOK"] = err == nil
+	if err != nil {
+		ctx.Data["TestError"] = AdminErrorL(ctx.Locale, err)
+	}
+	AdminMail(ctx)
 }
