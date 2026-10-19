@@ -198,8 +198,8 @@
 					</a>
 					{{end}}
 
-					{{if .Permission.CanRead ctx.Consts.RepoUnitTypeExternalTracker}}
-						<a class="{{if .PageIsIssueList}}active {{end}}item" href="{{.RepoExternalIssuesLink}}" target="_blank">
+					{{if and (.Permission.CanRead ctx.Consts.RepoUnitTypeExternalTracker) .RepoExternalIssuesLink}}
+						<a class="item" href="{{.RepoExternalIssuesLink}}" target="_blank">
 							{{svg "octicon-link-external"}} {{ctx.Locale.Tr "repo.issues"}}
 						</a>
 					{{end}}

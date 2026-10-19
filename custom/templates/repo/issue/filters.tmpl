@@ -11,7 +11,7 @@
 	<div class="issue-list-toolbar-left">
 		{{$isApprovalQueue := and .PageIsPullList .CompanyCentralRepoPath .Repository (eq (printf "%s/%s" .Repository.OwnerName .Repository.Name) .CompanyCentralRepoPath)}}
 		{{if and (not $isApprovalQueue) $.CanWriteIssuesOrPulls .Issues}}
-			<input type="checkbox" autocomplete="off" class="issue-checkbox-all tw-mr-4" title="{{ctx.Locale.Tr "repo.issues.action_check_all"}}">
+			<input type="checkbox" autocomplete="off" class="issue-checkbox-all tw-mr-4" title="{{ctx.Locale.Tr "repo.issues.action_check_all"}}" data-global-init="initRepoIssueListCheckboxes">
 		{{end}}
 		{{template "repo/issue/openclose" .}}
 		<!-- Total Tracked Time -->

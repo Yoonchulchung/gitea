@@ -37,6 +37,20 @@
 						</div>
 					</div>
 
+					<!-- Authentication Source Filter Menu Item -->
+					{{if .HasAuthSources}}
+						<div class="ui dropdown type jump item">
+							<span class="text">{{ctx.Locale.Tr "admin.users.auth_source"}}</span>
+							{{svg "octicon-triangle-down" 14 "dropdown icon"}}
+							<div class="menu flex-items-menu">
+								{{range $index, $option := .AuthSourceFilterOptions}}
+									{{if eq $index 1}}<div class="divider"></div>{{end}}
+									<label class="item"><input type="radio" name="source_id" value="{{$option.Value}}" {{if $option.Selected}}checked{{end}}> {{$option.Label}}</label>
+								{{end}}
+							</div>
+						</div>
+					{{end}}
+
 					<!-- Sort Menu Item -->
 					<div class="ui dropdown type jump item">
 						<span class="text">
@@ -125,7 +139,7 @@
 							</td>
 						</tr>
 					{{else}}
-						<tr class="no-results-row"><td class="tw-text-center" colspan="9">{{ctx.Locale.Tr "no_results_found"}}</td></tr>
+						<tr class="no-results-row"><td class="tw-text-center" colspan="10">{{ctx.Locale.Tr "no_results_found"}}</td></tr>
 					{{end}}
 				</tbody>
 			</table>

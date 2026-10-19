@@ -17,7 +17,7 @@
 	{{template "repo/code/recently_pushed_new_branches" dict "RecentBranchesPromptData" .RecentBranchesPromptData}}
 
 	{{if .PinnedIssues}}
-		<div id="issue-pins" {{if .IsRepoAdmin}}data-is-repo-admin{{end}}>
+		<div id="issue-pins" {{if .IsRepoAdmin}}data-global-init="initIssuePinSort"{{end}}>
 			{{range .PinnedIssues}}
 				<div class="issue-card tw-break-anywhere {{if $.IsRepoAdmin}}tw-cursor-grab{{end}}" data-move-url="{{$.Link}}/move_pin" data-issue-id="{{.ID}}">
 					{{template "repo/issue/card" (dict "Issue" . "Page" $ "isPinnedIssueCard" true)}}
@@ -69,7 +69,7 @@
 		{{if .CompanyIsApprovalQueue}}
 			{{template "company/approval_queue" .}}
 		{{else}}
-			{{template "shared/issuelist" dict "." . "listType" "repo"}}
+			{{template "shared/issuelist" dict "listType" "repo"}}
 		{{end}}
 	</div>
 </div>
