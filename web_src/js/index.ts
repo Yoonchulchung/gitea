@@ -73,15 +73,18 @@ import {initRepoViewFileTree} from './features/repo-view-file-tree.ts';
 import {initActionsPermissionsForm} from './features/common-actions-permissions.ts';
 import {initRefIssueContextPopup} from './features/ref-issue.ts';
 import {initGlobalShortcut} from './modules/shortcut.ts';
+import {initProjectWorkflow} from './features/project-workflow.ts';
 import {initDevtest} from './modules/devtest.ts';
 import {initRepoWatch} from './features/repo-watch.ts';
 import {initPackagesView} from './features/packages.ts';
 import {initAsyncHashChangeListeners} from './modules/hashchange.ts';
+import {initGlobalModal} from './modules/modal.ts';
 
 const initStartTime = performance.now();
 const initPerformanceTracer = callInitFunctions([
   initGiteaFomantic,
 
+  initGlobalModal,
   initGlobalComponent,
   initGlobalDropdown,
   initGlobalFetchAction,
@@ -194,6 +197,7 @@ const initPerformanceTracer = callInitFunctions([
 
   initRepoFileView,
   initActionsPermissionsForm,
+  initProjectWorkflow,
 
   initDevtest,
 ]);
