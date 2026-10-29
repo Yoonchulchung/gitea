@@ -6,7 +6,6 @@ package company
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -69,7 +68,7 @@ func DeployRequestPermissions(ctx *gitea_context.Context) {
 		}
 	}
 
-	back := decisionRedirect(ctx, pr, deptOwner)
+	back := decisionRedirect(ctx, pr)
 	if err := commitRequestDecisions(ctx, pr, deptOwner, deptName, approved, withdrawn); err != nil {
 		// Both sides press this, and a raw error carries the path it failed on
 		// — inside Gitea's data directory (company/usererror.go). Only the
@@ -107,18 +106,14 @@ func DeployRequestPermissions(ctx *gitea_context.Context) {
 }
 
 // decisionRedirect sends each side back where it came from: the request page
-// for the administrator deciding on it, the department's own list for the
+// for the administrator deciding on it, the deploy-request list for the
 // requester, who cannot open the central repository's pull request at all
 // (company/gate.go).
-//
-// The department name comes from the branch, not from the form that was
-// submitted — a redirect built out of a posted field is a redirect somebody
-// else can choose.
-func decisionRedirect(ctx *gitea_context.Context, pr *issues_model.PullRequest, deptOwner string) string {
-	if ctx.Req.FormValue("org") == "" {
+func decisionRedirect(ctx *gitea_context.Context, pr *issues_model.PullRequest) string {
+	if ctx.Req.FormValue("from_list") == "" {
 		return pr.Issue.Link()
 	}
-	return fmt.Sprintf("%s/org/%s/dashboard/deploy-requests", setting.AppSubURL, url.PathEscape(deptOwner))
+	return setting.AppSubURL + deployRequestsPath
 }
 
 // decidableDeployRequest resolves the request in the URL and says whether

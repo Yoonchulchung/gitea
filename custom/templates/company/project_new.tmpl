@@ -1,0 +1,24 @@
+{{template "base/head" .}}
+<div role="main" aria-label="{{.Title}}" class="page-content repository new-repo">
+	<div class="ui container medium-width">
+		<h3 class="ui top attached header">{{ctx.Locale.Tr "company.project.new_title"}}</h3>
+		<div class="ui attached segment">
+			{{template "base/alert" .}}
+			<p class="text-grey">{{ctx.Locale.Tr "company.project.new_explain"}}</p>
+			<form class="ui form" action="{{AppSubUrl}}/company/projects/new" method="post">
+				{{.CsrfTokenHtml}}
+				<div class="required field {{if .Err_RepoName}}error{{end}}">
+					<label for="repo_name">{{ctx.Locale.Tr "company.project.name"}}</label>
+					<input id="repo_name" name="repo_name" value="{{.repo_name}}" autofocus required maxlength="100">
+					<p class="help">{{ctx.Locale.Tr "company.project.name_help"}}</p>
+				</div>
+				<div class="field">
+					<label for="description">{{ctx.Locale.Tr "repo.repo_desc"}}</label>
+					<textarea id="description" name="description" rows="2" maxlength="2048">{{.description}}</textarea>
+				</div>
+				<button class="ui primary button">{{ctx.Locale.Tr "company.project.create"}}</button>
+			</form>
+		</div>
+	</div>
+</div>
+{{template "base/footer" .}}

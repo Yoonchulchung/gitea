@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
 )
 
 // InitAppPlatform starts everything the deployed-app platform needs at
@@ -17,9 +18,19 @@ import (
 // added to routers/init.go is a line that can conflict on the next upstream
 // merge (docs/company/patches.md).
 func InitAppPlatform(ctx context.Context) {
+	// Accounts are the company directory's; whatever app.ini says, nobody
+	// makes one here themselves (company/gate.go refuses the page too).
+	setting.Service.DisableRegistration = true
+	setting.Service.ShowRegistrationButton = false
+
 	// Before anything resolves the central repository: it may have been moved
 	// since the last start (company/centralrepo.go).
 	LoadCentralRepoLocation(ctx)
+	// Created now rather than at the first new project, so the
+	// administrator's project list has somewhere to point from the start.
+	if _, err := ProjectOrg(ctx); err != nil {
+		log.Warn("company: the projects organization is not there yet: %v", err)
+	}
 	// From here on there is a database behind the platform's own reads, so
 	// notifications may go out (company/mailrules.go).
 	platformRunning.Store(true)

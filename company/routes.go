@@ -3,9 +3,9 @@
 
 // Package company implements the internal code-intake platform layered on
 // top of stock Gitea: a non-technical-friendly entry point for uploading
-// files, registering deploy requests (pull requests against a department's
-// repository), and an admin view aggregating activity across every
-// department (organization).
+// files, registering deploy requests (pull requests against the central
+// deploy repository), and an admin view aggregating activity across every
+// project.
 //
 // This package is additive only — see docs/company/ for why, and
 // docs/company/patches.md for the exact, small set of lines in Gitea's own
@@ -23,11 +23,10 @@ import (
 // the session/auth middleware applied — see docs/company/mount-points.md.
 //
 // There is no GET /company landing page — a blocked user is sent straight
-// to their department's native dashboard by the gate itself (gate.go,
-// redirectToDepartment), not routed through an intermediate page here.
+// to their own dashboard by the gate itself (gate.go).
 func RegisterRoutes(m *web.Router) {
 	// Deployed apps. Registered without optSignIn on purpose: an app is
-	// independent of Gitea's authentication unless its department opts in, and
+	// independent of Gitea's authentication unless its project opts in, and
 	// optSignIn is per-group rather than global, so this stays anonymous even
 	// with REQUIRE_SIGNIN_VIEW on — /api/healthz does the same. The access
 	// mode is enforced inside AppProxy instead (company/proxy.go).
@@ -42,6 +41,11 @@ func RegisterRoutes(m *web.Router) {
 	m.Any("/apps/{owner}/{repo}/*", routing.MarkLongPolling(), AppProxy)
 
 	m.Group("/company", func() {
+		m.Get("/projects/new", ProjectNew)
+		m.Post("/projects/new", ProjectNewPost)
+		m.Post("/project/{owner}/{repo}/members", ProjectMembersPost) // the owner shares a project with anyone, from any department — company/project_members.go
+		m.Get("/deploy-requests", DeployRequests)
+		m.Get("/deploy-requests/{id}", DeployRequestFiles)
 		m.Post("/repo-description/{owner}/{repo}", UpdateDescription)
 		m.Post("/deploy-request/{id}/cancel", CancelDeployRequest)
 		// Which of a request's items are to be approved — the administrator
@@ -59,11 +63,6 @@ func RegisterRoutes(m *web.Router) {
 		m.Post("/deploy-request/{id}/auto-approve/stop", DeployRequestAutoApproveStop)
 		m.Post("/deploy-request/{id}/auto-approve/start", DeployRequestAutoApproveStart)
 	}, RequireSignIn)
-	// DeployRequests, DeployRequestFiles, and RepoCreateRedirect are NOT
-	// registered here — all three mount inside Gitea's own org route group
-	// instead (/org/{org}/dashboard/deploy-requests[/{id}], /org/{org}/repo/create),
-	// to reuse its membership check. See routers/web/web.go and
-	// docs/company/mount-points.md.
 	// Workspace/WorkspaceSave, DeployForm/DeployPost/Submitted/DeployStatus
 	// (the multi-file editor and "Deploy Request" flow) aren't registered
 	// here either — they mount inside Gitea's own repo-code route group
@@ -72,14 +71,14 @@ func RegisterRoutes(m *web.Router) {
 	// parsing and write-access gate. See routers/web/web.go.
 }
 
-// RegisterAdminRoutes adds the cross-department activity view inside
+// RegisterAdminRoutes adds the cross-project activity view inside
 // Gitea's existing "/-/admin" group. Called with one line placed inside
 // that group's closure in routers/web/web.go, so it inherits the group's
 // adminReq middleware for free — see docs/company/mount-points.md.
 func RegisterAdminRoutes(m *web.Router) {
 	m.Get("/company-activity", AdminActivity)
 	// Platform choices an administrator changes while the instance runs — who
-	// to contact, which AI provider departments are offered.
+	// to contact, which AI provider people are offered.
 	m.Get("/company-settings", AdminSettings)
 	m.Post("/company-settings", AdminSettingsPost)
 	// The platform's own AI, and what it may decide without a person.
@@ -99,9 +98,12 @@ func RegisterAdminRoutes(m *web.Router) {
 	m.Post("/company-mail/{id}/preview", AdminMailRulePreview)
 	m.Post("/company-mail/{id}/toggle", AdminMailRuleToggle)
 	m.Post("/company-mail/{id}/delete", AdminMailRuleDelete)
-	// Department membership from the user page, where an administrator who
-	// has just seen that somebody belongs to none already is.
-	m.Post("/company-user-department", AdminAssignDepartment)
+	// Who owns which project — including the projects of somebody who has
+	// left — and the move of the old department repositories into them.
+	m.Get("/company-projects", AdminProjects)
+	m.Post("/company-projects/owner", AdminProjectOwnerPost)
+	m.Post("/company-projects/handover", AdminProjectHandoverPost)
+	m.Post("/company-projects/migrate", AdminProjectMigratePost)
 	// App deployment management — see docs/company/app-platform.md. Kept
 	// under "/-/admin" rather than a repo-scoped path on purpose: these
 	// pages carry logs and failure detail, and isRepoScopedAllow

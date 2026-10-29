@@ -5,13 +5,17 @@ package company
 
 import (
 	"sort"
+	"strings"
 
-	organization "gitea.dev/models/organization"
+	"gitea.dev/models/db"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unit"
+	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
 	"gitea.dev/services/context"
 )
 
-// The dashboard lists a department's repositories, and a repository is not an
+// The dashboard lists a person's repositories, and a repository is not an
 // app: half of them never become one, and the ones that do say nothing there
 // about whether they are actually up. So "is our thing running?" — the
 // question the people using this platform ask most — could only be answered by
@@ -33,9 +37,9 @@ type DashboardApp struct {
 // SetDashboardApps attaches the viewer's apps to the dashboard.
 //
 // Scoped to what they can already see: an admin gets every app, and everyone
-// else gets the apps of organizations they belong to. Membership is the same
-// boundary the repository list uses, so this shows nothing new — it just
-// answers a different question about it.
+// else the apps of projects they can read. That is the same boundary the
+// repository list uses, so this shows nothing new — it just answers a
+// different question about it.
 //
 // Best-effort: the dashboard is the first page most people land on, and a
 // panel that could not be built is not a reason to fail it.
@@ -48,25 +52,25 @@ func SetDashboardApps(ctx *context.Context) {
 		return
 	}
 
-	// One membership lookup per organization rather than per app: a
-	// department with a dozen apps is one org.
-	allowed := map[string]bool{}
+	var readable map[string]bool
+	if !ctx.Doer.IsAdmin {
+		var repos []*repo_model.Repository
+		if err := db.GetEngine(ctx).Cols("owner_name", "name").
+			Where(repo_model.AccessibleRepositoryCondition(ctx.Doer, unit.TypeCode)).Find(&repos); err != nil {
+			log.Error("company: dashboard apps for %s: %v", ctx.Doer.Name, err)
+			return
+		}
+		readable = make(map[string]bool, len(repos))
+		for _, repo := range repos {
+			readable[strings.ToLower(repo.OwnerName+"/"+repo.Name)] = true
+		}
+	}
 	apps := make([]DashboardApp, 0, len(states))
 	for _, st := range states {
 		if !st.HasRelease && st.Actual == AppStateStopped {
 			continue // never deployed: the repository list already covers it
 		}
-		visible, known := allowed[st.Owner]
-		if !known {
-			visible = ctx.Doer.IsAdmin
-			if !visible {
-				if org, err := organization.GetOrgByName(ctx, st.Owner); err == nil {
-					visible, _ = organization.IsOrganizationMember(ctx, org.ID, ctx.Doer.ID)
-				}
-			}
-			allowed[st.Owner] = visible
-		}
-		if !visible {
+		if readable != nil && !readable[strings.ToLower(st.Owner+"/"+st.Repo)] {
 			continue
 		}
 		apps = append(apps, DashboardApp{

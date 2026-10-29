@@ -1,0 +1,42 @@
+{{/* Who owns this project and who works on it — from any department. The
+     owner adds and removes members here; an administrator can as well, and
+     names a new owner from /-/admin/company-projects. Data from
+     company.setProjectPanelData. */}}
+{{with .CompanyProject}}
+<div class="flex-relaxed-list company-project-panel">
+	<div class="repo-home-sidebar-header">{{ctx.Locale.Tr "company.project.panel_title"}}</div>
+	<div class="flex-text-block">
+		<span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.project.owner"}}</span>
+		{{if .Owner}}
+			{{ctx.AvatarUtils.Avatar .Owner 20}}<span>{{.Owner.DisplayName}}</span>
+		{{end}}
+		{{if .OwnerGone}}<span class="ui tiny basic red label">{{ctx.Locale.Tr "company.project.owner_gone"}}</span>{{end}}
+	</div>
+	{{if .Members}}
+		<div class="flex-text-block tw-flex-wrap tw-gap-1">
+			<span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.project.members"}}</span>
+			{{range .Members}}
+				<span class="flex-text-inline" title="{{.Name}}">
+					{{ctx.AvatarUtils.Avatar . 20}}{{.DisplayName}}
+					{{if $.CompanyProject.CanManage}}
+						<form method="post" action="{{$.CompanyProject.Action}}" class="tw-inline">
+							{{$.CsrfTokenHtml}}
+							<input type="hidden" name="action" value="remove">
+							<input type="hidden" name="user" value="{{.Name}}">
+							<button class="btn interact-fg" aria-label="{{ctx.Locale.Tr "company.project.remove_member"}}" data-tooltip-content="{{ctx.Locale.Tr "company.project.remove_member"}}">{{svg "octicon-x" 12}}</button>
+						</form>
+					{{end}}
+				</span>
+			{{end}}
+		</div>
+	{{end}}
+	{{if .CanManage}}
+		<form method="post" action="{{.Action}}" class="ui form tw-flex tw-gap-1">
+			{{$.CsrfTokenHtml}}
+			<input type="hidden" name="action" value="add">
+			<input name="user" required class="tw-flex-1" placeholder="{{ctx.Locale.Tr "company.projects.username_placeholder"}}" autocomplete="off">
+			<button class="ui tiny basic button">{{ctx.Locale.Tr "company.project.add_member"}}</button>
+		</form>
+	{{end}}
+</div>
+{{end}}

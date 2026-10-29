@@ -40,7 +40,7 @@ const (
 )
 
 // platformSettings is read on pages people load constantly — the settings
-// navbar, the department gate — so it is cached rather than queried each
+// navbar, the gate — so it is cached rather than queried each
 // time. Invalidated by the only writer there is, below.
 var (
 	platformSettingsMu      sync.RWMutex
@@ -51,7 +51,6 @@ var (
 	helpURL                 string
 	autoApproveBy           int64
 	autoApproveDelaySeconds = -1
-	ldapDepartmentAttr      string
 )
 
 func loadPlatformSettings(ctx context.Context) {
@@ -82,7 +81,6 @@ func loadPlatformSettings(ctx context.Context) {
 	helpURL = all[settingKeyHelpURL]
 	autoApproveBy, _ = strconv.ParseInt(all[settingKeyAutoApproveBy], 10, 64)
 	autoApproveDelaySeconds = parseAutoApproveDelay(all[settingKeyAutoApproveDelay])
-	ldapDepartmentAttr = all[settingKeyLDAPDepartmentAttr]
 	platformSettingsLoaded = true
 }
 
@@ -155,7 +153,7 @@ func AutoApproveDelegate(ctx context.Context) *user_model.User {
 	return u
 }
 
-// SupportEmail is who a person stuck at the department gate should write to,
+// SupportEmail is who a person who cannot get in should write to,
 // or "" when nobody has been named.
 func SupportEmail(ctx context.Context) string {
 	loadPlatformSettings(ctx)
@@ -299,7 +297,6 @@ func AdminSettings(ctx *gitea_context.Context) {
 	ctx.Data["AnthropicVisible"] = AnthropicVisibleToUsers(ctx)
 	ctx.Data["SupportEmail"] = SupportEmail(ctx)
 	ctx.Data["HelpURL"] = HelpURL(ctx)
-	ctx.Data["LDAPDepartmentAttr"] = LDAPDepartmentAttribute(ctx)
 	ctx.Data["Switches"] = PlatformSwitches(ctx)
 	ctx.HTML(http.StatusOK, tplAdminSettings)
 }
@@ -323,12 +320,6 @@ func AdminSettingsPost(ctx *gitea_context.Context) {
 		ctx.Redirect(setting.AppSubURL + "/-/admin/company-settings")
 		return
 	}
-	departmentAttr := strings.TrimSpace(ctx.FormString("ldap_department_attribute"))
-	if !validLDAPAttributeName(departmentAttr) {
-		ctx.Flash.Error(ctx.Locale.TrString("company.adminsettings.ldap_attr_invalid", departmentAttr))
-		ctx.Redirect(setting.AppSubURL + "/-/admin/company-settings")
-		return
-	}
 	usersEnabled := "false"
 	if ctx.FormBool("ai_users_enabled") {
 		usersEnabled = "true"
@@ -339,10 +330,9 @@ func AdminSettingsPost(ctx *gitea_context.Context) {
 	}
 
 	settings := map[string]string{
-		settingKeyAIUsersEnabled:     usersEnabled,
-		settingKeySupportEmail:       email,
-		settingKeyHelpURL:            help,
-		settingKeyLDAPDepartmentAttr: departmentAttr,
+		settingKeyAIUsersEnabled: usersEnabled,
+		settingKeySupportEmail:   email,
+		settingKeyHelpURL:        help,
 	}
 	// The provider box is disabled while nobody is offered AI, and a disabled
 	// checkbox posts nothing — writing that absence would erase the choice
@@ -358,23 +348,6 @@ func AdminSettingsPost(ctx *gitea_context.Context) {
 		ctx.Flash.Success(ctx.Locale.TrString("company.adminsettings.saved"))
 	}
 	ctx.Redirect(setting.AppSubURL + "/-/admin/company-settings")
-}
-
-// validLDAPAttributeName accepts an attribute description (RFC 4512 descr)
-// and nothing that could change the search it is added to.
-func validLDAPAttributeName(name string) bool {
-	if name == "" {
-		return true
-	}
-	if len(name) > 64 || !(name[0] >= 'a' && name[0] <= 'z' || name[0] >= 'A' && name[0] <= 'Z') {
-		return false
-	}
-	for _, r := range name {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
-			return false
-		}
-	}
-	return true
 }
 
 func invalidatePlatformSettings() {

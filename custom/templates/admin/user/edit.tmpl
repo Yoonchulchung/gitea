@@ -215,14 +215,14 @@
 
 {{/* company/ addition — everything above this line is upstream's file and is
      re-diffed on rebase (docs/company/patches.md). An administrator looking at
-     a person needs two things this page never had: which department they are
-     in, on the page where they discovered they are in none, and what their
-     work occupies. See company/admin_user.go. */}}
+     a person needs two things this page never had: which projects they answer
+     for — and, when they leave, a way to hand all of them to somebody else —
+     and what their work occupies. See company/admin_user.go. */}}
 {{if .CompanyUserStats}}
 	{{if .CompanyAccountSource}}
 		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.adminuser.source_header"}}</h4>
 		<div class="ui attached segment">
-			{{/* Stated before the department and storage panels because it
+			{{/* Stated before the project and storage panels because it
 			     qualifies them: what an administrator may do with this account
 			     depends on whether this platform owns it. */}}
 			{{if .CompanyAccountSource.External}}
@@ -242,10 +242,7 @@
 	<div class="ui attached segment">
 		<div class="company-kpis">
 			<div class="company-kpi">
-				<b>{{len .CompanyDepartments}}</b><span>{{ctx.Locale.Tr "company.adminuser.kpi_departments"}}</span>
-			</div>
-			<div class="company-kpi">
-				<b>{{.CompanyUserStats.Repos}}</b><span>{{ctx.Locale.Tr "company.adminuser.kpi_repos"}}</span>
+				<b>{{.CompanyUserStats.Repos}}</b><span>{{ctx.Locale.Tr "company.adminuser.kpi_projects"}}</span>
 			</div>
 			<div class="company-kpi">
 				<b>{{FormatByteSize .CompanyUserStats.RepoBytes}}</b><span>{{ctx.Locale.Tr "company.adminuser.kpi_repo_size"}}</span>
@@ -257,55 +254,40 @@
 				</div>
 			{{end}}
 		</div>
-		{{/* Said rather than implied: app data belongs to the department, and
-		     reading this tile as "what this person used" would size a disk
-		     wrongly and blame the wrong person for filling it. */}}
-		{{if .CompanyUserStats.AppQuota}}<p class="text-grey tw-text-13 tw-mt-2">{{ctx.Locale.Tr "company.adminuser.app_data_shared"}}</p>{{end}}
 
-		<h5 class="tw-mt-4">{{ctx.Locale.Tr "company.adminuser.departments_header"}}</h5>
-		{{if .CompanyDepartments}}
+		<h5 class="tw-mt-4">{{ctx.Locale.Tr "company.adminuser.projects_header"}}</h5>
+		{{if .CompanyOwnedProjects}}
 			<table class="ui very basic table tw-text-13">
 				<tbody>
-					{{range .CompanyDepartments}}
+					{{range .CompanyOwnedProjects}}
 						<tr>
-							<td><a href="{{AppSubUrl}}/{{.Name}}">{{.Name}}</a></td>
-							<td>{{if index $.CompanyOwnedDepartments .ID}}{{ctx.Locale.Tr "company.adminuser.role_owner"}}{{else}}{{ctx.Locale.Tr "company.adminuser.role_member"}}{{end}}</td>
-							<td class="tw-text-right">
-								<form method="post" action="{{AppSubUrl}}/-/admin/company-user-department" class="tw-inline"
-								      onsubmit="return confirm('{{ctx.Locale.Tr "company.adminuser.remove_confirm"}}')">
-									{{$.CsrfTokenHtml}}
-									<input type="hidden" name="action" value="remove">
-									<input type="hidden" name="user_id" value="{{$.User.ID}}">
-									<input type="hidden" name="org_id" value="{{.ID}}">
-									<button class="ui tiny button">{{ctx.Locale.Tr "company.adminuser.remove"}}</button>
-								</form>
-							</td>
+							<td><a href="{{.Link}}">{{.Name}}</a></td>
+							<td class="text-grey">{{.Description}}</td>
 						</tr>
 					{{end}}
 				</tbody>
 			</table>
+			{{/* Somebody leaving takes nothing with them: every project they
+			     own goes to one person in one step, and the person leaving
+			     stays a member until an administrator says otherwise. */}}
+			<form method="post" action="{{AppSubUrl}}/-/admin/company-projects/handover" class="ui form tw-flex tw-gap-2 tw-items-end tw-flex-wrap">
+				{{.CsrfTokenHtml}}
+				<input type="hidden" name="from_id" value="{{.User.ID}}">
+				<div class="field tw-mb-0">
+					<label for="company_handover_to">{{ctx.Locale.Tr "company.adminuser.handover_label"}}</label>
+					<input id="company_handover_to" name="to" required placeholder="{{ctx.Locale.Tr "company.projects.username_placeholder"}}" autocomplete="off">
+				</div>
+				<div class="field tw-mb-0">
+					<div class="ui checkbox">
+						<input type="checkbox" name="drop_previous" id="company_handover_drop">
+						<label for="company_handover_drop">{{ctx.Locale.Tr "company.projects.drop_previous"}}</label>
+					</div>
+				</div>
+				<button class="ui primary button">{{ctx.Locale.Tr "company.adminuser.handover"}}</button>
+			</form>
 		{{else}}
-			<p class="text-grey">{{ctx.Locale.Tr "company.adminuser.no_departments"}}</p>
+			<p class="text-grey">{{ctx.Locale.Tr "company.adminuser.no_projects"}}</p>
 		{{end}}
-
-		<form method="post" action="{{AppSubUrl}}/-/admin/company-user-department" class="ui form tw-flex tw-gap-2 tw-items-end tw-flex-wrap">
-			{{.CsrfTokenHtml}}
-			<input type="hidden" name="user_id" value="{{.User.ID}}">
-			<div class="field tw-mb-0">
-				<label for="company_org_id">{{ctx.Locale.Tr "company.adminuser.add_label"}}</label>
-				<select id="company_org_id" name="org_id" class="ui selection dropdown">
-					{{range .CompanyAllDepartments}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
-				</select>
-			</div>
-			<div class="field tw-mb-0">
-				<label for="company_role">{{ctx.Locale.Tr "company.adminuser.role_label"}}</label>
-				<select id="company_role" name="role" class="ui selection dropdown">
-					<option value="owner" selected>{{ctx.Locale.Tr "company.adminuser.role_owner"}}</option>
-					<option value="member">{{ctx.Locale.Tr "company.adminuser.role_member"}}</option>
-				</select>
-			</div>
-			<button class="ui primary button">{{ctx.Locale.Tr "company.adminuser.add"}}</button>
-		</form>
 	</div>
 {{end}}
 

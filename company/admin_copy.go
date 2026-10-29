@@ -18,10 +18,11 @@ import (
 	repo_service "gitea.dev/services/repository"
 )
 
-// An administrator testing a department's app needs it somewhere of their own
+// An administrator testing a project's app needs it somewhere of their own
 // with the real code and the real rows: personal repositories are closed to
-// everyone else, and testing on the department's own copy touches what the
-// department is serving. The policy in apps.yml is not copied — the copy asks
+// everyone else, and testing on the project itself touches what it is
+// serving. A copy made among the projects is a project of its own, owned by
+// the administrator until they name somebody else. The policy in apps.yml is not copied — the copy asks
 // for and is granted its own through a deploy request like any other app.
 
 // CopyRepoOptions says where a copy goes and what it carries beyond the code.
@@ -39,9 +40,9 @@ type CopyRepoResult struct {
 	EnvVars int
 }
 
-// CopyDepartmentRepo copies every branch, tag and LFS object of src and,
+// CopyProjectRepo copies every branch, tag and LFS object of src and,
 // optionally, the app's database and environment variables.
-func CopyDepartmentRepo(ctx context.Context, doer *user_model.User, src *repo_model.Repository, opts CopyRepoOptions) (*CopyRepoResult, error) {
+func CopyProjectRepo(ctx context.Context, doer *user_model.User, src *repo_model.Repository, opts CopyRepoOptions) (*CopyRepoResult, error) {
 	// A fork is the one path that clones the whole history and LFS with
 	// branches and tags synced; it is a plain repository the moment after.
 	dst, err := repo_service.ForkRepository(ctx, doer, opts.Owner, repo_service.ForkRepoOptions{
@@ -56,6 +57,11 @@ func CopyDepartmentRepo(ctx context.Context, doer *user_model.User, src *repo_mo
 		return nil, err
 	}
 	result := &CopyRepoResult{Repo: dst}
+	if IsProjectRepo(ctx, dst) {
+		if err := SetProjectOwner(ctx, dst, doer, false); err != nil {
+			return result, err
+		}
+	}
 
 	if opts.WithEnv {
 		vars, _, err := LoadAppEnv(src.OwnerName, src.Name)
@@ -154,7 +160,7 @@ func AdminCopyRepo(ctx *gitea_context.Context) {
 		return
 	}
 
-	result, err := CopyDepartmentRepo(ctx, ctx.Doer, src, CopyRepoOptions{
+	result, err := CopyProjectRepo(ctx, ctx.Doer, src, CopyRepoOptions{
 		Owner:    owner,
 		Name:     name,
 		WithData: ctx.FormBool("with_data"),

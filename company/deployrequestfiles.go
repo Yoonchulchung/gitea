@@ -9,7 +9,6 @@ import (
 
 	issues_model "gitea.dev/models/issues"
 	access_model "gitea.dev/models/perm/access"
-	repo_model "gitea.dev/models/repo"
 	"gitea.dev/models/unit"
 	"gitea.dev/modules/git"
 	"gitea.dev/modules/setting"
@@ -26,14 +25,12 @@ const tplDeployRequestFiles templates.TplName = "company/deploy_request_files"
 // commit history), since the viewer usually can't even read the central
 // deploy repo the underlying PR lives on (it's private — see
 // docs/company/architecture.md on why). Authorized by write access to the
-// department repo the request came FROM — the same bar DeployPost itself
-// uses — so this works without granting any access to the central repo.
-// The department repo is no longer pr.HeadRepo (that's central-deploy too,
-// now that DeployPost opens same-repo PRs — see deploy.go); it's parsed out
-// of the branch name instead (parseDeployBranchName).
-// Mounted at /org/{org}/dashboard/deploy-requests/{id}, nested under the
-// same org-membership-gated group as the list itself (routers/web/web.go),
-// not a standalone /company/... URL.
+// project the request came FROM — the same bar DeployPost itself uses — so
+// this works without granting any access to the central repo. The project
+// is not pr.HeadRepo (that's central-deploy too, now that DeployPost opens
+// same-repo PRs — see deploy.go); it's parsed out of the branch name instead
+// (parseDeployBranchName), and followed if it has moved since.
+// Mounted at /company/deploy-requests/{id}.
 func DeployRequestFiles(ctx *context.Context) {
 	id := ctx.PathParamInt64("id")
 	pr, err := issues_model.GetPullRequestByID(ctx, id)
@@ -55,7 +52,7 @@ func DeployRequestFiles(ctx *context.Context) {
 		ctx.NotFound(nil)
 		return
 	}
-	deptRepo, err := repo_model.GetRepositoryByOwnerAndName(ctx, ownerName, repoName)
+	deptRepo, err := repoFollowingMoves(ctx, ownerName, repoName)
 	if err != nil {
 		ctx.NotFound(err)
 		return

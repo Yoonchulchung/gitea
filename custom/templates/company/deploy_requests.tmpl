@@ -2,11 +2,11 @@
 <div role="main" class="page-content">
 	<div class="ui container">
 		<div class="tw-mb-4">
-			<a href="{{.ContextUser.DashboardLink}}" class="muted">&larr; {{ctx.Locale.Tr "company.deploy_requests.back_dashboard" .ContextUser.DisplayName}}</a>
+			<a href="{{AppSubUrl}}/" class="muted">&larr; {{ctx.Locale.Tr "dashboard"}}</a>
 		</div>
 
 		<h1 class="tw-mb-2">{{ctx.Locale.Tr "company.deploy_requests.title"}}</h1>
-		<p class="text-grey tw-mb-4">{{ctx.Locale.Tr "company.deploy_requests.intro" .ContextUser.DisplayName}}</p>
+		<p class="text-grey tw-mb-4">{{ctx.Locale.Tr "company.deploy_requests.intro"}}</p>
 
 		<h3 class="tw-flex tw-items-center tw-gap-2">
 			{{ctx.Locale.Tr "company.deploy_requests.requested"}}
@@ -36,7 +36,7 @@
 					{{if .Items}}
 						<form method="post" action="{{AppSubUrl}}/company/deploy-request/{{.ID}}/permissions" class="ui form tw-mt-2 company-perm-withdraw">
 							{{$.CsrfTokenHtml}}
-							<input type="hidden" name="org" value="{{$.Org.Name}}">
+							<input type="hidden" name="from_list" value="1">
 							<div class="text-grey tw-text-13">{{ctx.Locale.Tr "company.deploy_requests.items_header"}}</div>
 							{{range .Items}}
 								<label class="company-perm-review-item">
@@ -51,12 +51,12 @@
 						</form>
 					{{end}}
 					<div class="tw-mt-2 tw-flex tw-items-center tw-gap-3 tw-text-13">
-						<a href="{{$.ContextUser.DashboardLink}}/deploy-requests/{{.ID}}">{{ctx.Locale.Tr "company.deploy_requests.view_files"}}</a>
+						<a href="{{AppSubUrl}}/company/deploy-requests/{{.ID}}">{{ctx.Locale.Tr "company.deploy_requests.view_files"}}</a>
 						{{if .CanCancel}}
 							<details>
 								<summary class="tw-cursor-pointer muted">{{ctx.Locale.Tr "company.deploy_requests.cancel"}}</summary>
 								<form method="post" action="{{AppSubUrl}}/company/deploy-request/{{.ID}}/cancel" class="ui form tw-mt-2 tw-max-w-md">
-									<input type="hidden" name="org" value="{{$.Org.Name}}">
+									<input type="hidden" name="from_list" value="1">
 									<div class="field">
 										<textarea name="reason" rows="2" placeholder="{{ctx.Locale.Tr "company.deploy_requests.cancel_reason_placeholder"}}" required></textarea>
 									</div>
@@ -99,7 +99,7 @@
 						</div>
 					</div>
 					<div class="tw-mt-2 tw-text-13">
-						<a href="{{$.ContextUser.DashboardLink}}/deploy-requests/{{.ID}}">{{ctx.Locale.Tr "company.deploy_requests.view_files"}}</a>
+						<a href="{{AppSubUrl}}/company/deploy-requests/{{.ID}}">{{ctx.Locale.Tr "company.deploy_requests.view_files"}}</a>
 					</div>
 				</div>
 			{{else}}

@@ -46,7 +46,7 @@ lives in `company/`. `web.go` only knows one function name.
 // company/gate.go
 func GateNonAdminUI(ctx *context.Context) {
     if ctx.Doer != nil && ctx.Doer.IsAdmin {
-        return // admins keep full native access — see departments.md
+        return // admins keep full native access — see projects.md
     }
     if isExempt(ctx.Req.URL.Path) {
         return
@@ -79,7 +79,8 @@ departments even though the path itself doesn't encode that check.
 |---|---|---|
 | `/{username}/{reponame}` (repo browsing, Code tab only) | yes | |
 | `/repo/create` | yes | |
-| `/org/{org}/pulls`, `/org/{org}/milestones`, `/org/{org}/dashboard`, `/org/{org}/issues` | yes | scoped to the caller's own department by Gitea's own org-membership check (`web.go:974-987`) |
+| `/` (their own dashboard) | yes | where every refused page lands; its repository list and app panel only show projects they can read |
+| `/org/{org}/...` | no → `/` | projects are not organized by department; nothing a non-admin needs lives under an organization |
 | `/pulls`, `/milestones` (global personal dashboard, `web.go:576-577`) | no → `/company` | aggregates across every repo the user can reach — redundant with, and less scoped than, the `/org/{org}/...` equivalents above |
 | `/{username}/{reponame}/pulls` (`web.go:1321`), `/actions` (`web.go:1549`), `/releases` (`web.go:1493`), `/activity` (`web.go:1605`) | no → `/company` | unit stays enabled (needed internally, or can't be disabled — see [repo-ui.md](repo-ui.md)), so the route is only closed off by this gate, not by config |
 | `/explore/repos` | no → `/company` | |

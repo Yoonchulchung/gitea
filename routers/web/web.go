@@ -987,14 +987,10 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 		})
 
 		m.Group("/{org}", func() {
-			m.Get("/dashboard", company.SetDashboardApps, user.Dashboard)
-			m.Get("/dashboard/{team}", company.SetDashboardApps, user.Dashboard)
+			m.Get("/dashboard", user.Dashboard)
+			m.Get("/dashboard/{team}", user.Dashboard)
 			m.Get("/dashboard/-/heatmap", user.DashboardHeatmap)
 			m.Get("/dashboard/-/heatmap/{team}", user.DashboardHeatmap)
-			m.Get("/dashboard/deploy-requests", company.DeployRequests)          // see docs/company/mount-points.md
-			m.Get("/dashboard/deploy-requests/{id}", company.DeployRequestFiles) // see docs/company/mount-points.md — nested under the same org-membership-gated group as the list above, rather than /company/deploy-request/{id}/files
-			m.Get("/repo/create", company.RepoCreateForOrg)                      // see docs/company/mount-points.md
-			m.Post("/repo/create", web.Bind[*forms.CreateRepoForm](), company.RepoCreateForOrgPost)
 			m.Get("/issues", user.Issues)
 			m.Get("/issues/{team}", user.Issues)
 			m.Get("/pulls", user.Pulls)

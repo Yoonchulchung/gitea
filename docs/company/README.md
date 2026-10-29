@@ -20,8 +20,9 @@ upstream rebase). Only `custom/conf` (local secrets/paths) stays
 
 - [architecture.md](architecture.md) — end-to-end flow and which parts reuse
   existing Gitea features vs. need new code
-- [departments.md](departments.md) — organizations-as-departments model,
-  personal-repo restriction, auto team assignment
+- [projects.md](projects.md) — company-wide projects with an owner and
+  members from any department, owner handover, and the move of the old
+  department repositories
 - [admin-activity.md](admin-activity.md) — cross-organization activity feed
   for admins
 - [mount-points.md](mount-points.md) — how the `company/` package attaches to

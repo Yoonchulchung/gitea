@@ -38,7 +38,7 @@ git vocabulary, so the stock PR screen needs no relabeling.
 | Approved code actually runs | Deploy worker builds a venv, swaps the release, health-checks, auto-rolls-back; Gitea reverse-proxies `/apps/{owner}/{repo}` to the app's unix socket | `company/deployworker.go`, `company/proxy.go` — see [app-platform.md](app-platform.md) |
 | Unneeded features removed | `[repository] DISABLED_REPO_UNITS`, `[packages] ENABLED=false` | `modules/setting/repository.go:51`, `packages.go:17` — config only, Actions kept enabled |
 
-See [departments.md](departments.md) for the organization/department model
+See [projects.md](projects.md) for the project/owner model
 and [admin-activity.md](admin-activity.md) for the cross-org admin view.
 
 ## Why a separate FE instead of reskinning Gitea's own pages

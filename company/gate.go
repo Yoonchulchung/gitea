@@ -8,12 +8,9 @@ import (
 	"net/url"
 	"strings"
 
-	"gitea.dev/models/organization"
 	user_model "gitea.dev/models/user"
-	"gitea.dev/modules/htmlutil"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
-	"gitea.dev/modules/templates"
 	"gitea.dev/services/context"
 )
 
@@ -21,8 +18,6 @@ import (
 // as a constant so the whitelist and RequireSignIn's redirect can't drift
 // apart. There is no GET /company landing page — see routes.go.
 const companyPrefix = "/company"
-
-const tplNoDepartment templates.TplName = "company/no_department"
 
 // RequireSignIn redirects anonymous visitors to the login page, remembering
 // the exact page they were headed to (e.g. a deploy form) via Gitea's
@@ -43,8 +38,8 @@ func RequireSignIn(ctx *context.Context) {
 // uiWhitelist is the set of native-Gitea path prefixes a signed-in,
 // non-admin user may still reach directly. Default-deny: anything not
 // listed here (and not exempt, see isProtocolExempt) gets redirected to
-// /company. See docs/company/ui-gate.md and docs/company/repo-ui.md for the
-// reasoning behind each entry.
+// their dashboard. See docs/company/ui-gate.md and docs/company/repo-ui.md
+// for the reasoning behind each entry.
 var uiWhitelist = []string{
 	companyPrefix,
 	"/user/login",
@@ -57,15 +52,15 @@ var uiWhitelist = []string{
 	// with the settings menu below despite the URL. Exact path, no
 	// sub-paths to worry about.
 	"/user/settings/update_preferences",
-	// AJAX endpoint the org dashboard's own repo-list widget calls
+	// AJAX endpoint the dashboard's own repo-list widget calls
 	// (repo.SearchRepo, reqSignIn only) — results are filtered server-side
 	// by the caller's own access, not a jargon-y page a user navigates to.
 	"/repo/search",
-	// Deployed department apps. These are not Gitea pages at all — the
-	// request is proxied to the department's own application — so the gate
-	// has nothing to protect here, and the app's own access mode
-	// (public/login/org) is what decides. Listed explicitly rather than left
-	// to fall through, so it is a decision rather than an accident.
+	// Deployed apps. These are not Gitea pages at all — the request is
+	// proxied to the project's own application — so the gate has nothing to
+	// protect here, and the app's own access mode (public/login/org) is what
+	// decides. Listed explicitly rather than left to fall through, so it is a
+	// decision rather than an accident.
 	"/apps/",
 	// Markdown rendering for the AI chat's replies (company-ai-chat.ts). It
 	// only turns the posted text into sanitised HTML; blocked, it answered
@@ -94,14 +89,9 @@ var staticAssetPrefixes = []string{
 // covers every route registered on the same *web.Router (all of
 // registerWebRoutes), which is the entire native web UI in one place.
 //
-// It also sets ctx.Data["CompanyDeployRequestsLink"] for non-admin signed-in
-// users with exactly one department, so
-// custom/templates/base/head_navbar.tmpl (rendered on every page, not just
-// the org dashboard) can link to it — see docs/company/architecture.md.
-// Admins never get this: they oversee every department (the whole point of
-// the separate /-/admin/company-activity view), so a link personalized to
-// "your one department" would misrepresent their role — even if, like any
-// other user, they also happen to hold real membership in one org.
+// It also sets the navbar's deploy-request and new-project links for
+// non-admins (custom/templates/base/head_navbar.tmpl). Admins have their own
+// menu: they oversee every project from /-/admin.
 func GateNonAdminUI(ctx *context.Context) {
 	path := ctx.Req.URL.Path
 	// An app's own requests render nothing of Gitea's — and there are many of
@@ -122,24 +112,15 @@ func GateNonAdminUI(ctx *context.Context) {
 	}
 
 	if ctx.Doer == nil {
+		// Accounts come from the company directory; a sign-up form would only
+		// make accounts nobody provisioned.
+		if strings.HasPrefix(path, "/user/sign_up") {
+			ctx.NotFound(nil)
+		}
 		return // anonymous: REQUIRE_SIGNIN_VIEW + LANDING_PAGE already force them to /user/login, no /company hop needed
 	}
 	if !renders {
 		return // cheap checks first — never worth a DB round trip
-	}
-
-	var orgs []*organization.MinimalOrg
-	if !ctx.Doer.IsAdmin {
-		var err error
-		orgs, err = organization.GetUserOrgsList(ctx, ctx.Doer)
-		if err != nil {
-			ctx.ServerError("GetUserOrgsList", err)
-			return
-		}
-		if len(orgs) == 1 {
-			ctx.Data["CompanyDeployRequestsLink"] = setting.AppSubURL + "/org/" + orgs[0].Name + "/dashboard/deploy-requests"
-			ctx.Data["CompanyNewRepoLink"] = setting.AppSubURL + "/org/" + orgs[0].Name + "/repo/create"
-		}
 	}
 
 	// Before the allowlist, because this is what makes the allowlist's
@@ -147,58 +128,20 @@ func GateNonAdminUI(ctx *context.Context) {
 	clearLocalPasswordChange(ctx)
 
 	if ctx.Doer.IsAdmin {
-		return // admins keep full native access — see docs/company/departments.md
+		return // admins keep full native access — see docs/company/projects.md
 	}
+	ctx.Data["CompanyDeployRequestsLink"] = setting.AppSubURL + deployRequestsPath
+	ctx.Data["CompanyNewRepoLink"] = setting.AppSubURL + newProjectPath
 
-	if isRepoScopedAllow(path) || isOrgScopedAllow(path) || isPrefixAllowed(path) || isNotificationsInboxAllow(path) || isUserSettingsAllowed(path) {
+	if path == "/" || isRepoScopedAllow(path) || isPrefixAllowed(path) || isNotificationsInboxAllow(path) || isUserSettingsAllowed(path) {
 		return
 	}
-
-	// bare /repo/create (the "+" button in the repo-list sidebar widget,
-	// web_src/js/components/DashboardRepoList.vue, still links here — not
-	// worth a Vue edit for) — send them into the same simplified,
-	// department-scoped create page a direct /org/{org}/repo/create visit
-	// would reach, not just the generic department bounce below.
-	if path == "/repo/create" && len(orgs) == 1 {
-		ctx.Redirect(setting.AppSubURL + "/org/" + orgs[0].Name + "/repo/create")
+	// The "+" in the dashboard's repository list still links here.
+	if path == "/repo/create" {
+		ctx.Redirect(setting.AppSubURL + newProjectPath)
 		return
 	}
-
-	redirectToDepartment(ctx, orgs)
-}
-
-// redirectToDepartment sends a blocked user straight to their department's
-// native dashboard — there is no intermediate /company landing page (see
-// routes.go). orgs is whatever GateNonAdminUI already fetched; department
-// membership comes from the same org/team assignment LDAP/OAuth2 group sync
-// applies at login (docs/company/departments.md), not anything in the URL.
-// The zero/multiple-orgs cases render a normal page (base/head+footer),
-// not ctx.PlainText — that left someone in either state on a bare
-// text response with no navbar, so no way to even log out, until an
-// admin fixed their org membership. See custom/templates/company/no_department.tmpl.
-func redirectToDepartment(ctx *context.Context, orgs []*organization.MinimalOrg) {
-	switch len(orgs) {
-	case 1:
-		ctx.Redirect(setting.AppSubURL + "/org/" + orgs[0].Name + "/dashboard")
-	case 0:
-		ctx.Data["Title"] = string(ctx.Locale.Tr("company.gate.no_department_title"))
-		// Whoever is currently responsible, not a name baked into a template:
-		// the person who adds people to departments changes, and a page that
-		// still names the one who left is worse than one that names nobody.
-		// In the sentence itself, as a link: the one thing to do from here.
-		if email := SupportEmail(ctx); email != "" {
-			ctx.Data["Message"] = ctx.Locale.Tr("company.gate.no_department", htmlutil.HTMLFormat(`<a href="mailto:%s">%s</a>`, email, email))
-		} else {
-			ctx.Data["Message"] = ctx.Locale.Tr("company.gate.no_department_nocontact")
-		}
-		ctx.HTML(http.StatusOK, tplNoDepartment)
-	default:
-		ctx.Data["Title"] = string(ctx.Locale.Tr("company.gate.multiple_departments_title"))
-		ctx.Data["Message"] = string(ctx.Locale.Tr("company.gate.multiple_departments"))
-		ctx.Data["SupportEmail"] = SupportEmail(ctx)
-		ctx.Data["Orgs"] = orgs
-		ctx.HTML(http.StatusOK, tplNoDepartment)
-	}
+	ctx.Redirect(setting.AppSubURL + "/")
 }
 
 func hasAnyPrefix(path string, prefixes []string) bool {
@@ -292,48 +235,6 @@ var notificationsInboxAllow = map[string]bool{
 
 func isNotificationsInboxAllow(path string) bool {
 	return notificationsInboxAllow[path]
-}
-
-// isOrgScopedAllow allows the department-scoped dashboard/pulls/milestones
-// pages, which Gitea's own org-membership check already restricts to that
-// org's members (services/context/org.go, RequireMember: true) — see
-// docs/company/ui-gate.md. "repo" is /org/{org}/repo/create
-// (company.RepoCreateForOrg/RepoCreateForOrgPost, routers/web/web.go),
-// rendered directly at this URL — no redirect involved.
-//
-// Every one of dashboard/pulls/milestones/issues also has a native
-// /{...}/{team} variant (routers/web/web.go) that renders the same page
-// filtered to one team — deliberately excluded here (except our own
-// /dashboard/deploy-requests), since the team name in the URL is exactly
-// the kind of detail the hidden Teams dropdown (custom/templates/user/dashboard/navbar.tmpl)
-// was hidden to avoid non-admins seeing.
-func isOrgScopedAllow(path string) bool {
-	segs := strings.Split(strings.TrimPrefix(path, "/"), "/")
-	if len(segs) < 3 || segs[0] != "org" {
-		return false
-	}
-	switch segs[2] {
-	case "dashboard":
-		if len(segs) == 3 {
-			return true // bare /org/{org}/dashboard
-		}
-		if len(segs) == 4 && segs[3] == "deploy-requests" {
-			return true // company.DeployRequests
-		}
-		if len(segs) == 5 && segs[3] == "deploy-requests" {
-			return true // company.DeployRequestFiles — /org/{org}/dashboard/deploy-requests/{id}
-		}
-		if len(segs) == 5 && segs[3] == "-" && segs[4] == "heatmap" {
-			return true // the activity heatmap widget, fetched client-side from the dashboard itself
-		}
-		return false
-	case "repo":
-		return len(segs) == 4 && segs[3] == "create"
-	case "pulls", "milestones", "issues", "members":
-		return len(segs) == 3
-	default:
-		return false
-	}
 }
 
 // isProtocolExempt matches git smart-HTTP and LFS endpoints, which must

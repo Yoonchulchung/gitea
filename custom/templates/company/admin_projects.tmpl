@@ -1,0 +1,92 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-projects")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">
+			{{ctx.Locale.Tr "company.projects.title"}}
+			<div class="ui right">
+				<a class="ui tiny basic button" href="{{.ProjectOrg.HomeLink}}">{{.ProjectOrg.Name}}</a>
+			</div>
+		</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.projects.explain"}}</p>
+			<div class="flex-text-block">
+				<a class="ui tiny {{if not .NeedsOwnerOnly}}primary{{else}}basic{{end}} button" href="?">{{ctx.Locale.Tr "company.projects.filter_all"}}</a>
+				<a class="ui tiny {{if .NeedsOwnerOnly}}primary{{else}}basic{{end}} button" href="?needs_owner=1">{{ctx.Locale.Tr "company.projects.filter_needs_owner" .NeedsOwner}}</a>
+			</div>
+		</div>
+		<div class="ui attached table segment">
+			<table class="ui very basic table">
+				<thead>
+					<tr>
+						<th>{{ctx.Locale.Tr "company.projects.col_project"}}</th>
+						<th>{{ctx.Locale.Tr "company.project.owner"}}</th>
+						<th class="tw-w-1/12">{{ctx.Locale.Tr "company.project.members"}}</th>
+						<th class="tw-w-1/3">{{ctx.Locale.Tr "company.projects.col_change"}}</th>
+					</tr>
+				</thead>
+				<tbody>
+					{{range .Projects}}
+						<tr>
+							<td><a href="{{.Repo.Link}}">{{.Repo.Name}}</a></td>
+							<td>
+								{{if .Owner}}<a href="{{AppSubUrl}}/-/admin/users/{{.Owner.ID}}/edit">{{.Owner.Name}}</a>{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.projects.no_owner"}}</span>{{end}}
+								{{if .OwnerGone}}<span class="ui tiny basic red label">{{ctx.Locale.Tr "company.project.owner_gone"}}</span>{{end}}
+							</td>
+							<td>{{.Members}}</td>
+							<td>
+								<form method="post" action="{{AppSubUrl}}/-/admin/company-projects/owner" class="ui form tw-flex tw-gap-1 tw-items-center tw-flex-wrap">
+									{{$.CsrfTokenHtml}}
+									<input type="hidden" name="repo_id" value="{{.Repo.ID}}">
+									<input name="owner" required class="tw-flex-1" placeholder="{{ctx.Locale.Tr "company.projects.username_placeholder"}}" autocomplete="off">
+									<label class="tw-text-12 text-grey" data-tooltip-content="{{ctx.Locale.Tr "company.projects.drop_previous"}}">
+										<input type="checkbox" name="drop_previous"> {{ctx.Locale.Tr "company.projects.drop_previous_short"}}
+									</label>
+									<button class="ui tiny primary button">{{ctx.Locale.Tr "company.projects.set_owner"}}</button>
+								</form>
+							</td>
+						</tr>
+					{{else}}
+						<tr><td colspan="4" class="text-grey">{{ctx.Locale.Tr "company.projects.none"}}</td></tr>
+					{{end}}
+				</tbody>
+			</table>
+		</div>
+
+		{{/* What is still owned by a department. Moving is a transfer, nothing
+		     more: the same name, history, app and data, under the projects
+		     organization — see company/project_migrate.go. */}}
+		{{if .Migration}}
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.projects.migrate_title"}}</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.projects.migrate_explain"}}</p>
+			<table class="ui very basic compact table">
+				<thead>
+					<tr>
+						<th>{{ctx.Locale.Tr "company.projects.col_department"}}</th>
+						<th>{{ctx.Locale.Tr "company.projects.col_project"}}</th>
+						<th>{{ctx.Locale.Tr "company.project.owner"}}</th>
+						<th>{{ctx.Locale.Tr "company.project.members"}}</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody>
+					{{range .Migration}}
+						<tr>
+							<td>{{.Department.DisplayName}}</td>
+							<td><a href="{{.Repo.Link}}">{{.Repo.Name}}</a></td>
+							<td>{{if .Owner}}{{.Owner.Name}}{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.projects.no_owner"}}</span>{{end}}</td>
+							<td>{{.Members}}</td>
+							<td>{{if .Blocked}}<span class="text-red tw-text-12">{{ctx.Locale.Tr .Blocked}}</span>{{else}}<span class="text-green tw-text-12">{{ctx.Locale.Tr "company.projects.migrate_ready"}}</span>{{end}}</td>
+						</tr>
+					{{end}}
+				</tbody>
+			</table>
+			{{if .MigrationMovable}}
+				<form method="post" action="{{AppSubUrl}}/-/admin/company-projects/migrate" onsubmit="return confirm({{ctx.Locale.Tr "company.projects.migrate_confirm" .MigrationMovable}})">
+					{{.CsrfTokenHtml}}
+					<button class="ui primary button">{{ctx.Locale.Tr "company.projects.migrate_run" .MigrationMovable}}</button>
+				</form>
+			{{end}}
+		</div>
+		{{end}}
+	</div>
+{{template "admin/layout_footer" .}}

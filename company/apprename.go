@@ -4,7 +4,9 @@
 package company
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,9 @@ import (
 	repo_model "gitea.dev/models/repo"
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/log"
+	files_service "gitea.dev/services/repository/files"
+
+	"go.yaml.in/yaml/v4"
 )
 
 // Everything the platform keeps for an app is filed under a hash of its
@@ -21,20 +26,31 @@ import (
 // had never been deployed. Following the rename is what a non-developer
 // expects to happen, so it does.
 
-func (*deployBranchCleanupNotifier) RenameRepository(ctx context.Context, _ *user_model.User, repo *repo_model.Repository, oldRepoName string) {
+func (*deployBranchCleanupNotifier) RenameRepository(ctx context.Context, doer *user_model.User, repo *repo_model.Repository, oldRepoName string) {
 	followCentralRepoMove(ctx, repo.OwnerName, oldRepoName, repo.OwnerName, repo.Name)
+	followPolicyRename(ctx, doer, repo.OwnerName, oldRepoName, repo.OwnerName, repo.Name)
 	followRepoRename(repo.OwnerName, oldRepoName, repo.OwnerName, repo.Name)
 }
 
-func (*deployBranchCleanupNotifier) TransferRepository(ctx context.Context, _ *user_model.User, repo *repo_model.Repository, oldOwnerName string) {
+func (*deployBranchCleanupNotifier) TransferRepository(ctx context.Context, doer *user_model.User, repo *repo_model.Repository, oldOwnerName string) {
 	followCentralRepoMove(ctx, oldOwnerName, repo.Name, repo.OwnerName, repo.Name)
+	followPolicyRename(ctx, doer, oldOwnerName, repo.Name, repo.OwnerName, repo.Name)
 	followRepoRename(oldOwnerName, repo.Name, repo.OwnerName, repo.Name)
+	// Moved out of the projects organization, it is nobody's project any more.
+	if !IsProjectRepo(ctx, repo) {
+		if err := deleteProjectOwner(ctx, repo.ID); err != nil {
+			log.Error("company: forgetting the owner of %s after its transfer: %v", repo.FullName(), err)
+		}
+	}
 }
 
 // DeleteRepository stops the app whose repository is gone. Its files stay
 // until an admin removes the app; its data is on the retention clock
 // (company/appdata.go), keyed by an ID that outlives the name.
-func (*deployBranchCleanupNotifier) DeleteRepository(_ context.Context, doer *user_model.User, repo *repo_model.Repository) {
+func (*deployBranchCleanupNotifier) DeleteRepository(ctx context.Context, doer *user_model.User, repo *repo_model.Repository) {
+	if err := deleteProjectOwner(ctx, repo.ID); err != nil {
+		log.Error("company: forgetting the owner of deleted %s: %v", repo.FullName(), err)
+	}
 	if _, ok := LookupApp(repo.OwnerName, repo.Name); !ok {
 		return
 	}
@@ -51,6 +67,68 @@ func (*deployBranchCleanupNotifier) DeleteRepository(_ context.Context, doer *us
 		st.UserMessageKey = "company.app.removed"
 		return true
 	})
+}
+
+// followPolicyRename moves the app's block in apps.yml to its new name.
+// Without it a moved app lost every package, host and limit an administrator
+// had approved for it, and its first deploy afterwards failed for reasons
+// nobody had changed.
+func followPolicyRename(ctx context.Context, doer *user_model.User, oldOwner, oldRepo, newOwner, newRepo string) {
+	oldKey, newKey := oldOwner+"/"+oldRepo, newOwner+"/"+newRepo
+	if oldKey == newKey {
+		return
+	}
+	if cfg, _, _ := AppsConfigSnapshot(); cfg == nil || cfg.Apps[oldKey] == nil {
+		return // almost every rename on the instance: nothing to carry
+	}
+	centralOwner, centralName, err := centralDeployOwnerName()
+	if err != nil {
+		return
+	}
+	central, err := repo_model.GetRepositoryByOwnerAndName(ctx, centralOwner, centralName)
+	if err != nil {
+		log.Error("company: carrying the policy of %s to %s: %v", oldKey, newKey, err)
+		return
+	}
+	current, _, err := readAppsConfigFile(ctx, central)
+	if err != nil {
+		log.Error("company: carrying the policy of %s to %s: %v", oldKey, newKey, err)
+		return
+	}
+	entry := current.Apps[oldKey]
+	if entry == nil {
+		return
+	}
+	delete(current.Apps, oldKey)
+	current.Apps[newKey] = entry
+	body, err := yaml.Marshal(current)
+	if err != nil {
+		log.Error("company: carrying the policy of %s to %s: %v", oldKey, newKey, err)
+		return
+	}
+	if doer == nil || doer.ID <= 0 {
+		if doer, err = user_model.GetAdminUser(ctx); err != nil {
+			log.Error("company: carrying the policy of %s to %s: %v", oldKey, newKey, err)
+			return
+		}
+	}
+	if _, err := files_service.ChangeRepoFiles(ctx, central, doer, &files_service.ChangeRepoFilesOptions{
+		OldBranch: central.DefaultBranch,
+		NewBranch: central.DefaultBranch,
+		Message:   fmt.Sprintf("chore(apps): %s is now %s\n\nThe repository was moved by %s; its policy follows it.", oldKey, newKey, doer.Name),
+		Files: []*files_service.ChangeRepoFile{{
+			Operation:     "update",
+			TreePath:      appsConfigPath,
+			ContentReader: bytes.NewReader(body),
+		}},
+	}); err != nil {
+		log.Error("company: carrying the policy of %s to %s: %v", oldKey, newKey, err)
+		return
+	}
+	if parsed, err := ParseAppsConfig(body); err == nil {
+		SetAppsConfig(parsed)
+	}
+	log.Info("company: the policy of %s now applies to %s", oldKey, newKey)
 }
 
 // followRepoRename moves an app's records under its new name and rebuilds
@@ -80,6 +158,11 @@ func followRepoRename(oldOwner, oldRepo, newOwner, newRepo string) {
 	}
 	UnregisterApp(oldOwner, oldRepo)
 	proxyCache.Delete(oldKey)
+	// The narrowing a project chose for its app goes with it; left behind,
+	// the app would be open to whatever apps.yml allows until a restart.
+	if mode, ok := departmentAccess.LoadAndDelete(oldKey); ok {
+		departmentAccess.Store(newKey, mode)
+	}
 	supervisorsMu.Lock()
 	delete(supervisors, oldKey)
 	supervisorsMu.Unlock()

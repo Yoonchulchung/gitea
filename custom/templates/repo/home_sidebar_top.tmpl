@@ -20,6 +20,7 @@
 -->
 {{if .IsAdmin}}
 {{template "company/repo_app_panel" .}}
+{{template "company/project_panel" .}}
 <div class="repo-home-sidebar-top flex-relaxed-list">
 	<form class="ignore-dirty tw-flex" action="{{.RepoLink}}/search" method="get">
 		<div class="ui small action input tw-flex tw-flex-1">
@@ -129,6 +130,7 @@
 	     grid-column 2 (web_src/css/repo/home.css), so a second element with
 	     that class lands in the same cell and draws on top of the first. */}}
 	{{template "company/repo_app_panel" .}}
+	{{template "company/project_panel" .}}
 	<div class="flex-relaxed-list">
 		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
 			<span>{{ctx.Locale.Tr "repo.repo_desc"}}</span>

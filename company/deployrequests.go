@@ -6,20 +6,19 @@ package company
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"gitea.dev/models/db"
 	issues_model "gitea.dev/models/issues"
 	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unit"
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/container"
-	"gitea.dev/modules/setting"
 	"gitea.dev/modules/templates"
-	webrepo "gitea.dev/routers/web/repo"
 	"gitea.dev/services/context"
 	issue_service "gitea.dev/services/issue"
 
+	"xorm.io/builder"
 	"xorm.io/xorm"
 )
 
@@ -119,44 +118,35 @@ type deployRequestView struct {
 	Items []permissionRequestRow
 }
 
-// DeployRequests lists every department's deploy requests, split the same
-// way /pulls splits Open/Closed — "배포 요청됨" (still open, awaiting admin
-// review) and "배포함" (closed: either merged = actually deployed, or
-// rejected). Visible to any member of the org, not just admins, so a team
-// can see what its colleagues have submitted without needing PR/branch
-// vocabulary or admin access. Reuses the same underlying PR data the admin
-// reviews natively (docs/company/architecture.md); this is a second,
-// friendlier view onto it, not a second workflow.
-//
-// Mounted at /org/{org}/dashboard/deploy-requests, inside Gitea's own org
-// group (routers/web/web.go) — so membership is already enforced by
-// context.OrgAssignment(RequireMember: true) before this handler ever runs;
-// org resolution/membership don't need to be repeated here.
+// DeployRequests lists the deploy requests of every project the viewer can
+// see, split the same way /pulls splits Open/Closed — "배포 요청됨" (still
+// open, awaiting admin review) and "배포함" (closed: either merged =
+// actually deployed, or rejected). A project's members see each other's
+// requests without needing PR/branch vocabulary or admin access. Reuses the
+// same underlying PR data the admin reviews natively
+// (docs/company/architecture.md); this is a second, friendlier view onto it,
+// not a second workflow.
 func DeployRequests(ctx *context.Context) {
-	org := ctx.Org.Organization
-
 	central, err := centralDeployRepo(ctx)
 	if err != nil {
 		ctx.ServerError("centralDeployRepo", err)
+		return
+	}
+	branches, err := visibleDeployBranches(ctx, ctx.Doer)
+	if err != nil {
+		ctx.ServerError("visibleDeployBranches", err)
 		return
 	}
 
 	requestedPage := max(ctx.FormInt("requested_page"), 1)
 	deployedPage := max(ctx.FormInt("deployed_page"), 1)
 
-	// Deploy-request PRs are same-repo PRs on the central deploy repo
-	// (company/deploy.go's DeployPost) — which department repo each one
-	// is "for" isn't HeadRepoID (that's central too), it's encoded in the
-	// branch name (deployBranchName/parseDeployBranchName). Every branch
-	// for a repo this org owns starts with "deploy/<org-name>/".
-	branchPrefix := "deploy/" + org.Name + "/"
-
-	requested, requestedTotal, err := loadDeployRequestPage(ctx, central, branchPrefix, false, requestedPage)
+	requested, requestedTotal, err := loadDeployRequestPage(ctx, central, branches, false, requestedPage)
 	if err != nil {
 		ctx.ServerError("load requested deploy requests", err)
 		return
 	}
-	deployed, deployedTotal, err := loadDeployRequestPage(ctx, central, branchPrefix, true, deployedPage)
+	deployed, deployedTotal, err := loadDeployRequestPage(ctx, central, branches, true, deployedPage)
 	if err != nil {
 		ctx.ServerError("load deployed deploy requests", err)
 		return
@@ -174,8 +164,7 @@ func DeployRequests(ctx *context.Context) {
 	deployedPager := context.NewPagerBuilder(ctx).TotalCount(deployedTotal).PerPageLimit(deployRequestsPageSize).CurPage(deployedPage).Build()
 	deployedPager.RemoveParam(container.SetOf("deployed_page"))
 
-	ctx.Data["Title"] = "Deploy requests"
-	ctx.Data["Org"] = org
+	ctx.Data["Title"] = ctx.Locale.TrString("company.deploy_requests.title")
 	ctx.Data["Requested"] = requested
 	ctx.Data["RequestedPage"] = requestedPager
 	ctx.Data["Deployed"] = deployed
@@ -183,32 +172,52 @@ func DeployRequests(ctx *context.Context) {
 	ctx.HTML(http.StatusOK, tplDeployRequests)
 }
 
+// visibleDeployBranches matches the deploy branches of every repository doer
+// can read, plus the ones doer opened. Deploy-request PRs are same-repo PRs on
+// the central deploy repo, so which repository each one is "for" is encoded
+// in the branch name (deployBranchName), not in HeadRepoID.
+func visibleDeployBranches(ctx *context.Context, doer *user_model.User) (builder.Cond, error) {
+	if doer.IsAdmin {
+		return builder.Like{"pull_request.head_branch", "deploy/%"}, nil
+	}
+	var repos []*repo_model.Repository
+	if err := db.GetEngine(ctx).Cols("owner_name", "name").
+		Where(repo_model.AccessibleRepositoryCondition(doer, unit.TypeCode)).Find(&repos); err != nil {
+		return nil, err
+	}
+	cond := builder.Or(builder.Like{"pull_request.head_branch", fmt.Sprintf("deploy/%%/%%/%d/%%", doer.ID)})
+	for _, repo := range repos {
+		cond = cond.Or(builder.Like{"pull_request.head_branch", deployBranchPrefix(repo.OwnerName, repo.Name) + "%"})
+	}
+	return cond, nil
+}
+
 // deployRequestSession builds the shared base query for one status (open or
-// closed) of one org's deploy requests — factored out so
+// closed) of the visible deploy requests — factored out so
 // loadDeployRequestPage can run it once for the count and once, fresh, for
 // the page of rows (an xorm session is single-use).
-func deployRequestSession(ctx *context.Context, central *repo_model.Repository, branchPrefix string, closed bool) *xorm.Session {
+func deployRequestSession(ctx *context.Context, central *repo_model.Repository, branches builder.Cond, closed bool) *xorm.Session {
 	return db.GetEngine(ctx).
 		Join("INNER", "issue", "issue.id = pull_request.issue_id").
 		Where("pull_request.base_repo_id = ?", central.ID).
 		And("pull_request.head_repo_id = ?", central.ID).
-		And("pull_request.head_branch LIKE ?", branchPrefix+"%").
+		And(branches).
 		And("issue.is_closed = ?", closed)
 }
 
 // loadDeployRequestPage fetches one page of one status (open/closed) of
-// org's deploy requests, translated into deployRequestView, plus the total
+// the visible deploy requests, translated into deployRequestView, plus the total
 // count across all pages for Pagination. Split out of DeployRequests so
 // Requested and Deployed can be queried, counted, and paginated
 // independently despite sharing the same underlying PR data.
-func loadDeployRequestPage(ctx *context.Context, central *repo_model.Repository, branchPrefix string, closed bool, page int) ([]*deployRequestView, int64, error) {
-	total, err := deployRequestSession(ctx, central, branchPrefix, closed).Count(new(issues_model.PullRequest))
+func loadDeployRequestPage(ctx *context.Context, central *repo_model.Repository, branches builder.Cond, closed bool, page int) ([]*deployRequestView, int64, error) {
+	total, err := deployRequestSession(ctx, central, branches, closed).Count(new(issues_model.PullRequest))
 	if err != nil {
 		return nil, 0, fmt.Errorf("count deploy requests: %w", err)
 	}
 
 	var prs []*issues_model.PullRequest
-	if err := deployRequestSession(ctx, central, branchPrefix, closed).
+	if err := deployRequestSession(ctx, central, branches, closed).
 		Desc("issue.created_unix").
 		Limit(deployRequestsPageSize, (page-1)*deployRequestsPageSize).
 		Find(&prs); err != nil {
@@ -224,9 +233,9 @@ func loadDeployRequestPage(ctx *context.Context, central *repo_model.Repository,
 		if !ok {
 			continue
 		}
-		repo, err := repo_model.GetRepositoryByOwnerAndName(ctx, ownerName, repoName)
+		repo, err := repoFollowingMoves(ctx, ownerName, repoName)
 		if err != nil {
-			continue // repo renamed/deleted since — skip rather than fail the whole list
+			continue // repo deleted since — skip rather than fail the whole list
 		}
 		// pr.Issue.Poster is the central repo's own owner (see deploy.go's
 		// DeployPost) — the real requester's identity only lives in the
@@ -320,40 +329,9 @@ func CancelDeployRequest(ctx *context.Context) {
 		return
 	}
 
-	// Back where it was pressed. The department's list sends "org"; the
-	// request page does not, and an administrator cancelling from there wants
-	// the request they are looking at, not a department dashboard. The name
-	// comes from the branch rather than from the posted field — a redirect
-	// built out of a form value is a redirect somebody else can choose.
-	if ctx.Req.FormValue("org") == "" {
-		ctx.Redirect(pr.Issue.Link())
-		return
-	}
-	owner, _, _, _ := parseDeployBranchName(pr.HeadBranch)
-	ctx.Redirect(fmt.Sprintf("%s/org/%s/dashboard/deploy-requests", setting.AppSubURL, url.PathEscape(owner)))
-}
-
-// RepoCreateForOrg renders Gitea's own repo-creation page directly at
-// /org/{org}/repo/create — deliberately not a redirect to
-// /repo/create?org=N, so the address bar stays on the friendly,
-// department-named URL. webrepo.Create only reads the owner from the
-// ?org= query param (routers/web/repo/repo.go:144, ctx.FormInt64("org")),
-// so that's injected onto the request before handing off. Mounted inside
-// Gitea's own org group, so RequireMember is already enforced before this
-// runs; the create page itself still separately checks CanCreateOrgRepo
-// (team membership with create-repo rights, see docs/company/ui-gate.md)
-// before actually letting the create form submit.
-func RepoCreateForOrg(ctx *context.Context) {
-	ctx.Req.URL.RawQuery = fmt.Sprintf("org=%d", ctx.Org.Organization.ID)
-	webrepo.Create(ctx)
-}
-
-// RepoCreateForOrgPost handles the form submission from the page above.
-// Unlike the GET above, no query-param injection is needed: the owner
-// travels as the form's own hidden "uid" field (custom/templates/repo/create.tmpl),
-// already set to the org, so webrepo.CreatePost reads it correctly as-is.
-func RepoCreateForOrgPost(ctx *context.Context) {
-	webrepo.CreatePost(ctx)
+	// Back where it was pressed: the list sends "from_list"; an administrator
+	// cancelling from the request page wants the request they are looking at.
+	ctx.Redirect(decisionRedirect(ctx, pr))
 }
 
 // openDeployRequestFor returns this repository's request that is still open,

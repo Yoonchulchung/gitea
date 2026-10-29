@@ -241,7 +241,11 @@ func AdminApp(ctx *context.Context) {
 	ctx.Data["DefaultDataQuotaMB"] = companySettingPositiveInt("APP_DATA_QUOTA_MB", appDataQuotaMBDefault)
 	ctx.Data["MaxDataQuotaMB"] = maxDataQuotaMB
 	if repo != nil {
-		ctx.Data["CopyOwners"] = append([]*user_model.User{ctx.Doer}, allDepartments(ctx)...)
+		owners := []*user_model.User{ctx.Doer}
+		if org, err := ProjectOrg(ctx); err == nil {
+			owners = append(owners, org.AsUser())
+		}
+		ctx.Data["CopyOwners"] = owners
 		ctx.Data["CopyName"] = repo.Name + "-copy"
 	}
 	ctx.HTML(http.StatusOK, tplAdminApp)

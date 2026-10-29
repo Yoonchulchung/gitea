@@ -14,6 +14,7 @@
 			<summary>{{ctx.Locale.Tr "company.admin.nav_group"}}</summary>
 			<div class="menu">
 				<a class="item" href="{{AppSubUrl}}/-/admin/company-deploys">{{ctx.Locale.Tr "company.admin.nav_deploys"}}</a>
+				<a class="item{{if .PageIsAdminCompanyProjects}} active{{end}}" href="{{AppSubUrl}}/-/admin/company-projects">{{ctx.Locale.Tr "company.admin.nav_projects"}}</a>
 				<a class="item" href="{{AppSubUrl}}/-/admin/company-packages">{{ctx.Locale.Tr "company.admin.nav_packages"}}</a>
 				<a class="item" href="{{AppSubUrl}}/-/admin/company-network">{{ctx.Locale.Tr "company.admin.nav_network"}}</a>
 				<a class="item" href="{{AppSubUrl}}/-/admin/company-activity">{{ctx.Locale.Tr "company.admin.nav_activity"}}</a>

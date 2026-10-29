@@ -147,16 +147,17 @@ func SetAppPermissionData(ctx *context.Context) {
 	}
 	owner := ctx.Repo.Owner.Name
 	name := ctx.Repo.Repository.Name
+	setProjectPanelData(ctx)
 
 	if _, known := LookupApp(owner, name); !known {
-		// Never deployed. Not nothing, though: the settings a department can
+		// Never deployed. Not nothing, though: the settings a project can
 		// reach through this panel — access mode, environment variables, the
 		// permission request — all work before a first deploy, and are most
 		// useful then. Hiding the panel entirely meant the only way to find
 		// the app screen was to already know its URL.
 		//
-		// Department repositories only: on a personal repository the platform
-		// has no role, and the panel really would be noise.
+		// Organization repositories only: on a personal repository the
+		// platform has no role, and the panel really would be noise.
 		if ctx.Repo.Owner.IsOrganization() {
 			ctx.Data["CompanyApp"] = &AppSidebarData{
 				CanControl: ctx.Repo.Permission.CanWrite(unit.TypeCode),

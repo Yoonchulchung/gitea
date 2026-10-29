@@ -18,7 +18,10 @@ import (
 	"sync"
 	"time"
 
-	organization "gitea.dev/models/organization"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
 	"gitea.dev/modules/templates"
@@ -89,6 +92,18 @@ func AppProxy(ctx *gitea_context.Context) {
 	// never turned into a socket path directly (appregistry.go).
 	ref, known := LookupApp(owner, repo)
 	if !known {
+		// Moved into the projects organization, or renamed: links and
+		// bookmarks to the old address keep working.
+		if moved, err := repoFollowingMoves(ctx, owner, repo); err == nil && !strings.EqualFold(moved.FullName(), owner+"/"+repo) {
+			if _, ok := LookupApp(moved.OwnerName, moved.Name); ok {
+				location := setting.AppSubURL + appProxyPrefix + "/" + moved.OwnerName + "/" + moved.Name + appRelativePath(requestPath(ctx.Req))
+				if ctx.Req.URL.RawQuery != "" {
+					location += "?" + ctx.Req.URL.RawQuery
+				}
+				ctx.Redirect(location, http.StatusPermanentRedirect)
+				return
+			}
+		}
 		appUnavailable(ctx, http.StatusNotFound, AppRef{Owner: owner, Repo: repo}, "company.appgate.not_found", "", nil)
 		return
 	}
@@ -182,7 +197,7 @@ func checkAppAccess(ctx *gitea_context.Context, ref AppRef, settings AppSettings
 			return false
 		}
 		if mode == AccessOrg && !ctx.Doer.IsAdmin {
-			member, err := isOrgMember(ctx, ref.Owner, ctx.Doer.ID)
+			member, err := isProjectMember(ctx, ref, ctx.Doer)
 			if err != nil {
 				// fail-closed: this is an access decision, and "the database was
 				// briefly unavailable" must not read as "let them in".
@@ -192,8 +207,8 @@ func checkAppAccess(ctx *gitea_context.Context, ref AppRef, settings AppSettings
 				return false
 			}
 			if !member {
-				RecordAccess(ctx, ref, http.StatusForbidden, "not a member of "+ref.Owner)
-				appUnavailable(ctx, http.StatusForbidden, ref, "company.appgate.members_only", "company.appgate.members_only.detail", ref.Owner)
+				RecordAccess(ctx, ref, http.StatusForbidden, "not a member of "+ref.Owner+"/"+ref.Repo)
+				appUnavailable(ctx, http.StatusForbidden, ref, "company.appgate.members_only", "company.appgate.members_only.detail", ref.Repo)
 				return false
 			}
 		}
@@ -226,28 +241,20 @@ func redirectToLogin(ctx *gitea_context.Context) {
 	ctx.Redirect(setting.AppSubURL + "/user/login?redirect_to=" + url.QueryEscape(ctx.Req.URL.RequestURI()))
 }
 
-// orgIDCache maps an organization name to its id. Membership itself is never
-// cached — revoking someone's access has to take effect on their next
-// request, not when a cache happens to expire. Names are stable enough to
-// cache because renaming an organization changes the app's URL anyway.
-var orgIDCache sync.Map // lowercased org name -> int64
-
-func isOrgMember(ctx context.Context, orgName string, userID int64) (bool, error) {
-	key := strings.ToLower(orgName)
-	orgID, ok := orgIDCache.Load(key)
-	if !ok {
-		org, err := organization.GetOrgByName(ctx, orgName)
-		if err != nil {
-			return false, err
-		}
-		orgID = org.ID
-		orgIDCache.Store(key, orgID)
+// isProjectMember is whether userID may see the project behind an app — its
+// owner and members, and anybody else Gitea already lets read it. Never
+// cached: revoking someone's access has to take effect on their next
+// request, not when a cache happens to expire.
+func isProjectMember(ctx context.Context, ref AppRef, doer *user_model.User) (bool, error) {
+	repo, err := repo_model.GetRepositoryByOwnerAndName(ctx, ref.Owner, ref.Repo)
+	if err != nil {
+		return false, err
 	}
-	id, ok := orgID.(int64)
-	if !ok {
-		return false, errors.New("cached organization id had the wrong type")
+	perm, err := access_model.GetDoerRepoPermission(ctx, repo, doer)
+	if err != nil {
+		return false, err
 	}
-	return organization.IsOrganizationMember(ctx, id, userID)
+	return perm.CanRead(unit.TypeCode), nil
 }
 
 // proxyCache holds one ReverseProxy per app. Building one per request would

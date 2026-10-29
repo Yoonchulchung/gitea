@@ -29,11 +29,7 @@ type SearchResult struct {
 	LowerName    string   // LowerName
 	Avatar       []byte
 	Groups       container.Set[string]
-	Extra        map[string]string // ExtraAttributes, keyed in lower case
 }
-
-// ExtraAttributes names attributes read at login beyond the configured ones; see docs/company/patches.md
-var ExtraAttributes func() []string
 
 func (source *Source) sanitizedUserQuery(username string) (string, bool) {
 	// See http://tools.ietf.org/search/rfc4515
@@ -351,12 +347,6 @@ func realSearchEntry(source *Source, name, passwd string, directBind bool) *Sear
 		attribs = append(attribs, source.AttributeAvatar)
 	}
 
-	var extra []string
-	if ExtraAttributes != nil {
-		extra = ExtraAttributes()
-		attribs = append(attribs, extra...)
-	}
-
 	log.Trace("Fetching attributes '%v', '%v', '%v', '%v', '%v', '%v', '%v' with filter '%s' and base '%s'", source.AttributeUsername, source.AttributeName, source.AttributeSurname, source.AttributeMail, source.AttributeSSHPublicKey, source.AttributeAvatar, source.UserUID, userFilter, userDN)
 	search := ldap.NewSearchRequest(
 		userDN, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false, userFilter,
@@ -418,15 +408,6 @@ func realSearchEntry(source *Source, name, passwd string, directBind bool) *Sear
 		}
 	}
 
-	extraValues := make(map[string]string, len(extra))
-	for _, attr := range sr.Entries[0].Attributes {
-		for _, want := range extra {
-			if strings.EqualFold(attr.Name, want) && len(attr.Values) > 0 {
-				extraValues[strings.ToLower(want)] = attr.Values[0]
-			}
-		}
-	}
-
 	return &SearchResult{
 		LowerName:    strings.ToLower(username),
 		Username:     username,
@@ -438,7 +419,6 @@ func realSearchEntry(source *Source, name, passwd string, directBind bool) *Sear
 		IsRestricted: isRestricted,
 		Avatar:       Avatar,
 		Groups:       usersLdapGroups,
-		Extra:        extraValues,
 	}
 }
 

@@ -29,7 +29,7 @@
 									{{range .Requests}}{{if .Reason}}<span class="text-grey tw-text-12 tw-block">{{ctx.Locale.Tr "company.policy.pending_reason"}}: {{.Reason}}</span>{{break}}{{end}}{{end}}
 								</td>
 								<td class="tw-w-32">
-									<a class="ui tiny basic button" href="{{AppSubUrl}}/org/{{.Owner}}/dashboard/deploy-requests/{{.PRID}}">{{ctx.Locale.Tr "company.policy.pending_review"}}</a>
+									<a class="ui tiny basic button" href="{{AppSubUrl}}/company/deploy-requests/{{.PRID}}">{{ctx.Locale.Tr "company.policy.pending_review"}}</a>
 								</td>
 							</tr>
 						{{end}}

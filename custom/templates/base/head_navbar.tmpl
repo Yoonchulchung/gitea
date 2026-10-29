@@ -5,8 +5,8 @@
 	entry point, and neither concept is relevant to them.
 	Signed-in users (including admins) are otherwise untouched — see
 	docs/company/repo-ui.md for why admins keep full native access.
-	Added: a site-wide "Deploy Requests" link, right of the logo, for anyone
-	with exactly one department (company/gate.go sets the data value).
+	Added: a site-wide "Deploy Requests" link, right of the logo, for every
+	non-admin (company/gate.go sets the data value).
 	Keep this in sync with the upstream file; diff it on every Gitea
 	upgrade — see docs/company/architecture.md on custom/templates drift.
 -->
@@ -20,7 +20,7 @@
 	<div class="navbar-list navbar-left">
 		{{if .CompanyDeployRequestsLink}}
 			{{/* set by company/gate.go, GateNonAdminUI — see docs/company/architecture.md */}}
-			<a class="item" href="{{.CompanyDeployRequestsLink}}">Deploy Requests</a>
+			<a class="item" href="{{.CompanyDeployRequestsLink}}">{{ctx.Locale.Tr "company.deploy_requests.title"}}</a>
 		{{end}}
 		{{if and .IsSigned .MustChangePassword}}
 			{{/* No links */}}
@@ -81,6 +81,9 @@
 					<span class="only-mobile">{{ctx.Locale.Tr "create_new"}}</span>
 				</span>
 				<div class="menu">
+					<a class="item" href="{{AppSubUrl}}/company/projects/new">
+						{{svg "octicon-plus"}} {{ctx.Locale.Tr "company.project.new_title"}}
+					</a>
 					<a class="item" href="{{AppSubUrl}}/repo/create">
 						{{svg "octicon-plus"}} {{ctx.Locale.Tr "new_repo"}}
 					</a>
@@ -97,10 +100,10 @@
 				</div><!-- end content create new menu -->
 			</div><!-- end dropdown menu create new -->
 			{{else if .CompanyNewRepoLink}}
-			{{/* non-admins: "+" goes straight to their department's repo-create
-			     page — no dropdown, since it was the only real option anyway.
-			     Set by company/gate.go — see docs/company/architecture.md. */}}
-			<a class="item" href="{{.CompanyNewRepoLink}}" data-tooltip-content="{{ctx.Locale.Tr "new_repo"}}">
+			{{/* non-admins: "+" goes straight to the new-project page — no
+			     dropdown, since it was the only real option anyway.
+			     Set by company/gate.go — see docs/company/projects.md. */}}
+			<a class="item" href="{{.CompanyNewRepoLink}}" data-tooltip-content="{{ctx.Locale.Tr "company.project.new_title"}}">
 				{{svg "octicon-plus"}}
 			</a>
 			{{end}}
@@ -165,12 +168,7 @@
 				</div><!-- end content avatar menu -->
 			</div><!-- end dropdown avatar menu -->
 		{{else}}
-			{{if .ShowRegistrationButton}}
-				<a class="item{{if .PageIsSignUp}} active{{end}}" href="{{AppSubUrl}}/user/sign_up">
-					{{svg "octicon-person"}}
-					<span class="tw-ml-1">{{ctx.Locale.Tr "register"}}</span>
-				</a>
-			{{end}}
+			{{/* no "Register": accounts come from the company directory */}}
 			<a class="item{{if .PageIsSignIn}} active{{end}}" rel="nofollow" href="{{AppSubUrl}}/user/login">
 				{{svg "octicon-sign-in"}}
 				<span class="tw-ml-1">{{ctx.Locale.Tr "sign_in"}}</span>

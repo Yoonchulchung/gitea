@@ -55,7 +55,6 @@ func TestAuthLDAP(t *testing.T) {
 	t.Run("PreventInvalidGroupTeamMap", testLDAPPreventInvalidGroupTeamMap)
 	t.Run("AuthChange", testLDAPAuthChange)
 	t.Run("EmailSignin", testLDAPEmailSignin)
-	t.Run("DirectoryDepartment", testLDAPDirectoryDepartment)
 
 	hasRealServer, _ := strconv.ParseBool(os.Getenv("TEST_LDAP"))
 	if hasRealServer {
@@ -548,47 +547,4 @@ func testLDAPEmailSignin(t *testing.T) {
 	assert.Equal(t, u.UserName, htmlDoc.GetInputValueByName("name"))
 	assert.Equal(t, u.FullName, htmlDoc.GetInputValueByName("full_name"))
 	assert.Equal(t, u.Email, htmlDoc.Find("#signed-user-email").Text())
-}
-
-// The department the directory names is where a person lands, created on
-// first sight; a move in the directory moves them at the next login.
-func testLDAPDirectoryDepartment(t *testing.T) {
-	defer tests.PrintCurrentTest(t)()
-	te := ldapTestEnv{
-		gitLDAPUsers: []ldapUser{{UserName: "dept1", Password: "xx", FullName: "dept user", Email: "dept1@gitea.com"}},
-		serverHost:   "mock-host",
-	}
-	department := "전장개발팀"
-	defer test.MockVariableValue(&ldap.MockedSearchEntry, func(source *ldap.Source, name, passwd string, directBind bool) *ldap.SearchResult {
-		u := te.gitLDAPUsers[0]
-		if name != u.Email || passwd != u.Password {
-			return nil
-		}
-		return &ldap.SearchResult{Username: u.UserName, Mail: u.Email, LowerName: u.UserName, Extra: map[string]string{"department": department}}
-	})()
-	defer tests.PrepareTestEnv(t)()
-	te.setupAuthSource(t, te.buildAuthSourcePayload(nil))
-
-	admin := loginUser(t, "user1")
-	admin.MakeRequest(t, NewRequestWithValues(t, "POST", "/-/admin/company-settings", map[string]string{
-		"ldap_department_attribute": "department",
-	}), http.StatusSeeOther)
-
-	loginUserWithPassword(t, "dept1@gitea.com", "xx")
-	u := unittest.AssertExistsAndLoadBean(t, &user_model.User{Name: "dept1"})
-	first := unittest.AssertExistsAndLoadBean(t, &user_model.User{FullName: department, Type: user_model.UserTypeOrganization})
-	assert.True(t, strings.HasPrefix(first.Name, "dept-"), "a Korean name cannot be an organization name")
-	isMember, err := organization.IsOrganizationMember(t.Context(), first.ID, u.ID)
-	require.NoError(t, err)
-	assert.True(t, isMember)
-
-	department = "Sales"
-	loginUserWithPassword(t, "dept1@gitea.com", "xx")
-	second := unittest.AssertExistsAndLoadBean(t, &user_model.User{Name: "Sales", Type: user_model.UserTypeOrganization})
-	isMember, err = organization.IsOrganizationMember(t.Context(), second.ID, u.ID)
-	require.NoError(t, err)
-	assert.True(t, isMember)
-	isMember, err = organization.IsOrganizationMember(t.Context(), first.ID, u.ID)
-	require.NoError(t, err)
-	assert.False(t, isMember, "moved out of the department the directory no longer names")
 }
