@@ -800,6 +800,7 @@ func DeployPost(ctx *context.Context) {
 	files = append(files, buildRequestLogFile(ctx, central, deptRepo.OwnerName, deptRepo.Name,
 		requestLogEntry(ctx.Locale, ctx.Doer.Name, title, body, requests, time.Now())))
 
+	deployedBefore := appOnCentral(ctx, deptRepo.OwnerName, deptRepo.Name)
 	newBranch := deployBranchName(deptRepo.OwnerName, deptRepo.Name, ctx.Doer.ID)
 	if _, err := files_service.ChangeRepoFiles(ctx, central, centralOwner, &files_service.ChangeRepoFilesOptions{
 		OldBranch: central.DefaultBranch,
@@ -876,7 +877,11 @@ func DeployPost(ctx *context.Context) {
 	// never block or fail the actual submission — see postAIReviewComment.
 	// Both run on their own, not on this request: a reply that takes a while, or
 	// a browser that leaves, must not cancel the review it started.
-	ScheduleDeployAIReview(central, centralOwner, pullIssue.PullRequest.ID, deptRepo.OwnerName, deptRepo.Name)
+	if policy := currentDeployApprovalPolicy(ctx); !policy.needsApproval(deployedBefore, requests) {
+		ScheduleDeployWithoutApproval(central, policy.WaivedBy, pullIssue.PullRequest.ID, deptRepo.OwnerName, deptRepo.Name)
+	} else {
+		ScheduleDeployAIReview(central, centralOwner, pullIssue.PullRequest.ID, deptRepo.OwnerName, deptRepo.Name)
+	}
 	if run, fresh := startCodeReview(pullIssue.PullRequest.ID, ""); fresh {
 		go postAIReviewComment(run, pullIssue.PullRequest.ID, central, centralOwner, pullIssue, newBranch, deptRepo.FullName(), reviewContext)
 	}

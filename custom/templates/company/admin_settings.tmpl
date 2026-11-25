@@ -51,6 +51,35 @@
 				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.ai_admin_note"}}</p>
 
 
+				<div class="ui divider"></div>
+
+				<h5>{{ctx.Locale.Tr "company.adminsettings.approval_header"}}</h5>
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.approval_explain"}}</p>
+				<div class="field">
+					<div class="ui checkbox">
+						<input id="approval_every_deploy" type="checkbox" name="approval_every_deploy" value="true" {{if .ApprovalEveryDeploy}}checked{{end}}
+						       data-company-disables="#package_approval, #network_approval">
+						<label for="approval_every_deploy">{{ctx.Locale.Tr "company.adminsettings.approval_every_deploy"}}</label>
+					</div>
+				</div>
+				<p class="text-grey tw-text-13 tw-mt-1">
+					{{if .ApprovalWaivedBy}}{{ctx.Locale.Tr "company.adminsettings.approval_waived_by" .ApprovalWaivedBy.Name}}
+					{{else}}{{ctx.Locale.Tr "company.adminsettings.approval_every_deploy_explain"}}{{end}}
+				</p>
+				<div class="field tw-ml-4">
+					<div class="ui checkbox">
+						<input id="package_approval" type="checkbox" name="package_approval" value="true" {{if .PackageApproval}}checked{{end}} {{if .ApprovalEveryDeploy}}disabled{{end}}>
+						<label for="package_approval">{{ctx.Locale.Tr "company.adminsettings.approval_packages"}}</label>
+					</div>
+				</div>
+				<div class="field tw-ml-4">
+					<div class="ui checkbox">
+						<input id="network_approval" type="checkbox" name="network_approval" value="true" {{if .NetworkApproval}}checked{{end}} {{if .ApprovalEveryDeploy}}disabled{{end}}>
+						<label for="network_approval">{{ctx.Locale.Tr "company.adminsettings.approval_network"}}</label>
+					</div>
+				</div>
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.approval_other_note"}}</p>
+
 				<button class="ui primary button tw-mt-3">{{ctx.Locale.Tr "company.adminsettings.save"}}</button>
 			</form>
 		</div>

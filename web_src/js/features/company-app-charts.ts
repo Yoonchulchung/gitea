@@ -438,6 +438,18 @@ export function initCompanyDependentToggles() {
     parent.addEventListener('change', sync);
     sync();
   }
+  // The inverse: the children decide nothing while the parent is checked.
+  for (const parent of document.querySelectorAll<HTMLInputElement>('input[data-company-disables]')) {
+    const children = document.querySelectorAll<HTMLInputElement>(parent.getAttribute('data-company-disables')!);
+    const sync = () => {
+      for (const child of children) {
+        child.disabled = parent.checked;
+        child.closest('.field')?.classList.toggle('disabled', child.disabled);
+      }
+    };
+    parent.addEventListener('change', sync);
+    sync();
+  }
 }
 
 export function initCompanyConfirmForms() {

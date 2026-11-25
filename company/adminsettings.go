@@ -51,6 +51,9 @@ var (
 	helpURL                 string
 	autoApproveBy           int64
 	autoApproveDelaySeconds = -1
+	approvalWaivedBy        int64
+	packageApproval         bool
+	networkApproval         bool
 )
 
 func loadPlatformSettings(ctx context.Context) {
@@ -81,6 +84,9 @@ func loadPlatformSettings(ctx context.Context) {
 	helpURL = all[settingKeyHelpURL]
 	autoApproveBy, _ = strconv.ParseInt(all[settingKeyAutoApproveBy], 10, 64)
 	autoApproveDelaySeconds = parseAutoApproveDelay(all[settingKeyAutoApproveDelay])
+	approvalWaivedBy, _ = strconv.ParseInt(all[settingKeyApprovalWaivedBy], 10, 64)
+	packageApproval = all[settingKeyPackageApproval] == "true"
+	networkApproval = all[settingKeyNetworkApproval] == "true"
 	platformSettingsLoaded = true
 }
 
@@ -298,6 +304,11 @@ func AdminSettings(ctx *gitea_context.Context) {
 	ctx.Data["SupportEmail"] = SupportEmail(ctx)
 	ctx.Data["HelpURL"] = HelpURL(ctx)
 	ctx.Data["Switches"] = PlatformSwitches(ctx)
+	policy := currentDeployApprovalPolicy(ctx)
+	ctx.Data["ApprovalEveryDeploy"] = policy.WaivedBy == nil
+	ctx.Data["ApprovalWaivedBy"] = policy.WaivedBy
+	ctx.Data["PackageApproval"] = policy.PackageApproval
+	ctx.Data["NetworkApproval"] = policy.NetworkApproval
 	ctx.HTML(http.StatusOK, tplAdminSettings)
 }
 
@@ -339,6 +350,17 @@ func AdminSettingsPost(ctx *gitea_context.Context) {
 	// somebody made. Left alone instead, so turning AI back on restores it.
 	if usersEnabled == "true" {
 		settings[settingKeyAnthropicVisible] = visible
+	}
+	if ctx.FormBool("approval_every_deploy") {
+		settings[settingKeyApprovalWaivedBy] = ""
+	} else {
+		// Kept when already waived, so saving an unrelated field does not move the merges onto whoever saved it.
+		if waivedBy := currentDeployApprovalPolicy(ctx).WaivedBy; waivedBy == nil {
+			settings[settingKeyApprovalWaivedBy] = strconv.FormatInt(ctx.Doer.ID, 10)
+		}
+		// Disabled, and so not posted, while every deploy is approved anyway.
+		settings[settingKeyPackageApproval] = strconv.FormatBool(ctx.FormBool("package_approval"))
+		settings[settingKeyNetworkApproval] = strconv.FormatBool(ctx.FormBool("network_approval"))
 	}
 
 	if err := system_model.SetSettings(ctx, settings); err != nil {

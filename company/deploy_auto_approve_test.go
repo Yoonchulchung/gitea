@@ -7,8 +7,25 @@ import (
 	"regexp"
 	"testing"
 
+	user_model "gitea.dev/models/user"
+
 	"github.com/stretchr/testify/assert"
 )
+
+func TestDeployApprovalPolicyNeedsApproval(t *testing.T) {
+	pkg := []PermissionRequest{{Kind: PermKindPackage, Value: "pandas"}}
+	host := []PermissionRequest{{Kind: PermKindNetwork, Value: "erp.internal"}}
+	waived := deployApprovalPolicy{WaivedBy: &user_model.User{ID: 1}}
+
+	assert.True(t, deployApprovalPolicy{}.needsApproval(true, nil))
+	assert.True(t, waived.needsApproval(false, nil), "an app's first deploy")
+	assert.False(t, waived.needsApproval(true, nil))
+	assert.False(t, waived.needsApproval(true, append(pkg, host...)))
+	assert.True(t, deployApprovalPolicy{WaivedBy: waived.WaivedBy, PackageApproval: true}.needsApproval(true, pkg))
+	assert.False(t, deployApprovalPolicy{WaivedBy: waived.WaivedBy, PackageApproval: true}.needsApproval(true, host))
+	assert.True(t, deployApprovalPolicy{WaivedBy: waived.WaivedBy, NetworkApproval: true}.needsApproval(true, host))
+	assert.True(t, waived.needsApproval(true, []PermissionRequest{{Kind: PermKindMemory, Value: "1024"}}))
+}
 
 func TestAutoApproveBlocker(t *testing.T) {
 	ok := autoApproveFacts{StartupState: "passed", DiffChars: 100}
