@@ -102,6 +102,7 @@ func Workspace(ctx *context.Context) {
 		ctx.Data["AIProvider"] = cfg.provider
 	}
 	ctx.Data["UploadMaxMB"] = workspaceUploadMaxBytes >> 20
+	ctx.Data["PackagesNeedApproval"] = packagesNeedApproval(ctx)
 	ctx.Data["SourceMaxMB"] = maxSourceBytes >> 20
 	ctx.HTML(http.StatusOK, tplWorkspace)
 }

@@ -4,10 +4,39 @@
 	<div class="ui container">
 		{{template "base/alert" .}}
 
-		<h2 class="tw-flex tw-items-center tw-gap-3">
-			{{ctx.Locale.Tr "company.app.title"}}
-			<span class="company-app-state {{.App.Actual}}">{{ctx.Locale.Tr .StatusLabel}}</span>
-		</h2>
+		<div class="company-app-titlebar">
+			{{template "company/app_title"}}
+			{{/* What can be done to the app itself. Deploying is the header's button. */}}
+			{{if .CanControl}}
+				<div class="flex-text-inline tw-flex-wrap">
+					{{if eq .App.Actual "suspended"}}
+						{{/* No start button: an app an administrator stopped stays stopped. */}}
+						<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.app.suspended_note"}}</span>
+					{{else if eq .App.Actual "running"}}
+						<form method="post" action="{{.AppLink}}/restart">{{.CsrfTokenHtml}}<button class="ui small basic button">{{ctx.Locale.Tr "company.app.restart"}}</button></form>
+						<form method="post" action="{{.AppLink}}/stop" data-company-confirm="{{ctx.Locale.Tr "company.app.stop_confirm"}}">
+							{{.CsrfTokenHtml}}<button class="ui small basic button">{{ctx.Locale.Tr "company.app.stop"}}</button>
+						</form>
+					{{else if .App.IsBusy}}
+						<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.app.busy_note"}}</span>
+					{{else if .App.HasRelease}}
+						<form method="post" action="{{.AppLink}}/start">{{.CsrfTokenHtml}}<button class="ui small primary button">{{ctx.Locale.Tr "company.app.start"}}</button></form>
+					{{end}}
+					{{if .App.SHA}}
+						<form method="post" action="{{.AppLink}}/redeploy">
+							{{.CsrfTokenHtml}}<button class="ui small basic button">{{ctx.Locale.Tr "company.app.redeploy"}}</button>
+						</form>
+					{{end}}
+					{{if .Previous.Exists}}
+						<form method="post" action="{{.AppLink}}/rollback"
+							data-company-confirm="{{ctx.Locale.Tr "company.app.rollback_confirm" (Iif .Previous.SHA (ShortSha .Previous.SHA) (ctx.Locale.Tr "company.app.rollback_prior"))}}">
+							{{.CsrfTokenHtml}}<button class="ui small basic button">{{ctx.Locale.Tr "company.app.rollback"}}</button>
+						</form>
+					{{end}}
+				</div>
+			{{end}}
+		</div>
+		{{template "company/app_tabs"}}
 
 		{{/* The cause panel is absent when nothing is wrong. A panel that always
 		     says something is a panel nobody reads on the day it matters — see
@@ -50,62 +79,12 @@
 				<a class="ui small primary button tw-mt-2" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_approval"}}</a>
 			</div>
 		{{end}}
-		<div class="ui segment">
-			<div class="tw-flex tw-items-center tw-gap-3 tw-flex-wrap">
-				<a class="ui basic button" href="{{.AppURL}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} {{ctx.Locale.Tr "company.app.open"}}</a>
-				{{if .CanControl}}<a class="ui basic button" href="{{.AppLink}}/logs">{{svg "octicon-log" 14}} {{ctx.Locale.Tr "company.app.logs"}}</a>{{end}}
-				{{if .CanControl}}<a class="ui basic button" href="{{.AppLink}}/history">{{svg "octicon-history" 14}} {{ctx.Locale.Tr "company.app.deploy_history"}}</a>{{end}}
-				{{if .CanControl}}<a class="ui basic button" href="{{.AppLink}}/data">{{svg "octicon-database" 14}} {{ctx.Locale.Tr "company.data.title"}}</a>{{end}}
-				<div class="tw-flex-1"></div>
-				{{if .CanControl}}
-					{{/* Leaving the platform is a request like arriving was; the
-					     repository cannot be deleted before it is approved. See
-					     company/appremoval.go. */}}
-					{{if or .App.HasRelease .OnCentral}}
-						<form method="post" action="{{.AppLink}}/remove-request" data-company-confirm="{{ctx.Locale.Tr "company.app.remove_request_confirm"}}">
-							{{.CsrfTokenHtml}}<button class="ui basic red button">{{ctx.Locale.Tr "company.app.remove_request"}}</button>
-						</form>
-					{{end}}
-					{{if eq .App.Actual "suspended"}}
-						{{/* Deliberately no start button: an app an administrator stopped
-						     stays stopped, or protecting the platform would mean nothing.
-						     The reason is in the message above so they know who to ask. */}}
-						<span class="text-grey">{{ctx.Locale.Tr "company.app.suspended_note"}}</span>
-					{{else if eq .App.Actual "running"}}
-						<form method="post" action="{{.AppLink}}/restart">{{.CsrfTokenHtml}}<button class="ui button">{{ctx.Locale.Tr "company.app.restart"}}</button></form>
-						<form method="post" action="{{.AppLink}}/stop" data-company-confirm="{{ctx.Locale.Tr "company.app.stop_confirm"}}">
-							{{.CsrfTokenHtml}}<button class="ui button">{{ctx.Locale.Tr "company.app.stop"}}</button>
-						</form>
-					{{else if .App.IsBusy}}
-						{{/* A deploy is in progress: a start button here would be
-						     refused every time it was pressed. */}}
-						<span class="text-grey">{{ctx.Locale.Tr "company.app.busy_note"}}</span>
-					{{else if .App.HasRelease}}
-						<form method="post" action="{{.AppLink}}/start">{{.CsrfTokenHtml}}<button class="ui primary button">{{ctx.Locale.Tr "company.app.start"}}</button></form>
-					{{else}}
-						{{/* Nothing built yet — a start button here could only fail. */}}
-						<a class="ui primary button" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_deploy"}}</a>
-					{{end}}
-					{{if .App.SHA}}
-						<form method="post" action="{{.AppLink}}/redeploy">
-							{{.CsrfTokenHtml}}<button class="ui basic button">{{ctx.Locale.Tr "company.app.redeploy"}}</button>
-						</form>
-					{{end}}
-					{{/* Only offered when there is somewhere to go: a button that can
-					     only fail is worse than no button. */}}
-					{{if .Previous.Exists}}
-						<form method="post" action="{{.AppLink}}/rollback"
-							data-company-confirm="{{ctx.Locale.Tr "company.app.rollback_confirm" (Iif .Previous.SHA (ShortSha .Previous.SHA) (ctx.Locale.Tr "company.app.rollback_prior"))}}">
-							{{.CsrfTokenHtml}}<button class="ui basic button">{{ctx.Locale.Tr "company.app.rollback"}}</button>
-						</form>
-					{{end}}
-				{{end}}
-			</div>
-			{{/* Which version, and since when. Without it "이전 버전으로" is a
-			     decision made blind — read from the release on disk, not from the
-			     deploy that was intended, so it stays right after a rollback. */}}
+		<div class="ui segment company-app-overview">
+			{{if not .App.HasRelease}}
+				<div class="text-grey">{{ctx.Locale.Tr "company.app.not_deployed_yet"}}</div>
+			{{end}}
 			{{if .Running.Exists}}
-				<div class="tw-mt-3 tw-pt-3 tw-border-t tw-text-13 tw-flex tw-gap-6 tw-flex-wrap">
+				<div class="tw-text-13 tw-flex tw-gap-6 tw-flex-wrap">
 					<span>
 						<span class="text-grey">{{ctx.Locale.Tr "company.app.running_version"}}</span>
 						<span class="tw-font-mono tw-ml-2">{{if .Running.SHA}}{{ShortSha .Running.SHA}}{{else}}{{ctx.Locale.Tr "company.app.version_unknown"}}{{end}}</span>
@@ -123,7 +102,7 @@
 				</div>
 			{{end}}
 			{{if .DataUsage}}
-				<div class="tw-mt-3 tw-pt-3 tw-border-t tw-text-13">
+				<div class="{{if or .Running.Exists (not .App.HasRelease)}}tw-mt-3 tw-pt-3 tw-border-t tw-border-secondary {{end}}tw-text-13">
 					<div class="tw-flex tw-items-center tw-gap-3">
 						<span class="text-grey">{{ctx.Locale.Tr "company.app.data_usage"}}</span>
 						<span>{{ctx.Locale.Tr "company.app.data_of" (FormatByteSize .DataUsage.Bytes) (FormatByteSize .DataUsage.QuotaBytes)}}</span>
@@ -144,9 +123,143 @@
 				</div>
 			{{end}}
 		</div>
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.app.access_header"}}</h4>
+		<div class="ui attached segment">
+			<p class="text-grey tw-text-13">
+				{{ctx.Locale.Tr "company.app.access_explain"}}
+			</p>
+			{{/* Each option says what happens, not what it is called: the person
+			     choosing is deciding an outcome, not picking a keyword. */}}
+			<form method="post" action="{{.AppLink}}/access" class="ui form">
+				{{.CsrfTokenHtml}}
+				{{range .AccessOptions}}
+					<div class="tw-py-2">
+						<label class="tw-flex tw-items-baseline tw-gap-2">
+							<input type="radio" name="access" value="{{.Value}}"
+								{{if .Selected}}checked{{end}}
+								{{if or .NeedsRequest (not $.CanControl)}}disabled{{end}}>
+							<span>
+								<strong>{{ctx.Locale.Tr .Label}}</strong>
+								<span class="text-grey tw-ml-2">— {{ctx.Locale.Tr .Explain}}</span>
+								{{if .NeedsRequest}}
+									<a class="tw-ml-2 tw-text-13" href="{{$.DeployLink}}">{{ctx.Locale.Tr "company.app.access_needs_request"}}</a>
+								{{end}}
+							</span>
+						</label>
+					</div>
+				{{end}}
+				{{if .CanControl}}<button class="ui primary button tw-mt-2">{{ctx.Locale.Tr "company.app.apply"}}</button>{{end}}
+			</form>
+		</div>
 
-		<h3>{{ctx.Locale.Tr "company.app.env_header"}}</h3>
-		<div class="ui segment">
+		{{/* Nothing is requested while deploys need no approval. */}}
+		{{if not .CompanyQuickDeploy}}
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.app.perm_header"}}</h4>
+		<div class="ui attached segment">
+			{{/* Denied and pending first in the reader's eye, because those are the
+			     lines that answer "why doesn't my app work" — a panel listing only
+			     what was approved leaves that question with no answer on screen.
+			     Same rows as the repository sidebar (company/app_sidebar.go). */}}
+			<table class="ui very basic table tw-text-13">
+				<tbody>
+					{{/* Label/Value/Reason are locale keys; ValueText/ReasonText are
+					     data — a host, a package list — rendered verbatim (escaped). */}}
+					{{range .PermissionRows}}{{if ne .Label "company.perm.access"}}
+						<tr>
+							<td class="tw-w-1/6">{{ctx.Locale.Tr .Label}}</td>
+							<td class="tw-w-1/6">
+								{{if eq .State "allowed"}}<span class="company-app-state running">{{ctx.Locale.Tr "company.app.perm_allowed"}}</span>
+								{{else if eq .State "pending"}}<span class="company-app-state building">{{ctx.Locale.Tr "company.app.perm_pending"}}</span>
+								{{else}}<span class="company-app-state failed">{{ctx.Locale.Tr "company.app.perm_denied"}}</span>{{end}}
+							</td>
+							<td>
+								{{if .Value}}{{ctx.Locale.Tr .Value}}{{end}}{{.ValueText}}{{if .More}} <a href="#app-packages">{{ctx.Locale.Tr "company.perm.more" .More}}</a>{{end}}
+								{{if or .Reason .ReasonText}}<span class="text-grey tw-text-12 tw-block">{{if .Reason}}{{ctx.Locale.Tr .Reason}}{{end}} {{.ReasonText}}</span>{{end}}
+							</td>
+							{{/* Narrowing applies immediately, so this needs nobody's
+							     approval — see docs/company/permission-lifecycle.md. */}}
+							<td class="tw-text-right">
+								{{if and .RevokeKind $.CanControl}}
+									<form method="post" action="{{$.AppLink}}/permissions/revoke" class="tw-inline"
+									      data-company-confirm="{{ctx.Locale.Tr "company.app.revoke_confirm"}}">
+										{{$.CsrfTokenHtml}}
+										<input type="hidden" name="kind" value="{{.RevokeKind}}">
+										<input type="hidden" name="value" value="{{.RevokeValue}}">
+										<button type="submit" class="ui tiny basic button">{{ctx.Locale.Tr "company.app.revoke"}}</button>
+									</form>
+								{{end}}
+							</td>
+						</tr>
+					{{end}}{{end}}
+				</tbody>
+			</table>
+
+			{{/* Every package the app may install, by where it comes from: the
+			     platform's own stack is everyone's, the approvals are this app's. */}}
+			<h4 class="ui top attached header tw-mt-4" id="app-packages">{{svg "octicon-package" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.adminapp.packages_header"}}</h4>
+			<div class="ui attached segment">
+				<div class="tw-mb-2">
+					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_base"}}</span>
+					<div class="tw-mt-1">{{range .BasePackages}}<span class="ui basic label tw-mr-1 tw-mb-1">{{.}}</span>{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_none"}}</span>{{end}}</div>
+				</div>
+				{{if .SharedAllow}}
+					<div class="tw-mb-2">
+						<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_shared"}}</span>
+						<div class="tw-mt-1">{{range .SharedAllow}}<span class="ui basic label tw-mr-1 tw-mb-1">{{.}}</span>{{end}}</div>
+					</div>
+				{{end}}
+				<div>
+					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_approved"}}</span>
+					<div class="tw-mt-1">
+						{{range .ApprovedExtra}}
+							<span class="ui green basic label tw-mr-1 tw-mb-1">{{.}}
+								{{if $.CanControl}}
+									<form method="post" action="{{$.AppLink}}/permissions/revoke" class="tw-inline company-pkg-revoke"
+									      data-company-confirm="{{ctx.Locale.Tr "company.app.revoke_pkg_confirm" .}}">
+										{{$.CsrfTokenHtml}}
+										<input type="hidden" name="kind" value="package">
+										<input type="hidden" name="value" value="{{.}}">
+										<button type="submit" title="{{ctx.Locale.Tr "company.app.revoke"}}">&times;</button>
+									</form>
+								{{end}}
+							</span>
+						{{else}}
+							<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_approved_empty"}}</span>
+						{{end}}
+					</div>
+				</div>
+			</div>
+
+			{{if .PendingRequests}}
+				{{/* "Nobody asked" and "somebody asked and an admin has not decided"
+				     are different answers, and a screen that cannot tell them apart
+				     sends the department to ask an administrator either way. */}}
+				<div class="ui info message tw-mt-2">
+					<div class="header">{{ctx.Locale.Tr "company.app.pending_header"}}</div>
+					<table class="ui very basic table tw-text-13 tw-mt-1">
+						<tbody>
+							{{/* The label comes from Kind, not from the stored Label: the
+							     record was written in whichever language the form rendered
+							     in, and Kind is the stable enum underneath it. */}}
+							{{range .PendingRequests}}
+								<tr>
+									<td class="tw-w-1/4">{{ctx.Locale.Tr (print "company.perm.kind." .Kind)}}</td>
+									<td>{{.Detail}}{{if .Reason}}<span class="text-grey tw-text-12 tw-block">{{ctx.Locale.Tr "company.app.pending_reason"}}: {{.Reason}}</span>{{end}}</td>
+								</tr>
+							{{end}}
+						</tbody>
+					</table>
+				</div>
+			{{else if not .CompanyQuickDeploy}}
+				{{/* With approval off there is nobody to ask; the request form is not offered. */}}
+				<a class="ui basic button tw-mt-2" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_permission"}}</a>
+			{{end}}
+		</div>
+
+		{{end}}
+
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.app.env_header"}}</h4>
+		<div class="ui attached segment">
 			<p class="text-grey tw-text-13">
 				{{ctx.Locale.Tr "company.app.env_explain"}}
 				<strong>{{ctx.Locale.Tr "company.app.env_restart_note"}}</strong>
@@ -234,144 +347,28 @@
 			{{end}}
 		</div>
 
-		<h3>{{ctx.Locale.Tr "company.app.perm_header"}}</h3>
-		<div class="ui segment">
-			{{/* Denied and pending first in the reader's eye, because those are the
-			     lines that answer "why doesn't my app work" — a panel listing only
-			     what was approved leaves that question with no answer on screen.
-			     Same rows as the repository sidebar (company/app_sidebar.go). */}}
-			<table class="ui very basic table tw-text-13">
-				<tbody>
-					{{/* Label/Value/Reason are locale keys; ValueText/ReasonText are
-					     data — a host, a package list — rendered verbatim (escaped). */}}
-					{{range .PermissionRows}}
-						<tr>
-							<td class="tw-w-1/6">{{ctx.Locale.Tr .Label}}</td>
-							<td class="tw-w-1/6">
-								{{if eq .State "allowed"}}<span class="company-app-state running">{{ctx.Locale.Tr "company.app.perm_allowed"}}</span>
-								{{else if eq .State "pending"}}<span class="company-app-state building">{{ctx.Locale.Tr "company.app.perm_pending"}}</span>
-								{{else}}<span class="company-app-state failed">{{ctx.Locale.Tr "company.app.perm_denied"}}</span>{{end}}
-							</td>
-							<td>
-								{{if .Value}}{{ctx.Locale.Tr .Value}}{{end}}{{.ValueText}}{{if .More}} <a href="#app-packages">{{ctx.Locale.Tr "company.perm.more" .More}}</a>{{end}}
-								{{if or .Reason .ReasonText}}<span class="text-grey tw-text-12 tw-block">{{if .Reason}}{{ctx.Locale.Tr .Reason}}{{end}} {{.ReasonText}}</span>{{end}}
-							</td>
-							{{/* Narrowing applies immediately, so this needs nobody's
-							     approval — see docs/company/permission-lifecycle.md. */}}
-							<td class="tw-text-right">
-								{{if and .RevokeKind $.CanControl}}
-									<form method="post" action="{{$.AppLink}}/permissions/revoke" class="tw-inline"
-									      data-company-confirm="{{ctx.Locale.Tr "company.app.revoke_confirm"}}">
-										{{$.CsrfTokenHtml}}
-										<input type="hidden" name="kind" value="{{.RevokeKind}}">
-										<input type="hidden" name="value" value="{{.RevokeValue}}">
-										<button type="submit" class="ui tiny basic button">{{ctx.Locale.Tr "company.app.revoke"}}</button>
-									</form>
-								{{end}}
-							</td>
-						</tr>
-					{{end}}
-				</tbody>
-			</table>
-
-			{{/* Every package the app may install, by where it comes from: the
-			     platform's own stack is everyone's, the approvals are this app's. */}}
-			<h4 class="ui top attached header tw-mt-4" id="app-packages">{{svg "octicon-package" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.adminapp.packages_header"}}</h4>
-			<div class="ui attached segment">
-				<div class="tw-mb-2">
-					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_base"}}</span>
-					<div class="tw-mt-1">{{range .BasePackages}}<span class="ui basic label tw-mr-1 tw-mb-1">{{.}}</span>{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_none"}}</span>{{end}}</div>
-				</div>
-				{{if .SharedAllow}}
-					<div class="tw-mb-2">
-						<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_shared"}}</span>
-						<div class="tw-mt-1">{{range .SharedAllow}}<span class="ui basic label tw-mr-1 tw-mb-1">{{.}}</span>{{end}}</div>
-					</div>
-				{{end}}
-				<div>
-					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_approved"}}</span>
-					<div class="tw-mt-1">
-						{{range .ApprovedExtra}}
-							<span class="ui green basic label tw-mr-1 tw-mb-1">{{.}}
-								{{if $.CanControl}}
-									<form method="post" action="{{$.AppLink}}/permissions/revoke" class="tw-inline company-pkg-revoke"
-									      data-company-confirm="{{ctx.Locale.Tr "company.app.revoke_pkg_confirm" .}}">
-										{{$.CsrfTokenHtml}}
-										<input type="hidden" name="kind" value="package">
-										<input type="hidden" name="value" value="{{.}}">
-										<button type="submit" title="{{ctx.Locale.Tr "company.app.revoke"}}">&times;</button>
-									</form>
-								{{end}}
-							</span>
-						{{else}}
-							<span class="text-grey">{{ctx.Locale.Tr "company.adminapp.pkg_approved_empty"}}</span>
-						{{end}}
-					</div>
-				</div>
-			</div>
-
-			{{if .PendingRequests}}
-				{{/* "Nobody asked" and "somebody asked and an admin has not decided"
-				     are different answers, and a screen that cannot tell them apart
-				     sends the department to ask an administrator either way. */}}
-				<div class="ui info message tw-mt-2">
-					<div class="header">{{ctx.Locale.Tr "company.app.pending_header"}}</div>
-					<table class="ui very basic table tw-text-13 tw-mt-1">
-						<tbody>
-							{{/* The label comes from Kind, not from the stored Label: the
-							     record was written in whichever language the form rendered
-							     in, and Kind is the stable enum underneath it. */}}
-							{{range .PendingRequests}}
-								<tr>
-									<td class="tw-w-1/4">{{ctx.Locale.Tr (print "company.perm.kind." .Kind)}}</td>
-									<td>{{.Detail}}{{if .Reason}}<span class="text-grey tw-text-12 tw-block">{{ctx.Locale.Tr "company.app.pending_reason"}}: {{.Reason}}</span>{{end}}</td>
-								</tr>
-							{{end}}
-						</tbody>
-					</table>
-				</div>
-			{{else}}
-				<a class="ui basic button tw-mt-2" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_permission"}}</a>
-			{{end}}
-		</div>
-
-		<h3>{{ctx.Locale.Tr "company.app.access_header"}}</h3>
-		<div class="ui segment">
-			<p class="text-grey tw-text-13">
-				{{ctx.Locale.Tr "company.app.access_explain"}}
-			</p>
-			{{/* Each option says what happens, not what it is called: the person
-			     choosing is deciding an outcome, not picking a keyword. */}}
-			<form method="post" action="{{.AppLink}}/access" class="ui form">
-				{{.CsrfTokenHtml}}
-				{{range .AccessOptions}}
-					<div class="tw-py-2">
-						<label class="tw-flex tw-items-baseline tw-gap-2">
-							<input type="radio" name="access" value="{{.Value}}"
-								{{if .Selected}}checked{{end}}
-								{{if or .NeedsRequest (not $.CanControl)}}disabled{{end}}>
-							<span>
-								<strong>{{ctx.Locale.Tr .Label}}</strong>
-								<span class="text-grey tw-ml-2">— {{ctx.Locale.Tr .Explain}}</span>
-								{{if .NeedsRequest}}
-									<a class="tw-ml-2 tw-text-13" href="{{$.DeployLink}}">{{ctx.Locale.Tr "company.app.access_needs_request"}}</a>
-								{{end}}
-							</span>
-						</label>
-					</div>
-				{{end}}
-				{{if .CanControl}}<button class="ui primary button tw-mt-2">{{ctx.Locale.Tr "company.app.apply"}}</button>{{end}}
-			</form>
-		</div>
-
-		<h3>{{ctx.Locale.Tr "company.app.recent_history"}}</h3>
-		<div class="ui segment">
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.app.recent_history"}}</h4>
+		<div class="ui attached segment">
 			{{/* Words instead of state-machine vocabulary — see
 			     custom/templates/company/history_table.tmpl. No raw codes here:
 			     "rolled_back" tells a non-developer nothing. */}}
 			{{template "company/history_table" dict "Rows" .HistoryRows}}
 
 		</div>
+		{{/* Leaving the platform is a request like arriving was; the repository
+		     cannot be deleted before it is approved (company/appremoval.go). */}}
+		{{if and .CanControl (or .App.HasRelease .OnCentral)}}
+			<h4 class="ui top attached header tw-mt-4 company-app-danger-header">{{ctx.Locale.Tr "company.app.danger_header"}}</h4>
+			<div class="ui attached segment company-app-danger flex-text-block tw-justify-between tw-flex-wrap">
+				<div>
+					<div class="tw-font-semibold">{{ctx.Locale.Tr "company.app.remove_request"}}</div>
+					<div class="text-grey tw-text-13">{{ctx.Locale.Tr "company.app.remove_request_explain"}}</div>
+				</div>
+				<form method="post" action="{{.AppLink}}/remove-request" data-company-confirm="{{ctx.Locale.Tr "company.app.remove_request_confirm"}}">
+					{{.CsrfTokenHtml}}<button class="ui small basic red button">{{ctx.Locale.Tr "company.app.remove_request"}}</button>
+				</form>
+			</div>
+		{{end}}
 	</div>
 </div>
 {{template "base/footer" .}}

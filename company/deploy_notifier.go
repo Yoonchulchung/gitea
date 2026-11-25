@@ -50,11 +50,15 @@ func init() {
 // — closeOrReopen is true for a close, false for a reopen (and for a
 // merge, this doesn't fire at all — see MergePullRequest below).
 func (*deployBranchCleanupNotifier) IssueChangeStatus(ctx context.Context, _ *user_model.User, _ string, issue *issues_model.Issue, _ *issues_model.Comment, closeOrReopen bool) {
-	if !closeOrReopen || !issue.IsPull {
+	if !issue.IsPull {
 		return
 	}
 	if err := issue.LoadPullRequest(ctx); err != nil {
 		log.Error("company: deployBranchCleanupNotifier: LoadPullRequest: %v", err)
+		return
+	}
+	followDeployApproval(ctx, issue.PullRequest)
+	if !closeOrReopen {
 		return
 	}
 	stopPreviewForPR(issue.PullRequest)
@@ -111,6 +115,7 @@ func recordCapacityOnClose(ctx context.Context, pr *issues_model.PullRequest) {
 }
 
 func (*deployBranchCleanupNotifier) MergePullRequest(ctx context.Context, doer *user_model.User, pr *issues_model.PullRequest) {
+	followDeployApproval(ctx, pr)
 	stopPreviewForPR(pr)           // before the deploy builds, so the two never share a moment
 	recordCapacityOnClose(ctx, pr) // before the approval changes the fleet it is measuring
 	queueDeployOnMerge(ctx, doer, pr)
@@ -118,6 +123,7 @@ func (*deployBranchCleanupNotifier) MergePullRequest(ctx context.Context, doer *
 }
 
 func (*deployBranchCleanupNotifier) AutoMergePullRequest(ctx context.Context, doer *user_model.User, pr *issues_model.PullRequest) {
+	followDeployApproval(ctx, pr)
 	stopPreviewForPR(pr)
 	recordCapacityOnClose(ctx, pr)
 	queueDeployOnMerge(ctx, doer, pr)

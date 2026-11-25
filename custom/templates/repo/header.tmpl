@@ -91,71 +91,22 @@
 						{{template "repo/header/fork" $}}
 					{{end}}
 					{{end}}
-					{{/* App controls, for a repository that has actually been deployed.
-					     Placed here rather than only on /_app because this is the page a
-					     non-developer opens, and "our app needs to come down for an hour"
-					     is their decision to make — not something to ask an administrator
-					     for. See docs/company/app-platform.md.
-
-					     .CompanyApp is set by company.SetAppPermissionData, which runs on
-					     the repository home route only, so these buttons appear there and
-					     nowhere else. */}}
+					{{/* Manage, open, deploy. Logs, permission requests, starting,
+					     stopping and redeploying live on the app page (/_app). .CompanyApp is set
+					     by company.SetAppPermissionData, on the repository home only. */}}
 					{{with $.CompanyApp}}
-						{{/* Only when it is not running: the deploy badge beside the
-						     file list already says "running", and saying it three
-						     times on one page is noise. For every other state that
-						     badge shows the deploy request, not the app. */}}
 						{{if .ShowState}}
 							<span class="company-app-state {{.Status}}" data-tooltip-content="{{ctx.Locale.Tr .StatusLabel}}">{{ctx.Locale.Tr .StatusLabel}}</span>
 						{{end}}
-						{{/* A department reaches its app from the sidebar panel below;
-						     an administrator has no such panel, and the admin screens
-						     are two clicks away. Beside stop and redeploy, so "look
-						     at it, then decide" needs no detour. */}}
-						{{if and $.IsAdmin .Running}}
-							<a class="ui compact small basic button" href="{{AppSubUrl}}{{.AppURL}}" target="_blank" rel="noopener">
-								{{svg "octicon-link-external" 14}} {{ctx.Locale.Tr "company.app.open"}}
-							</a>
-						{{end}}
-						{{if .CanControl}}
-							{{if .Suspended}}
-								{{/* Deliberately no start button: an app an administrator
-								     stopped stays stopped, or protecting the platform from a
-								     runaway app would mean nothing. */}}
-							{{else if .Running}}
-								<form method="post" action="{{.AppLink}}/stop" class="company-app-action"
-									data-company-confirm="{{ctx.Locale.Tr "company.app.stop_confirm"}}">
-									{{$.CsrfTokenHtml}}
-									<button class="ui compact small basic button">{{ctx.Locale.Tr "company.app.stop"}}</button>
-								</form>
-							{{else if .CanStart}}
-								<form method="post" action="{{.AppLink}}/start" class="company-app-action">
-									{{$.CsrfTokenHtml}}
-									<button class="ui compact small basic button">{{ctx.Locale.Tr "company.app.start"}}</button>
-								</form>
-							{{/* Nothing built yet: pressing start could only fail, so it is
-							     not offered. The sidebar panel says to deploy instead. */}}
-							{{end}}
-						{{end}}
-						{{/* Rebuilds the commit already deployed. Worth offering to a
-						     department, not just an admin: when a package they were
-						     refused has since been approved, that same commit now
-						     builds, and making them submit an identical request would
-						     re-run an approval nobody's mind has changed about. */}}
-						{{if .CanRedeploy}}
-							<form method="post" action="{{.AppLink}}/redeploy" class="company-app-action">
-								{{$.CsrfTokenHtml}}
-								<button class="ui compact small basic button">{{ctx.Locale.Tr "company.app.redeploy"}}</button>
-							</form>
+						<a class="company-header-btn" href="{{.AppLink}}">{{ctx.Locale.Tr "company.app.manage"}}</a>
+						{{if .Deployed}}
+							<a class="company-header-btn" href="{{AppSubUrl}}{{.AppURL}}" target="_blank" rel="noopener">{{ctx.Locale.Tr "company.app.open_short"}}</a>
 						{{end}}
 					{{end}}
-					{{/* Administrators too: they make and deploy repositories of their
-					     own. Never the central repository: a request from it would
+					{{/* Never on the central repository: a request from it would
 					     snapshot the snapshots into itself. */}}
 					{{if and (not .IsEmpty) (not $isCentral) ($.Permission.CanRead ctx.Consts.RepoUnitTypeCode)}}
-						<a class="ui compact small basic primary button" href="{{$.RepoLink}}/deploy">
-							{{ctx.Locale.Tr "company.deploy.title"}}
-						</a>
+						{{template "company/deploy_button" dict "DeployLink" (print $.RepoLink "/deploy") "Class" "company-header-btn primary" "Label" "company.deploy.title"}}
 					{{end}}
 				</div>
 			{{end}}

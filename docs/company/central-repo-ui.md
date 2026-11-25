@@ -1,5 +1,10 @@
 # 중앙 저장소 화면 — 승인 창구이지 저장소가 아니다
 
+> **2026-11-25 변경**: 승인 대기열은 중앙 저장소의 PR 목록이 아니라 별도의 "승인" 페이지
+> (`/company/approvals`, [approvals.md](approvals.md))로 옮겼다. 아래의 목록 표·필터·
+> 열림/닫힘 문구 오버라이드(`approval_queue`, `repo/issue/list·filters·filter_list·openclose`)는
+> 삭제됐고, PR 목록은 Gitea 기본 화면이다. 요청 하나를 검토하는 PR 페이지는 그대로다.
+
 부서 저장소의 탭 정책은 [repo-ui.md](repo-ui.md)에 있다. 이 문서는 반대쪽,
 `[company] CENTRAL_DEPLOY_REPO`로 지정된 **중앙 저장소 자신의 화면**을
 다룬다 — 관리자만 들어오는 곳이고, 여기서 하는 일은 배포 요청을 승인하거나

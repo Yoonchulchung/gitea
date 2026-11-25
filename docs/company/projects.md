@@ -20,6 +20,24 @@ URL and its app's `/apps/{owner}/{repo}` never change with who owns it, and
 the app's policy in apps.yml, its data and its releases, all keyed by that
 name, never have to move.
 
+## Asking for a project
+
+Anyone but an administrator asks for a project rather than creating one,
+unless an administrator switches that off on `/-/admin/company-settings`
+(`company.project.approval_required`; on until saved as off). The
+form at `/company/projects/new` records a `project` row in `company_approval_request`
+(`company/project_request.go`, `company/approvals.go`); the name is checked then, so a request is
+never approved only to fail, and only one request per name waits at a time.
+The same page lists the person's own requests, and a waiting one can be
+cancelled there.
+
+Waiting requests are on the approvals page (`/company/approvals`, see
+[approvals.md](approvals.md)) beside deploy requests. Approving one creates the
+project with the requester as its owner; rejecting it creates nothing. The
+decision is a conditional update on the waiting row, so two administrators
+pressing at once decide it once. Administrators skip the request and create
+directly.
+
 ## Owner and members
 
 - **Access** is Gitea's own collaboration: the owner is the repository's

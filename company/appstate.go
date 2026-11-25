@@ -136,6 +136,11 @@ type AppState struct {
 	// mode. Only ever narrower — see company/appaccess.go.
 	AccessChoice string `json:"accessChoice,omitempty"`
 
+	// The department's own schedule of snapshots — company/appdata_autosnapshot.go.
+	AutoSnapshot     bool  `json:"autoSnapshot,omitempty"`
+	AutoSnapshotDays int   `json:"autoSnapshotDays,omitempty"` // 0 is the default
+	AutoSnapshotAt   int64 `json:"autoSnapshotAt,omitempty"`   // the last one taken
+
 	SHA       string `json:"sha,omitempty"` // central-deploy commit currently live
 	PRID      int64  `json:"prID,omitempty"`
 	PID       int    `json:"pid,omitempty"`

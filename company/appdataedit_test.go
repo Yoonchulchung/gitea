@@ -121,13 +121,18 @@ func TestDataHelperEditsAndAddressesRows(t *testing.T) {
 		require.NoError(t, json.Unmarshal(out, &result))
 		return result
 	}
+	result := run(map[string]any{"mode": "snapshot", "name": "0-empty.db"})
+	require.True(t, result.OK, result.Error)
+	assert.True(t, hasSQLiteHeader(filepath.Join(dir, "snapshots", "0-empty.db")), "an app with no data still snapshots to a real database")
+	assert.NoFileExists(t, db)
+
 	require.NoError(t, os.WriteFile(db, nil, 0o600)) // the helper refuses an absent database
 
 	create, err := createTableStatement("t", []newColumn{{Name: "name", Type: "TEXT", Required: true}})
 	require.NoError(t, err)
 	insert, err := insertStatement("t", []string{"name"}, []any{"a"})
 	require.NoError(t, err)
-	result := run(map[string]any{"mode": "edit", "statements": []dataStatement{create, insert, insert}})
+	result = run(map[string]any{"mode": "edit", "statements": []dataStatement{create, insert, insert}})
 	require.True(t, result.OK, result.Error)
 	assert.Equal(t, 2, result.Changed)
 
@@ -149,6 +154,33 @@ func TestDataHelperEditsAndAddressesRows(t *testing.T) {
 	result = run(map[string]any{"mode": "dump", "table": "t"})
 	require.True(t, result.OK, result.Error)
 	assert.Equal(t, [][]string{{"2", "a"}}, result.Cells)
+
+	insert3, err := insertStatement("t", []string{"name"}, []any{"b"})
+	require.NoError(t, err)
+	require.True(t, run(map[string]any{"mode": "edit", "statements": []dataStatement{insert3, insert3}}).OK)
+	result = run(map[string]any{"mode": "browse", "table": "t", "limit": 2, "offset": 2})
+	require.True(t, result.OK, result.Error)
+	assert.Equal(t, 3, result.Total)
+	assert.Len(t, result.Cells, 1, "the last page")
+	result = run(map[string]any{"mode": "browse", "sql": "SELECT name FROM t WHERE name = 'b'; -- mine", "limit": 1, "offset": 1})
+	require.True(t, result.OK, result.Error)
+	assert.Equal(t, 2, result.Total, "a typed query is counted, its semicolon and comment aside")
+	assert.Equal(t, [][]string{{"b"}}, result.Cells)
+	result = run(map[string]any{"mode": "browse", "sql": "EXPLAIN SELECT 1", "limit": 5})
+	require.True(t, result.OK, result.Error)
+	assert.Equal(t, -1, result.Total, "one that cannot be wrapped runs as written")
+
+	result = run(map[string]any{"mode": "adopt", "src": db, "name": "1-upload.db"})
+	require.True(t, result.OK, result.Error)
+	assert.FileExists(t, filepath.Join(dir, "snapshots", "1-upload.db"))
+	assert.True(t, hasSQLiteHeader(filepath.Join(dir, "snapshots", "1-upload.db")))
+
+	junk := filepath.Join(dir, "junk.db")
+	require.NoError(t, os.WriteFile(junk, []byte(sqliteMagic+"not really a database"), 0o600))
+	result = run(map[string]any{"mode": "adopt", "src": junk, "name": "2-upload.db"})
+	assert.False(t, result.OK)
+	assert.NoFileExists(t, filepath.Join(dir, "snapshots", "2-upload.db"))
+	assert.NoFileExists(t, filepath.Join(dir, "snapshots", "2-upload.db.partial"))
 }
 
 // The data page's markup, rendered with the shapes the handlers put in
@@ -160,7 +192,15 @@ func TestDataPageTemplatesRenderWhatTheHandlerSets(t *testing.T) {
 		"ctx":            func() map[string]any { return map[string]any{"Locale": stubLocale{}} },
 		"svg":            func(string, ...any) template.HTML { return "<svg/>" },
 		"FormatByteSize": func(int64) string { return "1 KiB" },
-		"DateUtils":      func() stubDateUtils { return stubDateUtils{} },
+		"dict": func(pairs ...any) map[string]any {
+			m := map[string]any{}
+			for i := 0; i+1 < len(pairs); i += 2 {
+				key, _ := pairs[i].(string)
+				m[key] = pairs[i+1]
+			}
+			return m
+		},
+		"DateUtils": func() stubDateUtils { return stubDateUtils{} },
 		"Eval": func(args ...any) any {
 			a, _ := args[0].(int)
 			b, _ := args[2].(int)
@@ -174,6 +214,8 @@ func TestDataPageTemplatesRenderWhatTheHandlerSets(t *testing.T) {
 		"../custom/templates/company/data_browse.tmpl",
 		"../custom/templates/company/app_data.tmpl",
 	)
+	require.NoError(t, err)
+	_, err = tmpl.New("company/pager").Parse("") // Gitea's shared pager, not under test here
 	require.NoError(t, err)
 
 	data := map[string]any{
@@ -190,6 +232,7 @@ func TestDataPageTemplatesRenderWhatTheHandlerSets(t *testing.T) {
 		"EditRowID": int64(2), "EditRow": map[string]string{"id": "2", "name": "b"},
 		"ColumnTypes": []string{"TEXT", "INTEGER", "REAL"}, "NewColumnRows": []int{0, 1},
 		"Snapshots":     []Snapshot{{Name: "1-before-edit.db", Bytes: 4096, At: time.Now()}},
+		"AutoSnapshot":  autoSnapshotViewFor(&AppState{AutoSnapshot: true, AutoSnapshotAt: 1}),
 		"RecentChanges": []DataChange{{At: time.Now(), Actor: "kim", Label: "company.data.change.updated", Table: "records", Detail: "2", Changed: 1}},
 	}
 	var out strings.Builder
@@ -204,6 +247,10 @@ func TestDataPageTemplatesRenderWhatTheHandlerSets(t *testing.T) {
 	out.Reset()
 	require.NoError(t, tmpl.ExecuteTemplate(&out, "company/data_history", data))
 	assert.Contains(t, out.String(), `action="/PO/app/_app/data/restore"`)
+	assert.Contains(t, out.String(), `href="/PO/app/_app/data/snapshot?name=1-before-edit.db"`)
+	assert.Contains(t, out.String(), `action="/PO/app/_app/data/upload"`)
+	assert.Contains(t, out.String(), `action="/PO/app/_app/data/auto-snapshot"`)
+	assert.Contains(t, out.String(), `<option value="7" selected>`)
 	assert.Contains(t, out.String(), "company.data.change.updated")
 }
 

@@ -20,10 +20,9 @@ import (
 	pull_service "gitea.dev/services/pull"
 )
 
-// An app's first deploy always waits for an administrator. Once the app is
-// on central, later deploys are merged right away unless an administrator
-// asks for approval of every deploy, or the request asks for something whose
-// approval is still switched on.
+// Deploys are merged right away unless an administrator asks for approval of
+// every deploy, or the request asks for something whose approval is still
+// switched on. A first deploy is no different.
 const (
 	// The administrator in whose name later deploys are merged; empty means every deploy is approved by a person.
 	settingKeyApprovalWaivedBy = "company.deploy.approval_waived_by"
@@ -59,11 +58,23 @@ func currentDeployApprovalPolicy(ctx context.Context) deployApprovalPolicy {
 	return p
 }
 
+// packagesNeedApproval is false while deploys go out without approval and
+// packages were not singled out: requirements.txt is then installed as it is,
+// and what it installs is added to the app's allowlist (recordFreePackages),
+// so turning approval back on later keeps every package already in use.
+func packagesNeedApproval(ctx context.Context) bool {
+	if !platformRunning.Load() {
+		return true // no database to read the policy from yet
+	}
+	p := currentDeployApprovalPolicy(ctx)
+	return p.WaivedBy == nil || p.PackageApproval
+}
+
 // needsApproval reports whether a deploy request has to wait for an
 // administrator. Kinds other than packages and outbound hosts widen what an
 // app may do in ways this policy was never asked to waive.
-func (p deployApprovalPolicy) needsApproval(deployedBefore bool, requests []PermissionRequest) bool {
-	if p.WaivedBy == nil || !deployedBefore {
+func (p deployApprovalPolicy) needsApproval(requests []PermissionRequest) bool {
+	if p.WaivedBy == nil {
 		return true
 	}
 	for _, r := range requests {

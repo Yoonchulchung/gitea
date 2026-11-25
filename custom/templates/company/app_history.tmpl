@@ -4,13 +4,11 @@
 	<div class="ui container">
 		{{template "base/alert" .}}
 
-		<h2 class="tw-flex tw-items-center tw-gap-3">
-			{{ctx.Locale.Tr "company.history.title"}}
-			<span class="company-app-state {{.App.Actual}}">{{ctx.Locale.Tr .StatusLabel}}</span>
+		<div class="company-app-titlebar">
+			{{template "company/app_title"}}
 			<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.history.count" .TotalAttempts}}</span>
-			<div class="tw-flex-1"></div>
-			<a class="ui basic button" href="{{.AppLink}}">{{ctx.Locale.Tr "company.history.back_to_app"}}</a>
-		</h2>
+		</div>
+		{{template "company/app_tabs"}}
 
 		<div class="ui segment">
 			<p class="text-grey tw-text-13 tw-mt-0">

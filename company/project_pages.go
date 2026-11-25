@@ -26,13 +26,34 @@ const (
 
 // ProjectNew is the new-project form: a name and a description. Where it
 // lives and who owns it are not questions anybody here should have to answer.
+// Unless an administrator switched it off, anyone but an administrator asks
+// for a project rather than creating one.
 func ProjectNew(ctx *context.Context) {
-	ctx.Data["Title"] = ctx.Locale.TrString("company.project.new_title")
+	if !prepareProjectNew(ctx) {
+		return
+	}
 	ctx.HTML(http.StatusOK, tplProjectNew)
 }
 
-func ProjectNewPost(ctx *context.Context) {
+func prepareProjectNew(ctx *context.Context) bool {
 	ctx.Data["Title"] = ctx.Locale.TrString("company.project.new_title")
+	ctx.Data["ProjectNeedsApproval"] = !ctx.Doer.IsAdmin && ProjectApprovalRequired(ctx)
+	if ctx.Doer.IsAdmin {
+		return true
+	}
+	reqs, err := ProjectRequestsBy(ctx, ctx.Doer.ID)
+	if err != nil {
+		ctx.ServerErrorAuto(err)
+		return false
+	}
+	ctx.Data["ProjectRequests"] = reqs
+	return true
+}
+
+func ProjectNewPost(ctx *context.Context) {
+	if !prepareProjectNew(ctx) {
+		return
+	}
 	name := strings.TrimSpace(ctx.FormString("repo_name"))
 	description := strings.TrimSpace(ctx.FormString("description"))
 	ctx.Data["repo_name"], ctx.Data["description"] = name, description
@@ -42,11 +63,30 @@ func ProjectNewPost(ctx *context.Context) {
 		ctx.RenderWithErrDeprecated(ctx.Tr("company.project.name_invalid"), tplProjectNew, nil)
 		return
 	}
+	if ctx.Data["ProjectNeedsApproval"] == true {
+		_, err := RequestProject(ctx, ctx.Doer, name, description)
+		if err == nil {
+			ctx.Flash.Success(ctx.Locale.TrString("company.project_request.sent", name))
+			ctx.Redirect(setting.AppSubURL + newProjectPath)
+			return
+		}
+		if errors.Is(err, errProjectRequestPending) {
+			ctx.Data["Err_RepoName"] = true
+			ctx.RenderWithErrDeprecated(ctx.Tr("company.project_request.already_pending"), tplProjectNew, nil)
+			return
+		}
+		renderProjectNameError(ctx, name, err)
+		return
+	}
 	repo, err := CreateProject(ctx, ctx.Doer, name, description)
 	if err == nil {
 		ctx.Redirect(repo.Link())
 		return
 	}
+	renderProjectNameError(ctx, name, err)
+}
+
+func renderProjectNameError(ctx *context.Context, name string, err error) {
 	var reserved db.ErrNameReserved
 	var pattern db.ErrNamePatternNotAllowed
 	var chars db.ErrNameCharsNotAllowed
@@ -61,6 +101,24 @@ func ProjectNewPost(ctx *context.Context) {
 		log.Error("company: %s creating project %q: %v", ctx.Doer.Name, name, err)
 		ctx.RenderWithErrDeprecated(DepartmentSafeErrorL(ctx.Locale, "creating a project", err), tplProjectNew, nil)
 	}
+}
+
+// ProjectRequestCancel withdraws one of the doer's own waiting requests.
+func ProjectRequestCancel(ctx *context.Context) {
+	err := CancelProjectRequest(ctx, ctx.Doer, ctx.PathParamInt64("id"))
+	switch {
+	case err == nil:
+		ctx.Flash.Success(ctx.Locale.TrString("company.project_request.cancelled"))
+	case db.IsErrNotExist(err):
+		ctx.NotFound()
+		return
+	case errors.Is(err, errProjectRequestNotPending):
+		ctx.Flash.Error(ctx.Locale.TrString("company.project_request.not_pending"))
+	default:
+		ctx.ServerErrorAuto(err)
+		return
+	}
+	ctx.Redirect(setting.AppSubURL + newProjectPath)
 }
 
 // ProjectPanel is the owner and members box on a project's page.

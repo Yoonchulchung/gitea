@@ -314,6 +314,7 @@ func runDeploy(ctx context.Context, job deployJob) {
 		return
 	}
 	appendBuildLog(p, job.SHA, "OK", strings.TrimSpace("deployed\n"+buildNote+"\n"+migrationNote))
+	recordFreePackages(ctx, owner, repo, release, settings)
 
 	// Only after a successful activation, and still under deployMu: a failed
 	// deploy leaves the previous release serving, and that is the worst
@@ -348,6 +349,7 @@ func buildRelease(ctx context.Context, job deployJob, p appPaths, release string
 // the policy in force. Shared with the startup check (company/deploystartup.go),
 // which must install exactly what a deploy would.
 func venvForAppDir(ctx context.Context, p appPaths, release, appDir string, settings AppSettings) error {
+	settings.packagesFree = !packagesNeedApproval(ctx)
 	body, err := os.ReadFile(filepath.Join(appDir, "requirements.txt"))
 	if errors.Is(err, os.ErrNotExist) {
 		// No requirements.txt is the normal case for an app that only uses
@@ -361,7 +363,7 @@ func venvForAppDir(ctx context.Context, p appPaths, release, appDir string, sett
 	if len(reqErrs) > 0 {
 		return &packagesDeniedError{message: formatRequirementErrors(platformLocale(), reqErrs, settings.BasePackages)}
 	}
-	if denied := DeniedPackages(reqs, settings.AllowedPackages()); len(denied) > 0 {
+	if denied := DeniedPackages(reqs, settings.AllowedPackages()); len(denied) > 0 && !settings.packagesFree {
 		return &packagesDeniedError{message: formatDeniedPackages(denied)}
 	}
 	return buildVenv(ctx, p, release, reqs, settings)
@@ -753,6 +755,9 @@ func distInfoPackages(venv string) ([]installedPackage, error) {
 var pipBaseline = []string{"pip", "setuptools", "wheel", "pkg-resources"}
 
 func unapprovedInstalled(venv string, settings AppSettings, baseline map[string]bool) ([]string, error) {
+	if settings.packagesFree {
+		return nil, nil
+	}
 	installed, err := distInfoPackages(venv)
 	if err != nil {
 		return nil, fmt.Errorf("listing installed packages failed: %w", err)
@@ -1080,6 +1085,30 @@ func lastLines(s string, n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// recordFreePackages adds what a build installed without approval to the
+// app's allowlist, in the name of the administrator who turned approval off.
+// Best-effort: the deploy already succeeded.
+func recordFreePackages(ctx context.Context, owner, repo, release string, settings AppSettings) {
+	policy := currentDeployApprovalPolicy(ctx)
+	if policy.WaivedBy == nil || policy.PackageApproval {
+		return
+	}
+	venv, err := filepath.EvalSymlinks(filepath.Join(release, ".venv"))
+	if err != nil {
+		return // nothing was installed
+	}
+	settings.packagesFree = false
+	extra, err := unapprovedInstalled(venv, settings, baseStackPackages(venv, settings.BasePackages))
+	if err != nil || len(extra) == 0 {
+		return
+	}
+	if err := ApproveAppPackages(ctx, policy.WaivedBy, owner, repo, extra); err != nil {
+		log.Error("company: %s/%s: adding %v to the allowlist: %v", owner, repo, extra, err)
+		return
+	}
+	log.Info("company: %s/%s: installed without approval, now allowed: %s", owner, repo, strings.Join(extra, ", "))
 }
 
 // recordMissingPackages stores what the last build could not install.

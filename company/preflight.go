@@ -141,6 +141,9 @@ func runPreflightOn(ctx *context.Context, owner, name string, file fileSource) P
 	}
 
 	for _, item := range packageRequests(resolved, settings.AllowedPackages()) {
+		if !packagesNeedApproval(ctx) {
+			break
+		}
 		result.NeedsApproval = append(result.NeedsApproval, item.Value)
 	}
 	if len(result.NeedsApproval) > 0 {

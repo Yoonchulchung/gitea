@@ -71,16 +71,12 @@ func AdminAppData(ctx *context.Context) {
 	// runs on the plain GET rather than behind a button.
 	if hasData {
 		table, statement := ctx.FormString("table"), ctx.FormString("sql")
-		browse, err := BrowseAppData(ctx, st.Owner, st.Repo, table, statement, ctx.FormInt("offset"))
-		if browse != nil {
-			ctx.Data["Browse"] = browse
-		}
+		page, size := browsePaging(ctx)
+		browse, err := BrowseAppData(ctx, st.Owner, st.Repo, table, statement, (page-1)*size, size)
+		setBrowseData(ctx, browse, table, statement, page, size)
 		if err != nil {
 			ctx.Data["BrowseError"] = AdminErrorL(ctx.Locale, err)
 		}
-		ctx.Data["BrowseTable"] = table
-		ctx.Data["BrowseSQL"] = statement
-		ctx.Data["BrowsePageSize"] = browsePageSize
 		setDataEditData(ctx, st.Owner, st.Repo, table, snapshots)
 	}
 	ctx.HTML(http.StatusOK, tplAdminAppData)

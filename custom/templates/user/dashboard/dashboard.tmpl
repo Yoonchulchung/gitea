@@ -24,6 +24,7 @@
 		<div class="flex-container-main">
 			{{template "base/alert" .}}
 			{{template "user/heatmap" .}}
+			{{template "company/dashboard_approvals" .}}
 			{{template "company/dashboard_deploys" .}}
 			{{if .IsAdmin}}
 				<a class="ui basic button" href="{{AppSubUrl}}/activity">{{svg "octicon-history" 16 "tw-mr-1"}}{{ctx.Locale.Tr "company.dashboard.activity_log"}}</a>

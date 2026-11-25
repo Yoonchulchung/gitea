@@ -143,26 +143,6 @@ export function initCompanyAIReviewProgress() {
   });
 }
 
-// The approval queue's countdowns (custom/templates/company/approval_queue.tmpl):
-// each ticks on its own, and the list reloads when one runs out or while a
-// review is under way, so a row never claims a state it has left.
-export function initCompanyQueueCountdown() {
-  registerGlobalInitFunc('initCompanyQueueCountdown', (table: HTMLElement) => {
-    const countdowns = table.querySelectorAll<HTMLElement>('.company-queue-seconds');
-    const reviewing = table.querySelector('.company-queue-ai.reviewing');
-    const queued = table.querySelector('.company-queue-ai.queued'); // picked up by the sweeper within a minute
-    if (!countdowns.length && !reviewing && !queued) return;
-    setInterval(() => {
-      for (const el of countdowns) {
-        const left = Math.round(Number(el.getAttribute('data-merge-at')) - Date.now() / 1000);
-        el.textContent = String(Math.max(0, left));
-        if (left <= -2) window.location.reload(); // merged by now: show it
-      }
-    }, 1000);
-    if (reviewing || queued) setTimeout(() => window.location.reload(), reviewing ? 5000 : 20000);
-  });
-}
-
 export function initCompanyDeployReview() {
   registerGlobalInitFunc('initCompanyDeployReview', (el: HTMLElement) => {
     const modelSelect = el.querySelector<HTMLSelectElement>('.company-ai-chat-model');

@@ -239,7 +239,7 @@
 							{{end}}
 							<td class="tw-text-right">
 								{{if and .Repo (eq .Kind "undeployed")}}
-									<a class="ui tiny basic button" href="{{.Repo.Link}}/deploy">{{ctx.Locale.Tr "company.admin.first_deploy"}}</a>
+									{{template "company/deploy_button" dict "DeployLink" (print .Repo.Link "/deploy") "Class" "ui tiny basic button" "Label" "company.admin.first_deploy"}}
 								{{else if .Repo}}
 									<a class="ui tiny basic button" href="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .State.Owner}}/{{PathEscape .State.Repo}}">{{ctx.Locale.Tr "company.admin.manage"}}</a>
 								{{end}}

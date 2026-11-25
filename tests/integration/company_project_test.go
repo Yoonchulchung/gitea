@@ -4,6 +4,7 @@
 package integration
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"testing"
@@ -28,7 +29,17 @@ func TestCompanyProjects(t *testing.T) {
 	}), http.StatusSeeOther)
 	org, err := company.ProjectOrg(ctx)
 	require.NoError(t, err)
+	unittest.AssertNotExistsBean(t, &repo_model.Repository{OwnerID: org.ID, Name: "inventory"})
+	req := unittest.AssertExistsAndLoadBean(t, &company.ApprovalRequest{Kind: company.ApprovalKindProject, Name: "inventory"})
+	assert.True(t, req.IsPending())
+	approveURL := fmt.Sprintf("/company/approvals/%d/approve", req.ID)
+	owner.MakeRequest(t, NewRequestWithValues(t, "POST", approveURL, nil), http.StatusNotFound) // only an administrator approves
+	unittest.AssertNotExistsBean(t, &repo_model.Repository{OwnerID: org.ID, Name: "inventory"})
+	loginUser(t, "user1").MakeRequest(t, NewRequestWithValues(t, "POST", approveURL, nil), http.StatusSeeOther)
 	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{OwnerID: org.ID, Name: "inventory"})
+	req = unittest.AssertExistsAndLoadBean(t, &company.ApprovalRequest{ID: req.ID})
+	assert.Equal(t, company.ApprovalApproved, req.Status)
+	assert.Equal(t, repo.ID, req.RepoID)
 	assertOwner := func(name string) {
 		t.Helper()
 		u, err := company.ProjectOwnerOf(ctx, repo.ID)
@@ -45,6 +56,15 @@ func TestCompanyProjects(t *testing.T) {
 	member.MakeRequest(t, NewRequestWithValues(t, "POST", membersURL, map[string]string{"user": "user5"}), http.StatusNotFound)
 	owner.MakeRequest(t, NewRequestWithValues(t, "POST", membersURL, map[string]string{"user": "user5"}), http.StatusSeeOther)
 	member.MakeRequest(t, NewRequest(t, "GET", repo.Link()), http.StatusOK)
+
+	t.Run("ApprovalSwitchedOff", func(t *testing.T) {
+		admin := loginUser(t, "user1")
+		admin.MakeRequest(t, NewRequestWithValues(t, "POST", "/-/admin/company-settings", map[string]string{
+			"approval_every_deploy": "true",
+		}), http.StatusSeeOther)
+		owner.MakeRequest(t, NewRequestWithValues(t, "POST", "/company/projects/new", map[string]string{"repo_name": "direct"}), http.StatusSeeOther)
+		unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{OwnerID: org.ID, Name: "direct"})
+	})
 
 	t.Run("AdminNamesAnotherOwner", func(t *testing.T) {
 		admin := loginUser(t, "user1")

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"gitea.dev/modules/graceful"
 	"gitea.dev/modules/json"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
@@ -109,7 +110,11 @@ func DetectPermissionRequests(owner, repo, requirements, desiredAccess string) [
 	// report them properly — because a malformed line is a mistake to fix,
 	// not a permission to request.
 	reqs, _ := ParseRequirements(requirements)
+	packagesFree := !packagesNeedApproval(graceful.GetManager().ShutdownContext())
 	for _, denied := range DeniedPackages(reqs, settings.AllowedPackages()) {
+		if packagesFree {
+			break
+		}
 		out = append(out, PermissionRequest{
 			Kind:   PermKindPackage,
 			Value:  denied.Name,
@@ -127,6 +132,9 @@ func DetectPermissionRequests(owner, repo, requirements, desiredAccess string) [
 	// anyone wrote, so without this the department has nothing to tick and
 	// the build stays blocked on a package they cannot ask for.
 	for _, name := range st.MissingPackages {
+		if packagesFree {
+			break
+		}
 		if slices.ContainsFunc(out, func(r PermissionRequest) bool {
 			return r.Kind == PermKindPackage && normalizePackageName(r.Value) == normalizePackageName(name)
 		}) {

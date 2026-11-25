@@ -452,6 +452,16 @@ export function initCompanyDependentToggles() {
   }
 }
 
+// A control that saves as soon as it changes: a toggle, a choice, or a chosen file, so an upload is one button.
+export function initCompanyAutoSubmit() {
+  for (const input of document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-company-autosubmit]')) {
+    input.addEventListener('change', () => {
+      if (input instanceof HTMLInputElement && input.type === 'file' && !input.files?.length) return;
+      input.form!.requestSubmit();
+    });
+  }
+}
+
 export function initCompanyConfirmForms() {
   for (const form of document.querySelectorAll<HTMLFormElement>('form[data-company-confirm]')) {
     form.addEventListener('submit', (e) => {

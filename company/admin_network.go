@@ -110,6 +110,7 @@ func AdminNetwork(ctx *context.Context) {
 	ctx.Data["Inbound"] = CurrentInboundPolicy()
 	ctx.Data["Blocked"] = Blocklist()
 	ctx.Data["Banned"] = ListBannedVisitors()
+	ctx.Data["DeployApprovalOff"] = currentDeployApprovalPolicy(ctx).WaivedBy != nil
 	ctx.HTML(http.StatusOK, tplAdminNetwork)
 }
 

@@ -109,7 +109,10 @@ export async function fillModelOptions(modelSelect: HTMLSelectElement): Promise<
     }
   }
   const ids = saved && !models.includes(saved) ? [saved, ...models] : models;
-  if (!ids.length) return;
+  if (!ids.length) {
+    modelSelect.classList.add('tw-hidden'); // an empty picker reads as a broken control
+    return;
+  }
   modelSelect.replaceChildren(...ids.map((id) => {
     const opt = document.createElement('option');
     opt.value = id;
@@ -230,7 +233,15 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
     messagesEl.append(emptyStateEl);
   }
 
+  // Wired before the not-configured return: text put in from outside (an example
+  // on the editor's guide) has to fit whatever state the panel is in.
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = `${Math.min(inputEl.scrollHeight, 220)}px`; // keep in sync with .company-ai-chat-input's max-height
+  });
+
   if (el.getAttribute('data-ai-ready') !== 'true') {
+    el.querySelector('.company-ai-chat-model')?.classList.add('tw-hidden'); // nothing to choose between
     showNotConfiguredState(attr(el, 'data-ai-not-configured'), attr(el, 'data-ai-not-configured-link'), attr(el, 'data-ai-not-configured-url'));
     inputEl.disabled = true;
     inputEl.placeholder = attr(el, 'data-ai-not-configured-placeholder');
@@ -483,10 +494,5 @@ export function initChatPanel(el: HTMLElement, opts: ChatPanelOptions): ChatPane
       submit();
     }
   });
-  inputEl.addEventListener('input', () => {
-    inputEl.style.height = 'auto';
-    inputEl.style.height = `${Math.min(inputEl.scrollHeight, 220)}px`; // keep in sync with .company-ai-chat-input's max-height in workspace.tmpl
-  });
-
   return {setActiveFilePath};
 }

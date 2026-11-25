@@ -46,37 +46,16 @@
 				<p class="text-grey tw-text-13 tw-mt-2">{{ctx.Locale.Tr "company.data.export_explain"}}</p>
 			</div>
 
-			<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.snapshots_header"}}</h4>
+			<h4 class="ui attached header tw-flex tw-items-center tw-justify-between">
+				{{ctx.Locale.Tr "company.data.snapshots_header"}}
+				{{template "company/data_upload" .}}
+			</h4>
 			<div class="ui attached segment">
 				{{/* Restoring replaces everything written since the snapshot, so
 				     the button is only offered while the app is stopped — a swap
 				     under a live writer is corruption, not a restore. */}}
 				{{if .Running}}<div class="ui warning message tw-mb-3">{{ctx.Locale.Tr "company.data.restore_needs_stop"}}</div>{{end}}
-				{{if .Snapshots}}
-					<table class="ui very basic table tw-text-13">
-						<tbody>
-							{{range .Snapshots}}
-								<tr>
-									<td class="tw-font-mono">{{.Name}}</td>
-									<td>{{FormatByteSize .Bytes}}</td>
-									<td title="{{DateUtils.AbsoluteShort .At}}">{{DateUtils.TimeSince .At}}</td>
-									<td class="tw-text-right">
-										{{if not $.Running}}
-											<form method="post" action="{{$.DataLink}}/restore" class="tw-inline"
-											      onsubmit="return confirm('{{ctx.Locale.Tr "company.data.restore_confirm"}}')">
-												{{$.CsrfTokenHtml}}
-												<input type="hidden" name="name" value="{{.Name}}">
-												<button class="ui tiny button">{{ctx.Locale.Tr "company.data.restore"}}</button>
-											</form>
-										{{end}}
-									</td>
-								</tr>
-							{{end}}
-						</tbody>
-					</table>
-				{{else}}
-					<p class="text-grey">{{ctx.Locale.Tr "company.data.no_snapshots"}}</p>
-				{{end}}
+				{{template "company/data_snapshot_rows" (dict "Snapshots" .Snapshots "DataLink" .DataLink "CsrfTokenHtml" .CsrfTokenHtml "CanRestore" (not .Running) "RestoreLabel" "company.data.restore" "RestoreConfirm" "company.data.restore_confirm")}}
 			</div>
 
 			{{template "company/data_browse" .}}

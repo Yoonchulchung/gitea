@@ -457,6 +457,7 @@ var dataChangeLabels = map[string]string{
 	"deleted": "company.data.change.deleted", "imported": "company.data.change.imported",
 	"replaced": "company.data.change.replaced", "column": "company.data.change.column",
 	"table": "company.data.change.table", "restored": "company.data.change.restored",
+	"uploaded": "company.data.change.uploaded",
 }
 
 // appendDataAudit records one change. Tab-separated: table names may hold
@@ -624,6 +625,24 @@ func dataEditAction(ctx *gitea_context.Context, owner, repo, actor, verb string,
 		appendDataAudit(owner, repo, actor, "table", table, "", 0)
 		return tr("company.data.flash_table_created", table), nil
 
+	case "auto-snapshot":
+		on := ctx.FormBool("on")
+		if err := setAutoSnapshot(owner, repo, on, ctx.FormInt("days")); err != nil {
+			return "", err
+		}
+		if !on {
+			return tr("company.data.auto_snapshot_off"), nil
+		}
+		return tr("company.data.auto_snapshot_on", LoadAppState(owner, repo).autoSnapshotDays()), nil
+
+	case "upload":
+		name, err := importUploadedSnapshot(ctx, owner, repo)
+		if err != nil {
+			return "", err
+		}
+		appendDataAudit(owner, repo, actor, "uploaded", "", name, 0)
+		return tr("company.data.flash_uploaded", name), nil
+
 	case "snapshot":
 		name, err := CreateSnapshot(ctx, owner, repo, "manual")
 		if err != nil {
@@ -686,6 +705,7 @@ func editRowValues(ctx context.Context, owner, repo, table string, rowid int64) 
 func setDataEditData(ctx *gitea_context.Context, owner, repo, table string, snapshots []Snapshot) {
 	ctx.Data["Editable"] = true
 	ctx.Data["Snapshots"] = snapshots
+	ctx.Data["AutoSnapshot"] = autoSnapshotViewFor(LoadAppState(owner, repo))
 	ctx.Data["RecentChanges"] = recentDataChanges(owner, repo, dataAuditShown)
 	ctx.Data["ColumnTypes"] = []string{"TEXT", "INTEGER", "REAL"}
 	ctx.Data["NewColumnRows"] = []int{0, 1, 2, 3, 4, 5, 6, 7}

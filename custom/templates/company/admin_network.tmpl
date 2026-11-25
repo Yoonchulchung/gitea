@@ -86,8 +86,8 @@
 			{{end}}
 		</div>
 
-		<h4 class="ui top attached header tw-mt-5">{{ctx.Locale.Tr "company.adminnetwork.apps_header"}}</h4>
-		<div class="ui attached segment">
+		<h4 class="ui top attached header tw-mt-5">{{ctx.Locale.Tr "company.adminnetwork.apps_header"}}{{if .DeployApprovalOff}}{{template "company/approval_off_badge"}}{{end}}</h4>
+		<div class="ui attached segment{{if .DeployApprovalOff}} company-locked{{end}}" {{if .DeployApprovalOff}}inert{{end}}>
 			{{if .Rows}}
 				<table class="ui very basic table tw-text-13">
 					<thead>

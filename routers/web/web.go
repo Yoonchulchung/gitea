@@ -520,8 +520,8 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 	// FIXME: not all routes need go through same middleware.
 	// Especially some AJAX requests, we can reduce middleware number to improve performance.
 
-	m.Get("/", optSignInHome, company.SetDashboardApps, company.SetDashboardDeploys, Home) // see docs/company/patches.md
-	m.Get("/activity", reqSignIn, company.SetActivityLogPage, Home)                        // the feed an administrator's dashboard moved out, see docs/company/patches.md
+	m.Get("/", optSignInHome, company.SetDashboardApps, company.SetDashboardApprovals, company.SetDashboardDeploys, Home) // see docs/company/patches.md
+	m.Get("/activity", reqSignIn, company.SetActivityLogPage, Home)                                                       // the feed an administrator's dashboard moved out, see docs/company/patches.md
 	m.Get("/sitemap.xml", sitemapEnabled, optExploreSignIn, HomeSitemap)
 	m.Group("/.well-known", func() {
 		m.Get("/openid-configuration", auth.OIDCWellKnown)
@@ -565,7 +565,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 		m.Get("/search", repo.SearchGlobalIssues)
 	}, reqSignIn)
 
-	m.Get("/pulls", reqSignIn, company.RedirectPullsToCentral, user.Pulls) // see docs/company/patches.md
+	m.Get("/pulls", reqSignIn, user.Pulls)
 	m.Get("/milestones", reqSignIn, reqMilestonesDashboardPageEnabled, user.Milestones)
 
 	// ***** START: User *****
@@ -1440,6 +1440,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 		m.Get("/{editor_action:_app}/history", reqRepoCodeWriter, company.AppHistory)
 		m.Get("/{editor_action:_app}/data", reqRepoCodeWriter, company.AppData)
 		m.Get("/{editor_action:_app}/data/csv", reqRepoCodeWriter, company.AppDataCSV)
+		m.Get("/{editor_action:_app}/data/snapshot", reqRepoCodeWriter, company.AppDataSnapshot)
 		m.Post("/{editor_action:_app}/data/{verb}", reqRepoCodeWriter, company.AppDataAction)
 		m.Post("/{editor_action:_app}/env", reqRepoCodeWriter, company.AppEnvSave)
 		m.Post("/{editor_action:_app}/access", reqRepoCodeWriter, company.AppAccessSave)
@@ -1685,7 +1686,7 @@ func registerWebRoutes(m *web.Router, webAuth *AuthMiddleware) {
 	// end "/{username}/{reponame}/activity"
 
 	m.Group("/{username}/{reponame}", func() {
-		m.Get("/{type:pulls}", company.SetApprovalQueueData, repo.Issues) // the central repository's list is the approval queue — see docs/company/central-repo-ui.md
+		m.Get("/{type:pulls}", repo.Issues)
 		m.Group("/{type:pulls}/{index}", func() {
 			m.Get("", repo.SetEditorconfigIfExists, repo.SetWhitespaceBehavior, repo.GetPullDiffStats, company.SetDeployRequestPageData, repo.ViewIssue) // see docs/company/mount-points.md
 			m.Get(".diff", repo.DownloadPullDiff)

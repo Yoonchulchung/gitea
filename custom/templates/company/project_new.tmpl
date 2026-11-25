@@ -4,7 +4,7 @@
 		<h3 class="ui top attached header">{{ctx.Locale.Tr "company.project.new_title"}}</h3>
 		<div class="ui attached segment">
 			{{template "base/alert" .}}
-			<p class="text-grey">{{ctx.Locale.Tr "company.project.new_explain"}}</p>
+			{{if .ProjectNeedsApproval}}<p class="text-grey">{{ctx.Locale.Tr "company.project_request.explain"}}</p>{{end}}
 			<form class="ui form" action="{{AppSubUrl}}/company/projects/new" method="post">
 				{{.CsrfTokenHtml}}
 				<div class="required field {{if .Err_RepoName}}error{{end}}">
@@ -16,9 +16,41 @@
 					<label for="description">{{ctx.Locale.Tr "repo.repo_desc"}}</label>
 					<textarea id="description" name="description" rows="2" maxlength="2048">{{.description}}</textarea>
 				</div>
-				<button class="ui primary button">{{ctx.Locale.Tr "company.project.create"}}</button>
+				<button class="ui primary button">{{if .ProjectNeedsApproval}}{{ctx.Locale.Tr "company.project_request.submit"}}{{else}}{{ctx.Locale.Tr "company.project.create"}}{{end}}</button>
 			</form>
 		</div>
+		{{if .ProjectRequests}}
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.project_request.mine"}}</h4>
+		<div class="ui attached table segment">
+			<table class="ui very basic table">
+				<thead>
+					<tr>
+						<th>{{ctx.Locale.Tr "company.projects.col_project"}}</th>
+						<th>{{ctx.Locale.Tr "company.project_request.col_requested"}}</th>
+						<th>{{ctx.Locale.Tr "company.project_request.col_status"}}</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody>
+					{{range $req := .ProjectRequests}}
+						<tr>
+							<td>{{if $req.Repo}}<a href="{{$req.Repo.Link}}">{{$req.Name}}</a>{{else}}{{$req.Name}}{{end}}</td>
+							<td title="{{DateUtils.FullTime $req.CreatedUnix}}">{{DateUtils.TimeSince $req.CreatedUnix}}</td>
+							<td>{{ctx.Locale.Tr $req.Status.Key}}</td>
+							<td class="tw-text-right">
+								{{if $req.IsPending}}
+								<form method="post" action="{{AppSubUrl}}/company/projects/requests/{{$req.ID}}/cancel">
+									{{$.CsrfTokenHtml}}
+									<button class="ui tiny basic button">{{ctx.Locale.Tr "company.project_request.cancel"}}</button>
+								</form>
+								{{end}}
+							</td>
+						</tr>
+					{{end}}
+				</tbody>
+			</table>
+		</div>
+		{{end}}
 	</div>
 </div>
 {{template "base/footer" .}}

@@ -4,12 +4,15 @@
 package company
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"testing"
 
 	user_model "gitea.dev/models/user"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDeployApprovalPolicyNeedsApproval(t *testing.T) {
@@ -17,14 +20,13 @@ func TestDeployApprovalPolicyNeedsApproval(t *testing.T) {
 	host := []PermissionRequest{{Kind: PermKindNetwork, Value: "erp.internal"}}
 	waived := deployApprovalPolicy{WaivedBy: &user_model.User{ID: 1}}
 
-	assert.True(t, deployApprovalPolicy{}.needsApproval(true, nil))
-	assert.True(t, waived.needsApproval(false, nil), "an app's first deploy")
-	assert.False(t, waived.needsApproval(true, nil))
-	assert.False(t, waived.needsApproval(true, append(pkg, host...)))
-	assert.True(t, deployApprovalPolicy{WaivedBy: waived.WaivedBy, PackageApproval: true}.needsApproval(true, pkg))
-	assert.False(t, deployApprovalPolicy{WaivedBy: waived.WaivedBy, PackageApproval: true}.needsApproval(true, host))
-	assert.True(t, deployApprovalPolicy{WaivedBy: waived.WaivedBy, NetworkApproval: true}.needsApproval(true, host))
-	assert.True(t, waived.needsApproval(true, []PermissionRequest{{Kind: PermKindMemory, Value: "1024"}}))
+	assert.True(t, deployApprovalPolicy{}.needsApproval(nil))
+	assert.False(t, waived.needsApproval(nil), "a first deploy included")
+	assert.False(t, waived.needsApproval(append(pkg, host...)))
+	assert.True(t, deployApprovalPolicy{WaivedBy: waived.WaivedBy, PackageApproval: true}.needsApproval(pkg))
+	assert.False(t, deployApprovalPolicy{WaivedBy: waived.WaivedBy, PackageApproval: true}.needsApproval(host))
+	assert.True(t, deployApprovalPolicy{WaivedBy: waived.WaivedBy, NetworkApproval: true}.needsApproval(host))
+	assert.True(t, waived.needsApproval([]PermissionRequest{{Kind: PermKindMemory, Value: "1024"}}))
 }
 
 func TestAutoApproveBlocker(t *testing.T) {
@@ -82,4 +84,18 @@ func TestApprovalNeededRuleStartsWritten(t *testing.T) {
 	for _, placeholder := range regexp.MustCompile(`\{\{(\w+)\}\}`).FindAllStringSubmatch(approvalNeededDefaultSubject+approvalNeededDefaultBody, -1) {
 		assert.Contains(t, fields, placeholder[1])
 	}
+}
+
+func TestFreePackagesSkipTheInstalledCheck(t *testing.T) {
+	venv := t.TempDir()
+	dist := filepath.Join(venv, "lib", "python3.12", "site-packages", "humanize-4.9.0.dist-info")
+	require.NoError(t, os.MkdirAll(dist, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dist, "METADATA"), []byte("Name: humanize\nVersion: 4.9.0\n"), 0o600))
+
+	extra, err := unapprovedInstalled(venv, AppSettings{}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"humanize"}, extra, "unapproved, so refused")
+	extra, err = unapprovedInstalled(venv, AppSettings{packagesFree: true}, nil)
+	require.NoError(t, err)
+	assert.Empty(t, extra, "installed as asked while packages need no approval")
 }

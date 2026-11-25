@@ -1,0 +1,5 @@
+{{/* Beside a section that only matters while deploys are approved; leads to the
+     switch that turns approval back on. Shown while DeployApprovalOff. */}}
+{{define "company/approval_off_badge"}}
+	<a class="ui small basic label tw-ml-2" href="{{AppSubUrl}}/-/admin/company-settings#deploy-approval" data-tooltip-content="{{ctx.Locale.Tr "company.adminapp.locked_by_approval_off"}}">{{svg "octicon-circle-slash" 12}} {{ctx.Locale.Tr "company.adminapp.locked"}}</a>
+{{end}}

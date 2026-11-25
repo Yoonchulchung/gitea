@@ -1,0 +1,27 @@
+{{/* What waits on an administrator, on their dashboard — company.SetDashboardApprovals. */}}
+{{if .DashboardApprovals}}
+	<div class="ui segments company-dashboard-deploys">
+		<div class="ui segment company-dashboard-apps-head">
+			<strong>{{ctx.Locale.Tr "company.approvals.dashboard_title" .DashboardApprovalsTotal}}</strong>
+			<a class="muted tw-text-12" href="{{.ApprovalsLink}}">{{ctx.Locale.Tr "company.approvals.dashboard_all"}}</a>
+		</div>
+		{{range $req := .DashboardApprovals}}
+			<div class="ui segment flex-text-block tw-justify-between">
+				<div>
+					{{if $req.IsProject}}<span class="ui small basic label">{{ctx.Locale.Tr "company.approvals.kind_project"}}</span>
+					{{else}}<span class="ui small basic blue label">{{ctx.Locale.Tr "company.approvals.kind_deploy"}}</span>{{end}}
+					<span class="tw-font-semibold tw-ml-1">{{$req.Name}}</span>
+					<span class="text-grey tw-text-12 tw-ml-1">
+						{{if $req.Requester}}{{ctx.Locale.Tr "company.dashboard.requested_by" $req.Requester.Name}}{{end}}
+						· {{DateUtils.TimeSince $req.CreatedUnix}}
+					</span>
+				</div>
+				{{if $req.IsProject}}
+					<a class="ui tiny basic button" href="{{$.ApprovalsLink}}?kind=project">{{ctx.Locale.Tr "company.approvals.decide"}}</a>
+				{{else if $req.Link}}
+					<a class="ui tiny basic button" href="{{$req.Link}}">{{ctx.Locale.Tr "company.approvals.review"}}</a>
+				{{end}}
+			</div>
+		{{end}}
+	</div>
+{{end}}

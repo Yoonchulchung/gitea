@@ -1,0 +1,79 @@
+{{template "base/head" .}}
+<div role="main" aria-label="{{.Title}}" class="page-content company-approvals">
+	<div class="ui container">
+		{{template "base/alert" .}}
+		<div class="flex-text-block tw-justify-between tw-flex-wrap tw-mb-3">
+			<div class="ui compact small menu">
+				<a class="item{{if not .ApprovalsDone}} active{{end}}" href="?kind={{.ApprovalsKind}}">
+					{{ctx.Locale.Tr "company.approvals.tab_pending"}}
+					{{if .ApprovalsPending}}<span class="ui small label">{{.ApprovalsPending}}</span>{{end}}
+				</a>
+				<a class="item{{if .ApprovalsDone}} active{{end}}" href="?state=done&kind={{.ApprovalsKind}}">{{ctx.Locale.Tr "company.approvals.tab_done"}}</a>
+			</div>
+			<div class="ui compact small menu">
+				{{$state := ""}}{{if .ApprovalsDone}}{{$state = "done"}}{{end}}
+				<a class="item{{if not .ApprovalsKind}} active{{end}}" href="?state={{$state}}">{{ctx.Locale.Tr "company.approvals.kind_all"}}</a>
+				<a class="item{{if eq .ApprovalsKind "deploy"}} active{{end}}" href="?state={{$state}}&kind=deploy">{{ctx.Locale.Tr "company.approvals.kind_deploy"}}</a>
+				<a class="item{{if eq .ApprovalsKind "project"}} active{{end}}" href="?state={{$state}}&kind=project">{{ctx.Locale.Tr "company.approvals.kind_project"}}</a>
+			</div>
+		</div>
+		<div class="ui segment tw-p-0">
+			{{if .Approvals}}
+				<table class="ui very basic table company-approvals-table">
+					<thead>
+						<tr>
+							<th class="tw-w-24">{{ctx.Locale.Tr "company.approvals.col_kind"}}</th>
+							<th>{{ctx.Locale.Tr "company.approvals.col_request"}}</th>
+							<th class="tw-w-40">{{ctx.Locale.Tr "company.approvals.col_requester"}}</th>
+							<th class="tw-w-32">{{ctx.Locale.Tr "company.approvals.col_requested"}}</th>
+							<th class="tw-text-right">{{if .ApprovalsDone}}{{ctx.Locale.Tr "company.approvals.col_result"}}{{end}}</th>
+						</tr>
+					</thead>
+					<tbody>
+						{{range $req := .Approvals}}
+							<tr>
+								<td>
+									{{if $req.IsProject}}<span class="ui small basic label">{{ctx.Locale.Tr "company.approvals.kind_project"}}</span>
+									{{else}}<span class="ui small basic blue label">{{ctx.Locale.Tr "company.approvals.kind_deploy"}}</span>{{end}}
+								</td>
+								<td>
+									<div class="tw-font-semibold">{{if $req.Repo}}<a href="{{$req.Repo.Link}}">{{$req.Name}}</a>{{else}}{{$req.Name}}{{end}}</div>
+									{{if $req.Title}}<div class="text-grey tw-text-13">{{$req.Title}}</div>{{end}}
+									{{if $req.Description}}<div class="text-grey tw-text-13">{{$req.Description}}</div>{{end}}
+								</td>
+								<td>{{if $req.Requester}}{{$req.Requester.Name}}{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.activity.who_gone"}}</span>{{end}}</td>
+								<td class="text-grey tw-whitespace-nowrap" title="{{DateUtils.FullTime $req.CreatedUnix}}">{{DateUtils.TimeSince $req.CreatedUnix}}</td>
+								<td class="tw-text-right">
+									{{if $req.IsPending}}
+										<div class="flex-text-inline tw-justify-end">
+											{{if $req.IsProject}}
+												<form method="post" action="{{$.ApprovalsLink}}/{{$req.ID}}/approve">
+													{{$.CsrfTokenHtml}}
+													<button class="ui tiny primary button">{{ctx.Locale.Tr "company.approvals.approve"}}</button>
+												</form>
+												<form method="post" action="{{$.ApprovalsLink}}/{{$req.ID}}/reject" data-company-confirm="{{ctx.Locale.Tr "company.approvals.reject_confirm"}}">
+													{{$.CsrfTokenHtml}}
+													<button class="ui tiny basic red button">{{ctx.Locale.Tr "company.approvals.reject"}}</button>
+												</form>
+											{{else if $req.Link}}
+												<a class="ui tiny primary button" href="{{$req.Link}}">{{ctx.Locale.Tr "company.approvals.review"}}</a>
+											{{end}}
+										</div>
+									{{else}}
+										<span class="ui small {{if eq $req.Status 1}}green{{else if eq $req.Status 2}}red{{end}} label">{{ctx.Locale.Tr $req.Status.Key}}</span>
+										{{if $req.Decider}}<div class="text-grey tw-text-12 tw-mt-1">{{$req.Decider.Name}} · {{DateUtils.TimeSince $req.DecidedUnix}}</div>{{end}}
+										{{if and (not $req.IsProject) $req.Link}}<div class="tw-text-12"><a href="{{$req.Link}}">{{ctx.Locale.Tr "company.approvals.open_request"}}</a></div>{{end}}
+									{{end}}
+								</td>
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			{{else}}
+				<div class="tw-p-4 text-grey">{{if .ApprovalsDone}}{{ctx.Locale.Tr "company.approvals.none_done"}}{{else}}{{ctx.Locale.Tr "company.approvals.none_pending"}}{{end}}</div>
+			{{end}}
+		</div>
+		{{template "company/pager" dict "Pager" .ApprovalsPager "ParamName" "page"}}
+	</div>
+</div>
+{{template "base/footer" .}}

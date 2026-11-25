@@ -60,7 +60,7 @@
 			     read as one long form where the request at the bottom is the
 			     part people scroll past. Collapses to one column on a narrow
 			     screen (.company-deploy-cols). */}}
-			<div class="company-deploy-cols">
+			<div class="company-deploy-cols{{if not .DeployExtrasShown}} single{{end}}">
 			<div class="company-deploy-col">
 			{{with .OpenRequest}}
 				{{/* An unanswered request looked like no request, and the only way
@@ -162,6 +162,7 @@
 			{{end}}
 			</div>{{/* .company-deploy-col — left */}}
 
+			{{if $.DeployExtrasShown}}
 			<div class="company-deploy-col">
 			<div class="company-perm-request">
 				{{with .PermissionRequests}}
@@ -177,6 +178,8 @@
 					{{end}}
 				{{end}}
 
+				{{/* Not offered while deploys need no approval: there is nobody to ask. */}}
+				{{if not $.DeployApprovalOff}}
 				{{/* Nothing in an app says "this needs to reach erp.internal" or
 				     "this needs to hand people a file". Those are intentions, and
 				     without somewhere to say them a department that needs one had
@@ -235,6 +238,8 @@
 					</span>
 				</div>
 
+				{{end}}
+
 				<div class="field tw-mt-2">
 					<label>{{ctx.Locale.Tr "company.deploy.reason"}} <span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.deploy.reason_note"}}</span></label>
 						{{/* autocomplete off: the browser offers what was typed into this field on
@@ -250,6 +255,7 @@
 				</div>
 			</div>
 			</div>{{/* .company-deploy-col — right */}}
+			{{end}}
 			</div>{{/* .company-deploy-cols */}}
 			{{/* The label is wrapped so the loading state can hide it: .is-loading
 			     dims child *elements*, and a bare text node would stay visible
@@ -402,6 +408,7 @@
    than 1fr: a grid track defaults to min-content, so one long unbroken string
    in a field would widen its column and squeeze the other to nothing. */
 .company-deploy-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.company-deploy-cols.single { grid-template-columns: minmax(0, 1fr); max-width: 720px; }
 /* A box each, so the two questions read as two things. Same border and radius
    as the segments elsewhere on these screens rather than a new treatment —
    and it is what replaces the warning colour the request card used to carry,

@@ -248,6 +248,7 @@ func AdminApp(ctx *context.Context) {
 		ctx.Data["CopyOwners"] = owners
 		ctx.Data["CopyName"] = repo.Name + "-copy"
 	}
+	ctx.Data["DeployApprovalOff"] = currentDeployApprovalPolicy(ctx).WaivedBy != nil
 	ctx.HTML(http.StatusOK, tplAdminApp)
 }
 

@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	"gitea.dev/modules/log"
 	secret_module "gitea.dev/modules/secret"
 	"gitea.dev/modules/setting"
+	sender_service "gitea.dev/services/mailer/sender"
 )
 
 // Mail the platform sends about itself.
@@ -263,48 +265,44 @@ func sendSMTP(ctx context.Context, server MailServer, password string, to []stri
 	if trace == nil {
 		trace = func(string, ...any) {}
 	}
-	dialer := &net.Dialer{Timeout: mailTimeout}
-	tlsConfig := &tls.Config{ServerName: server.Host, InsecureSkipVerify: server.SkipVerify} //nolint:gosec // the administrator asked for it, explicitly, on the form
-
-	var conn net.Conn
-	var err error
-	if server.Security == mailSecurityTLS {
-		conn, err = tls.DialWithDialer(dialer, "tcp", server.Addr(), tlsConfig)
-	} else {
-		conn, err = dialer.DialContext(ctx, "tcp", server.Addr())
-	}
-	if err != nil {
-		return fmt.Errorf("connecting to %s: %w", server.Addr(), err)
-	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(mailTimeout))
-	trace("connected to %s (security: %s)", server.Addr(), server.Security)
-
-	client, err := smtp.NewClient(conn, server.Host)
+	client, err := dialSMTP(ctx, server, trace)
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() { client.Close() }()
 
-	if server.Security == mailSecurityStartTLS {
-		if ok, _ := client.Extension("STARTTLS"); !ok {
-			return errors.New("the server does not offer STARTTLS")
-		}
-		if err := client.StartTLS(tlsConfig); err != nil {
-			return err
-		}
-		trace("STARTTLS ok")
-	}
-	if ok, mechs := client.Extension("AUTH"); ok {
-		trace("server offers AUTH: %s", mechs)
+	ok, offered := client.Extension("AUTH")
+	if ok {
+		trace("server offers AUTH: %s", offered)
 	} else {
 		trace("server offers no AUTH")
 	}
 	if server.Username != "" {
-		if err := client.Auth(smtp.PlainAuth("", server.Username, password, server.Host)); err != nil {
-			return fmt.Errorf("signing in as %s: %w", server.Username, err)
+		if !ok {
+			return errors.New("the server offers no sign-in, but a user name is set")
 		}
-		trace("AUTH PLAIN as %s ok", server.Username)
+		auths := smtpAuthsFor(offered, server.Username, password, server.Host)
+		if len(auths) == 0 {
+			return fmt.Errorf("none of the sign-in methods the server offers (%s) is supported", offered)
+		}
+		// Some servers offer a method and then refuse it; the next one may work.
+		// A refused AUTH ends the session, so each retry is a new connection.
+		var tried []string
+		for i, a := range auths {
+			tried = append(tried, a.name)
+			if err = client.Auth(a.auth); err == nil {
+				trace("AUTH %s as %s ok", a.name, server.Username)
+				break
+			}
+			trace("AUTH %s as %s refused: %v", a.name, server.Username, err)
+			if i == len(auths)-1 {
+				return fmt.Errorf("signing in as %s (tried %s): %w", server.Username, strings.Join(tried, ", "), err)
+			}
+			client.Close()
+			if client, err = dialSMTP(ctx, server, trace); err != nil {
+				return err
+			}
+		}
 	}
 	if err := client.Mail(server.Sender()); err != nil {
 		return fmt.Errorf("MAIL FROM %s: %w", server.Sender(), err)
@@ -328,6 +326,68 @@ func sendSMTP(ctx context.Context, server MailServer, password string, to []stri
 	}
 	trace("message accepted (%d bytes)", len(msg))
 	return client.Quit()
+}
+
+// dialSMTP opens a session up to the point of signing in.
+func dialSMTP(ctx context.Context, server MailServer, trace func(string, ...any)) (*smtp.Client, error) {
+	dialer := &net.Dialer{Timeout: mailTimeout}
+	tlsConfig := &tls.Config{ServerName: server.Host, InsecureSkipVerify: server.SkipVerify} //nolint:gosec // the administrator asked for it, explicitly, on the form
+
+	var conn net.Conn
+	var err error
+	if server.Security == mailSecurityTLS {
+		conn, err = tls.DialWithDialer(dialer, "tcp", server.Addr(), tlsConfig)
+	} else {
+		conn, err = dialer.DialContext(ctx, "tcp", server.Addr())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("connecting to %s: %w", server.Addr(), err)
+	}
+	_ = conn.SetDeadline(time.Now().Add(mailTimeout))
+	trace("connected to %s (security: %s)", server.Addr(), server.Security)
+
+	client, err := smtp.NewClient(conn, server.Host)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	if server.Security == mailSecurityStartTLS {
+		if ok, _ := client.Extension("STARTTLS"); !ok {
+			client.Close()
+			return nil, errors.New("the server does not offer STARTTLS")
+		}
+		if err := client.StartTLS(tlsConfig); err != nil {
+			client.Close()
+			return nil, err
+		}
+		trace("STARTTLS ok")
+	}
+	return client, nil
+}
+
+type namedAuth struct {
+	name string
+	auth smtp.Auth
+}
+
+// smtpAuthsFor is every sign-in method the server offers that can be tried,
+// most common first. LOGIN and NTLM are Gitea's own mailer's.
+func smtpAuthsFor(offered, user, password, host string) []namedAuth {
+	advertised := strings.Fields(strings.ToUpper(offered))
+	var auths []namedAuth
+	if slices.Contains(advertised, "PLAIN") {
+		auths = append(auths, namedAuth{"PLAIN", smtp.PlainAuth("", user, password, host)})
+	}
+	if slices.Contains(advertised, "LOGIN") {
+		auths = append(auths, namedAuth{"LOGIN", sender_service.LoginAuth(user, password)})
+	}
+	if slices.Contains(advertised, "CRAM-MD5") {
+		auths = append(auths, namedAuth{"CRAM-MD5", smtp.CRAMMD5Auth(user, password)})
+	}
+	if slices.Contains(advertised, "NTLM") {
+		auths = append(auths, namedAuth{"NTLM", sender_service.NtlmAuth(user, password)})
+	}
+	return auths
 }
 
 // cleanAddresses drops blanks and duplicates from a list somebody typed.

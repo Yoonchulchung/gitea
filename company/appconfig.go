@@ -108,6 +108,8 @@ type AppDependencies struct {
 // AppSettings is one app's effective policy, after defaults are merged in.
 type AppSettings struct {
 	Enabled *bool `yaml:"enabled"`
+	// packagesFree is set for one build while packages need no approval; never stored.
+	packagesFree bool
 	// BasePackages are installed into every app's environment whether or not
 	// its requirements.txt asks for them.
 	//

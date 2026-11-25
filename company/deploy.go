@@ -205,7 +205,41 @@ func DeployForm(ctx *context.Context) {
 		ctx.NotFound() // the central repository cannot request a deploy of itself
 		return
 	}
+	if quickDeployOn(ctx) {
+		ctx.Redirect(ctx.Repo.RepoLink + "/_app") // nobody to ask: the deploy button deploys at once
+		return
+	}
 	renderDeployForm(ctx)
+}
+
+// quickDeployOn is a deploy that needs nobody's review: one press deploys,
+// after the same checks a request gets.
+func quickDeployOn(ctx *context.Context) bool {
+	return currentDeployApprovalPolicy(ctx).WaivedBy != nil
+}
+
+// quickDeployStartupWait bounds how long one press waits for the check that
+// the version starts; a first build can take longer, and is pressed again.
+const quickDeployStartupWait = 90 * time.Second
+
+// quickDeployRefuse sends a refused one-press deploy back where it came from.
+func quickDeployRefuse(ctx *context.Context, message string) {
+	ctx.Flash.Error(message)
+	back := ctx.FormString("back")
+	if !strings.HasPrefix(back, setting.AppSubURL+"/") || strings.HasPrefix(back, "//") {
+		back = ctx.Repo.RepoLink + "/_app"
+	}
+	ctx.Redirect(back)
+}
+
+func quickDeployTitle(ctx *context.Context, repo *repo_model.Repository) string {
+	summary := repo.Name
+	if gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, repo); err == nil {
+		if commit, err := gitRepo.GetBranchCommit(ctx, repo.DefaultBranch); err == nil {
+			summary = commit.MessageTitle()
+		}
+	}
+	return ctx.Locale.TrString("company.deploy.quick_title", summary)
 }
 
 // renderDeployForm populates and renders the form. Split out so a submission
@@ -242,6 +276,9 @@ func renderDeployForm(ctx *context.Context) {
 		ctx.Repo.Repository.OwnerName, ctx.Repo.Repository.Name,
 		readRepoFile(ctx, ctx.Repo.Repository, "requirements.txt"), ctx.FormString("access"))
 	ctx.Data["PermissionRequests"] = detected
+	approvalOff := currentDeployApprovalPolicy(ctx).WaivedBy != nil
+	ctx.Data["DeployApprovalOff"] = approvalOff
+	ctx.Data["DeployExtrasShown"] = !approvalOff || len(detected) > 0
 	// Limits sit beside what is in use now, or asking for more is a guess.
 	ctx.Data["Limits"] = limitsOnOfferFor(ctx, ctx.Repo.Repository.OwnerName, ctx.Repo.Repository.Name)
 	// Already proposed above, with its evidence; a second field for the same
@@ -698,8 +735,12 @@ func DeployPost(ctx *context.Context) {
 		return
 	}
 	deptRepo := ctx.Repo.Repository
+	quick := ctx.FormBool("quick") && quickDeployOn(ctx)
 
 	title := strings.TrimSpace(ctx.Req.FormValue("title"))
+	if title == "" && quick {
+		title = quickDeployTitle(ctx, deptRepo)
+	}
 	if title == "" {
 		// Back to the form with what was typed, not a bare "400 title
 		// required" page: a title of spaces passes the browser's own check.
@@ -736,6 +777,16 @@ func DeployPost(ctx *context.Context) {
 	// problem — refusing submissions over either would be refusing the thing
 	// that fixes them.
 	if report := runPreflight(ctx, deptRepo); !report.Deployable {
+		if quick {
+			var problems []string
+			for _, c := range report.Checks {
+				if c.Status == preflightError {
+					problems = append(problems, c.Label+": "+c.Detail)
+				}
+			}
+			quickDeployRefuse(ctx, ctx.Locale.TrString("company.deploy.quick_preflight_failed", strings.Join(problems, " · ")))
+			return
+		}
 		ctx.Data["Preflight"] = report
 		ctx.Data["SubmittedTitle"] = title
 		ctx.Data["SubmittedMessage"] = body
@@ -749,6 +800,22 @@ func DeployPost(ctx *context.Context) {
 	// check not being possible — packages awaiting approval, no sandbox — is
 	// not the department's to fix, and does not hold the request.
 	check, checked := EnsureStartupCheck(ctx, deptRepo, false)
+	for deadline := time.Now().Add(quickDeployStartupWait); quick && checked && check.Pending() && time.Now().Before(deadline); {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+		check, checked = EnsureStartupCheck(ctx, deptRepo, false)
+	}
+	if quick && checked && check.Blocks() {
+		if check.Pending() {
+			quickDeployRefuse(ctx, ctx.Locale.TrString("company.deploy.quick_startup_running"))
+		} else {
+			quickDeployRefuse(ctx, ctx.Locale.TrString("company.deploy.quick_startup_failed", check.Error))
+		}
+		return
+	}
 	if checked && check.Blocks() {
 		key := "company.deploy.startup_failed"
 		if check.Pending() {
@@ -763,6 +830,10 @@ func DeployPost(ctx *context.Context) {
 	}
 
 	if problem := limitRequestProblem(ctx, deptRepo); problem != "" {
+		if quick {
+			quickDeployRefuse(ctx, ctx.Locale.TrString("company.deploy.quick_failed", problem))
+			return
+		}
 		ctx.Data["LimitRequestError"] = problem
 		ctx.Data["SubmittedTitle"] = title
 		ctx.Data["SubmittedMessage"] = body
@@ -786,6 +857,10 @@ func DeployPost(ctx *context.Context) {
 	// change at all behind it: a build that stopped on an unapproved
 	// dependency needs approval, not code.
 	if len(files) == 0 && len(requests) == 0 {
+		if quick {
+			quickDeployRefuse(ctx, ctx.Locale.TrString("company.deploy.nothing_to_deploy"))
+			return
+		}
 		ctx.Flash.Error(ctx.Locale.TrString("company.deploy.nothing_to_deploy"), true)
 		ctx.Data["SubmittedTitle"] = title
 		ctx.Data["SubmittedMessage"] = body
@@ -801,7 +876,6 @@ func DeployPost(ctx *context.Context) {
 	files = append(files, buildRequestLogFile(ctx, central, deptRepo.OwnerName, deptRepo.Name,
 		requestLogEntry(ctx.Locale, ctx.Doer.Name, title, body, requests, time.Now())))
 
-	deployedBefore := appOnCentral(ctx, deptRepo.OwnerName, deptRepo.Name)
 	newBranch := deployBranchName(deptRepo.OwnerName, deptRepo.Name, ctx.Doer.ID)
 	if _, err := files_service.ChangeRepoFiles(ctx, central, centralOwner, &files_service.ChangeRepoFilesOptions{
 		OldBranch: central.DefaultBranch,
@@ -878,7 +952,9 @@ func DeployPost(ctx *context.Context) {
 	// never block or fail the actual submission — see postAIReviewComment.
 	// Both run on their own, not on this request: a reply that takes a while, or
 	// a browser that leaves, must not cancel the review it started.
-	if policy := currentDeployApprovalPolicy(ctx); !policy.needsApproval(deployedBefore, requests) {
+	policy := currentDeployApprovalPolicy(ctx)
+	needsReview := policy.needsApproval(requests)
+	if !needsReview {
 		ScheduleDeployWithoutApproval(central, policy.WaivedBy, pullIssue.PullRequest.ID, deptRepo.OwnerName, deptRepo.Name)
 	} else {
 		ScheduleDeployAIReview(central, centralOwner, pullIssue.PullRequest.ID, deptRepo.OwnerName, deptRepo.Name)
@@ -887,6 +963,17 @@ func DeployPost(ctx *context.Context) {
 		go postAIReviewComment(run, pullIssue.PullRequest.ID, central, centralOwner, pullIssue, newBranch, deptRepo.FullName(), reviewContext)
 	}
 
+	if quick {
+		// Back to the app, where the deploy shows as it runs; one that asked for
+		// something still needing approval says so instead.
+		if needsReview {
+			ctx.Flash.Info(ctx.Locale.TrString("company.deploy.quick_needs_review"))
+		} else {
+			ctx.Flash.Success(ctx.Locale.TrString("company.deploy.quick_started"))
+		}
+		ctx.Redirect(deptRepo.Link() + "/_app")
+		return
+	}
 	ctx.Redirect(deptRepo.Link() + "/deploy/submit")
 }
 
@@ -1220,6 +1307,7 @@ func openPullRequest(ctx *context.Context, target, headRepo *repo_model.Reposito
 	}); err != nil {
 		return nil, err
 	}
+	recordDeployApproval(ctx, pullIssue)
 	return pullIssue, nil
 }
 

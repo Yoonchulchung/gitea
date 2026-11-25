@@ -43,6 +43,10 @@ func RegisterRoutes(m *web.Router) {
 	m.Group("/company", func() {
 		m.Get("/projects/new", ProjectNew)
 		m.Post("/projects/new", ProjectNewPost)
+		m.Post("/projects/requests/{id}/cancel", ProjectRequestCancel)
+		m.Get("/approvals", Approvals) // administrators only, checked inside — company/approvals_page.go
+		m.Post("/approvals/{id}/approve", ApprovalApprove)
+		m.Post("/approvals/{id}/reject", ApprovalReject)
 		m.Post("/project/{owner}/{repo}/members", ProjectMembersPost) // the owner shares a project with anyone, from any department — company/project_members.go
 		m.Get("/deploy-requests", DeployRequests)
 		m.Get("/deploy-requests/{id}", DeployRequestFiles)
@@ -150,6 +154,7 @@ func RegisterAdminRoutes(m *web.Router) {
 		m.Get("/data", AdminAppData)
 		m.Get("/data/export", AdminAppDataExport)
 		m.Get("/data/csv", AdminAppDataCSV)
+		m.Get("/data/snapshot", AdminAppDataSnapshot)
 		m.Post("/data/{verb}", AdminAppDataAction)
 		m.Post("/{verb}", AdminAppControl)
 	})

@@ -81,6 +81,7 @@ func AdminPackages(ctx *context.Context) {
 		ctx.Data["PolicyHistoryLink"] = setting.AppSubURL + "/" + centralOwner + "/" + centralName +
 			"/commits/branch/" + "main" + "/" + appsConfigPath
 	}
+	ctx.Data["DeployApprovalOff"] = currentDeployApprovalPolicy(ctx).WaivedBy != nil
 	ctx.HTML(http.StatusOK, tplAdminPackages)
 }
 

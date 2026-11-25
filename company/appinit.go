@@ -26,6 +26,7 @@ func InitAppPlatform(ctx context.Context) {
 	// Before anything resolves the central repository: it may have been moved
 	// since the last start (company/centralrepo.go).
 	LoadCentralRepoLocation(ctx)
+	SyncDeployApprovals(ctx)
 	// Created now rather than at the first new project, so the
 	// administrator's project list has somewhere to point from the start.
 	if _, err := ProjectOrg(ctx); err != nil {
@@ -92,6 +93,7 @@ func InitAppPlatform(ctx context.Context) {
 	StartSystemMetrics()
 	StartLivenessChecks()
 	StartAppDataGC()
+	StartAutoSnapshots()
 	StartProxyGuard()
 	logAIPolicyAtBoot()
 

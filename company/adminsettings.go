@@ -37,6 +37,8 @@ const (
 	settingKeyHelpURL          = "company.help_url"
 	// The administrator who delegated approval to the AI; empty when nobody has.
 	settingKeyAutoApproveBy = "company.deploy.auto_approve_by"
+	// Stored only as "false": an instance that never saved this asks for approval.
+	settingKeyProjectApproval = "company.project.approval_required"
 )
 
 // platformSettings is read on pages people load constantly — the settings
@@ -54,6 +56,7 @@ var (
 	approvalWaivedBy        int64
 	packageApproval         bool
 	networkApproval         bool
+	projectApprovalOff      bool
 )
 
 func loadPlatformSettings(ctx context.Context) {
@@ -87,6 +90,7 @@ func loadPlatformSettings(ctx context.Context) {
 	approvalWaivedBy, _ = strconv.ParseInt(all[settingKeyApprovalWaivedBy], 10, 64)
 	packageApproval = all[settingKeyPackageApproval] == "true"
 	networkApproval = all[settingKeyNetworkApproval] == "true"
+	projectApprovalOff = all[settingKeyProjectApproval] == "false"
 	platformSettingsLoaded = true
 }
 
@@ -157,6 +161,15 @@ func AutoApproveDelegate(ctx context.Context) *user_model.User {
 		return nil
 	}
 	return u
+}
+
+// ProjectApprovalRequired reports whether a new project waits for an
+// administrator (company/project_request.go) rather than being created at once.
+func ProjectApprovalRequired(ctx context.Context) bool {
+	loadPlatformSettings(ctx)
+	platformSettingsMu.RLock()
+	defer platformSettingsMu.RUnlock()
+	return !projectApprovalOff
 }
 
 // SupportEmail is who a person who cannot get in should write to,
@@ -309,6 +322,7 @@ func AdminSettings(ctx *gitea_context.Context) {
 	ctx.Data["ApprovalWaivedBy"] = policy.WaivedBy
 	ctx.Data["PackageApproval"] = policy.PackageApproval
 	ctx.Data["NetworkApproval"] = policy.NetworkApproval
+	ctx.Data["ProjectApproval"] = ProjectApprovalRequired(ctx)
 	ctx.HTML(http.StatusOK, tplAdminSettings)
 }
 
@@ -341,9 +355,10 @@ func AdminSettingsPost(ctx *gitea_context.Context) {
 	}
 
 	settings := map[string]string{
-		settingKeyAIUsersEnabled: usersEnabled,
-		settingKeySupportEmail:   email,
-		settingKeyHelpURL:        help,
+		settingKeyAIUsersEnabled:  usersEnabled,
+		settingKeySupportEmail:    email,
+		settingKeyHelpURL:         help,
+		settingKeyProjectApproval: strconv.FormatBool(ctx.FormBool("project_approval")),
 	}
 	// The provider box is disabled while nobody is offered AI, and a disabled
 	// checkbox posts nothing — writing that absence would erase the choice

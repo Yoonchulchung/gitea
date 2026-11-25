@@ -234,8 +234,9 @@
 		     waiting for a request to be written. Removal matters more than
 		     addition — an approval flow that can only add is a ratchet, and "we
 		     approved that by mistake" has to have an answer. */}}
-		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminapp.policy_header"}}</h4>
-		<div class="ui attached segment">
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminapp.policy_header"}}{{if .DeployApprovalOff}}{{template "company/approval_off_badge"}}{{end}}</h4>
+		{{/* Shown but not usable while deploys need no approval — company/admin_app.go */}}
+		<div class="ui attached segment{{if .DeployApprovalOff}} company-locked{{end}}" {{if .DeployApprovalOff}}inert{{end}}>
 			<form method="post" action="{{.AdminAppLink}}/network" class="ui form">
 				{{.CsrfTokenHtml}}
 				<input type="hidden" name="what" value="access">
@@ -343,8 +344,8 @@
 			</form>
 		</div>
 
-		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminapp.packages_header"}}</h4>
-		<div class="ui attached segment">
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminapp.packages_header"}}{{if .DeployApprovalOff}}{{template "company/approval_off_badge"}}{{end}}</h4>
+		<div class="ui attached segment{{if .DeployApprovalOff}} company-locked{{end}}" {{if .DeployApprovalOff}}inert{{end}}>
 			<div class="tw-mb-2">
 				<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminapp.pkg_base"}}</span>
 				<div class="tw-mt-1">

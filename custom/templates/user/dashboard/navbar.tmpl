@@ -104,9 +104,11 @@
 				     admins otherwise have no link to it at all: the global top-navbar
 				     one (head_navbar.tmpl's CompanyDeployRequestsLink) is deliberately
 				     non-admin-only, see company/gate.go. */}}
+				{{if .CompanyShowDeployRequests}}
 				<a class="item" href="{{AppSubUrl}}/company/deploy-requests">
 					{{ctx.Locale.Tr "company.deploy_requests.title"}}
 				</a>
+				{{end}}
 				{{if and .ShowMilestonesDashboardPage (not (and ctx.Consts.RepoUnitTypeIssues.UnitGlobalDisabled ctx.Consts.RepoUnitTypePullRequests.UnitGlobalDisabled))}}
 				<a class="{{if .PageIsMilestonesDashboard}}active {{end}}item" href="{{.ContextUser.OrganisationLink}}/milestones{{if .Team}}/{{PathEscape .Team.Name}}{{end}}">
 					{{svg "octicon-milestone"}}&nbsp;{{ctx.Locale.Tr "milestones"}}

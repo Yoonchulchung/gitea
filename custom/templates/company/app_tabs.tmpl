@@ -1,0 +1,26 @@
+{{/* The app pages' title and tabs: settings, logs, history, data. Data is set
+     by company.setAppTabsData; "Open app" is a link, so it sits apart. */}}
+{{define "company/app_title"}}
+	<h2 class="tw-flex tw-items-center tw-gap-3 tw-m-0">
+		{{ctx.Locale.Tr "company.app.title"}}
+		<span class="company-app-state {{ctx.RootData.AppTabsState}}">{{ctx.Locale.Tr ctx.RootData.AppTabsStateLabel}}</span>
+	</h2>
+{{end}}
+
+{{define "company/app_tabs"}}
+	{{$active := ctx.RootData.AppTabsActive}}
+	{{$link := ctx.RootData.AppLink}}
+	<div class="ui secondary pointing menu company-app-links">
+		<a class="item{{if eq $active "settings"}} active{{end}}" href="{{$link}}">{{svg "octicon-gear" 14}} {{ctx.Locale.Tr "company.app.tab_settings"}}</a>
+		{{if ctx.RootData.AppTabsFull}}
+			<a class="item{{if eq $active "logs"}} active{{end}}" href="{{$link}}/logs">{{svg "octicon-log" 14}} {{ctx.Locale.Tr "company.app.logs"}}</a>
+			<a class="item{{if eq $active "history"}} active{{end}}" href="{{$link}}/history">{{svg "octicon-history" 14}} {{ctx.Locale.Tr "company.app.deploy_history"}}</a>
+			<a class="item{{if eq $active "data"}} active{{end}}" href="{{$link}}/data">{{svg "octicon-database" 14}} {{ctx.Locale.Tr "company.data.title"}}</a>
+		{{end}}
+		{{with ctx.RootData.AppTabsOpenURL}}
+			<div class="right menu">
+				<a class="item" href="{{.}}" target="_blank" rel="noopener">{{svg "octicon-link-external" 14}} {{ctx.Locale.Tr "company.app.open_short"}}</a>
+			</div>
+		{{end}}
+	</div>
+{{end}}

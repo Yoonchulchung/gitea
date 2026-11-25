@@ -98,12 +98,55 @@
 					     request a deploy of yet, and a button that can only fail
 					     is worse than no button. */}}
 					{{if not .Repo.IsEmpty}}
-						<a class="ui basic tiny button" href="{{.Repo.Link}}/deploy">{{ctx.Locale.Tr "company.app.request_deploy"}}</a>
+						{{template "company/deploy_button" dict "DeployLink" (print .Repo.Link "/deploy") "Class" "ui basic tiny button" "Label" "company.app.request_deploy"}}
 					{{end}}
 					<button type="button" class="ui primary tiny button company-workspace-save">{{ctx.Locale.Tr "save"}}</button>
 				</div>
 			</div>
-			<div class="company-workspace-panes"></div>
+			<div class="company-workspace-panes">
+				{{/* Shown while no file is open: what to ask the AI, and the rules
+				     its answer has to follow (company/appdocs). */}}
+				<div class="company-workspace-guide">
+					<h3>{{ctx.Locale.Tr "company.workspace.guide.title"}}</h3>
+					{{if .CompanyAIOffered}}
+						<p class="text-grey">{{ctx.Locale.Tr "company.workspace.guide.intro"}}</p>
+						<h4>{{ctx.Locale.Tr "company.workspace.guide.good_title"}}</h4>
+						<ol>
+							<li>{{ctx.Locale.Tr "company.workspace.guide.good_what"}}</li>
+							<li>{{ctx.Locale.Tr "company.workspace.guide.good_data"}}</li>
+							<li>{{ctx.Locale.Tr "company.workspace.guide.good_flow"}}</li>
+							<li>{{ctx.Locale.Tr "company.workspace.guide.good_outside"}}</li>
+						</ol>
+						<h4>{{ctx.Locale.Tr "company.workspace.guide.examples_title"}}</h4>
+						<div class="company-workspace-guide-examples">
+							{{$form := ctx.Locale.TrString "company.workspace.guide.example_form"}}
+							{{$excel := ctx.Locale.TrString "company.workspace.guide.example_excel"}}
+							{{$list := ctx.Locale.TrString "company.workspace.guide.example_list"}}
+							{{$fix := ctx.Locale.TrString "company.workspace.guide.example_fix"}}
+							<button type="button" class="company-workspace-guide-example" data-company-prompt="{{$form}}">{{$form}}</button>
+							<button type="button" class="company-workspace-guide-example" data-company-prompt="{{$excel}}">{{$excel}}</button>
+							<button type="button" class="company-workspace-guide-example" data-company-prompt="{{$list}}">{{$list}}</button>
+							<button type="button" class="company-workspace-guide-example" data-company-prompt="{{$fix}}">{{$fix}}</button>
+						</div>
+						<h4>{{ctx.Locale.Tr "company.workspace.guide.tips_title"}}</h4>
+						<ul>
+							<li>{{ctx.Locale.Tr "company.workspace.guide.tip_one"}}</li>
+							<li>{{ctx.Locale.Tr "company.workspace.guide.tip_error"}}</li>
+							<li>{{ctx.Locale.Tr "company.workspace.guide.tip_save"}}</li>
+						</ul>
+					{{end}}
+					<h4>{{ctx.Locale.Tr "company.workspace.guide.rules_title"}}</h4>
+					<ul>
+						<li>{{ctx.Locale.Tr "company.workspace.guide.rule_main"}}</li>
+						<li>{{ctx.Locale.Tr "company.workspace.guide.rule_db"}}</li>
+						<li>{{ctx.Locale.Tr "company.workspace.guide.rule_migrations"}}</li>
+						<li>{{ctx.Locale.Tr "company.workspace.guide.rule_paths"}}</li>
+						<li>{{if .PackagesNeedApproval}}{{ctx.Locale.Tr "company.workspace.guide.rule_packages"}}{{else}}{{ctx.Locale.Tr "company.workspace.guide.rule_packages_free"}}{{end}}</li>
+						<li>{{ctx.Locale.Tr "company.workspace.guide.rule_network"}}</li>
+						<li>{{ctx.Locale.Tr "company.workspace.guide.rule_secrets"}}</li>
+					</ul>
+				</div>
+			</div>
 		</div>
 		{{/* Not rendered at all when the instance has AI switched off: the
 		     "set up your key" state below is for someone who can set one up,
@@ -381,6 +424,29 @@
 	min-height: 0;
 	position: relative;
 }
+.company-workspace-guide {
+	position: absolute;
+	inset: 0;
+	overflow: auto;
+	padding: 24px 32px;
+	line-height: 1.6;
+}
+.company-workspace-guide > * { max-width: 820px; }
+.company-workspace-guide h4 { margin: 20px 0 6px; }
+.company-workspace-guide ol, .company-workspace-guide ul { margin: 0; padding-left: 20px; }
+.company-workspace-panes:has(> .company-workspace-pane) .company-workspace-guide { display: none; }
+.company-workspace-guide-examples { display: flex; flex-direction: column; gap: 6px; }
+.company-workspace-guide-example {
+	text-align: left;
+	white-space: pre-line;
+	padding: 8px 12px;
+	border: 1px solid var(--color-secondary);
+	border-radius: var(--border-radius);
+	background: var(--color-box-body);
+	color: var(--color-text);
+	cursor: pointer;
+}
+.company-workspace-guide-example:hover { background: var(--color-hover); border-color: var(--color-primary); }
 .company-workspace-pane {
 	position: absolute;
 	inset: 0;

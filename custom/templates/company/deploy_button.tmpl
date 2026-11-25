@@ -1,0 +1,15 @@
+{{/* The deploy button. While deploys need no approval it deploys at once (the
+     checks still run, company/deploy.go DeployPost); otherwise it opens the
+     request form. Attributes: DeployLink ({repo}/deploy), Class, Label (the form's wording). */}}
+{{define "company/deploy_button"}}
+	{{if ctx.RootData.CompanyQuickDeploy}}
+		<form method="post" action="{{.DeployLink}}" class="tw-inline-block">
+			{{ctx.RootData.CsrfTokenHtml}}
+			<input type="hidden" name="quick" value="1">
+			<input type="hidden" name="back" value="{{ctx.RootData.Link}}">
+			<button class="{{.Class}}">{{ctx.Locale.Tr "company.deploy.quick_button"}}</button>
+		</form>
+	{{else}}
+		<a class="{{.Class}}" href="{{.DeployLink}}">{{ctx.Locale.Tr .Label}}</a>
+	{{end}}
+{{end}}

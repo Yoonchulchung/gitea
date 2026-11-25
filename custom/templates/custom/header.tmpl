@@ -449,6 +449,47 @@
 .company-ai-chat-message-assistant {
 	align-self: stretch;
 }
+/* The app page (custom/templates/company/app.tmpl): title with the app's own
+   controls, a row of links, then cards. */
+.company-app-titlebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 8px 0 4px; }
+.company-app-links.ui.secondary.pointing.menu { margin: 8px 0 16px; }
+.company-app-links .item { gap: 6px; }
+.company-app-danger-header.ui.header { color: var(--color-red); }
+.company-app-danger.ui.segment { border-color: var(--color-red-badge-bg, var(--color-red)); }
+/* The repository header's two actions (custom/templates/repo/header.tmpl):
+   same size, one outlined, one filled. */
+.company-header-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 36px;
+	min-width: 120px;
+	padding: 0 20px;
+	border: 1px solid var(--color-secondary-dark-2);
+	border-radius: 4px;
+	background: var(--color-body);
+	color: var(--color-text);
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 1;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.company-header-btn:hover { background: var(--color-hover); color: var(--color-text); }
+.company-header-btn.primary { background: var(--color-text); border-color: var(--color-text); color: var(--color-body); }
+.company-header-btn.primary:hover { opacity: .85; background: var(--color-text); color: var(--color-body); }
+/* Gitea keeps the header's bottom padding small for the tab row under it; with
+   no tabs (a department's view) the buttons would sit on the border. */
+.repo-header:last-child:has(.company-header-btn) { padding-bottom: 14px; }
+/* A switch with its explanation under its label (company/admin_settings.tmpl).
+   .ui.checkbox puts its label 20px in, and the toggle's text starts 4.5rem into
+   that; the help and a dependent switch line up with that text. */
+.company-setting { margin: 12px 0; }
+.company-setting-help { margin: 2px 0 0 calc(20px + 4.5rem); font-size: 13px; color: var(--color-text-light-2); }
+.company-setting-sub { margin-left: 4.5rem; }
+.company-setting:has(input:disabled) .company-setting-help { opacity: .5; }
+/* A section shown for reference but not usable — company/admin_app.go */
+.company-locked { opacity: .55; user-select: none; }
 /* A rendered reply: Markdown's own spacing, sized for a narrow panel. */
 .company-ai-chat-message.rendered { white-space: normal; }
 .company-ai-chat-message.rendered :is(h1, h2, h3, h4) { font-size: 1em; margin: .8em 0 .3em; }
@@ -456,12 +497,6 @@
 .company-ai-chat-message.rendered p { margin: .4em 0; }
 .company-ai-chat-message.rendered hr { margin: .6em 0; }
 .company-ai-chat-message.rendered pre { font-size: .85em; }
-/* The AI auto-deploy's state on an open request in the approval queue
-   (custom/templates/company/approval_queue.tmpl). */
-.company-queue-ai { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--color-secondary-alpha-40); color: var(--color-text-light-1); }
-.company-queue-ai.reviewing, .company-queue-ai.waiting { background: var(--color-primary-alpha-20); color: var(--color-primary-dark-2); }
-.company-queue-ai.held { background: var(--color-warning-bg); color: var(--color-warning-text); }
-.company-queue-ai b { font-variant-numeric: tabular-nums; }
 /* The AI at work (web_src/js/features/company-ai-chat.ts): a turning glyph,
    a changing verb with a light passing over it, and the seconds so far. */
 .company-ai-chat-working {
@@ -903,7 +938,12 @@
 	white-space: nowrap;
 }
 .company-db-schema { margin-bottom: 12px; }
-.company-db-schema > summary { cursor: pointer; font-size: 13px; }
+.company-db-schema > summary { cursor: pointer; font-size: 12px; color: var(--color-text-light-2); }
+.company-db-schema > summary:hover { color: var(--color-text); }
+.company-db-rows .ui.table { margin: 0; }
+.company-db-rows .ui.table th { font-size: 12px; white-space: nowrap; }
+.company-db-row-actions { width: 1px; white-space: nowrap; text-align: right; }
+.company-db-row-actions .ui.button { margin: 0 0 0 2px; }
 .company-db-sql {
 	background: var(--color-code-bg);
 	border-radius: 4px;

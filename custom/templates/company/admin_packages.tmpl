@@ -15,8 +15,8 @@
 		     "what may apps install"; this answers the natural next question,
 		     "and what is waiting on me" — until now that lived only on each
 		     org's own dashboard, where a request could sit unnoticed. */}}
-		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.policy.pending_header"}}</h4>
-		<div class="ui attached segment">
+		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.policy.pending_header"}}{{if .DeployApprovalOff}}{{template "company/approval_off_badge"}}{{end}}</h4>
+		<div class="ui attached segment{{if .DeployApprovalOff}} company-locked{{end}}" {{if .DeployApprovalOff}}inert{{end}}>
 			{{if .PendingApprovals}}
 				<table class="ui very basic table tw-text-13">
 					<tbody>
@@ -96,8 +96,8 @@
 			</div>
 		{{end}}
 
-		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.pkg.per_app_header" (len .AppPackages)}}</h4>
-		<div class="ui attached table segment">
+		<h4 class="ui top attached header">{{ctx.Locale.Tr "company.pkg.per_app_header" (len .AppPackages)}}{{if .DeployApprovalOff}}{{template "company/approval_off_badge"}}{{end}}</h4>
+		<div class="ui attached table segment{{if .DeployApprovalOff}} company-locked{{end}}" {{if .DeployApprovalOff}}inert{{end}}>
 			<table class="ui very basic table">
 				<thead><tr><th class="tw-w-1/4">{{ctx.Locale.Tr "company.pkg.col_app"}}</th><th>{{ctx.Locale.Tr "company.pkg.col_approved"}}</th></tr></thead>
 				<tbody>

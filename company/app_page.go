@@ -46,6 +46,7 @@ func AppPage(ctx *context.Context) {
 	ctx.Data["App"] = st
 	ctx.Data["Settings"] = settings
 	ctx.Data["StatusLabel"] = departmentStatusLabel(st)
+	setAppTabsData(ctx, owner, name, "settings")
 	cause := DepartmentCause(st)
 	ctx.Data["CauseSummary"] = cause
 	if f := LogFindingFor(st, cause); f != nil {
@@ -406,6 +407,7 @@ func AppLogs(ctx *context.Context) {
 		File:   ctx.FormString("file"),
 		Before: ctx.FormInt("before"),
 	}
+	setAppTabsData(ctx, owner, name, "logs")
 	setLogPagingData(ctx, query, AppLogFiles(owner, name))
 	lines, truncated, err := ReadAppLogs(owner, name, query)
 
@@ -475,6 +477,7 @@ func AppHistory(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Locale.TrString("company.title.deploy_history")
 	ctx.Data["App"] = st
 	ctx.Data["StatusLabel"] = departmentStatusLabel(st)
+	setAppTabsData(ctx, owner, name, "history")
 	ctx.Data["Attempts"] = attempts[start:end]
 	ctx.Data["TotalAttempts"] = len(attempts)
 	ctx.Data["Page"] = context.NewPagerBuilder(ctx).TotalCount(int64(len(attempts))).PerPageLimit(perPage).CurPage(page).Build()
@@ -482,4 +485,18 @@ func AppHistory(ctx *context.Context) {
 	ctx.Data["Running"] = running
 	ctx.Data["AppLink"] = ctx.Repo.RepoLink + "/_app"
 	ctx.HTML(http.StatusOK, tplAppHistory)
+}
+
+// setAppTabsData is what the app pages' shared title and tabs need
+// (custom/templates/company/app_tabs.tmpl).
+func setAppTabsData(ctx *context.Context, owner, name, active string) {
+	st := LoadAppState(owner, name)
+	ctx.Data["AppLink"] = ctx.Repo.RepoLink + "/_app"
+	ctx.Data["AppTabsActive"] = active
+	ctx.Data["AppTabsState"] = st.Actual
+	ctx.Data["AppTabsStateLabel"] = departmentStatusLabel(st)
+	ctx.Data["AppTabsFull"] = ctx.Repo.Permission.CanWrite(unit.TypeCode)
+	if st.HasRelease {
+		ctx.Data["AppTabsOpenURL"] = setting.AppSubURL + appURL(owner, name)
+	}
 }

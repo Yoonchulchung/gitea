@@ -3,10 +3,8 @@
      is why it is offered while the app is still serving requests and the SQL
      console is not — and why the same markup is safe for both audiences. */}}
 {{if or .Browse .BrowseError}}
-	<h4 class="ui attached header">{{ctx.Locale.Tr "company.data.browse_header"}}</h4>
+	<h4 class="ui {{if .AppTabsActive}}top {{end}}attached header">{{ctx.Locale.Tr "company.data.browse_header"}}</h4>
 	<div class="ui attached segment">
-		<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.data.browse_explain"}}</p>
-
 		{{/* Outside the block below as well as inside it: the helper can fail
 		     before it has anything to show — no release to run it with, a
 		     sandbox that refused, a query that ran past the timeout — and the
@@ -87,7 +85,7 @@
 						{{/* Values are whatever the app stored, so they are printed as
 						     text and nothing here is marked safe. */}}
 						<div class="company-db-rows">
-							<table class="ui very basic compact table">
+							<table class="ui compact selectable table">
 								<thead><tr>{{range .Browse.Columns}}<th>{{.}}</th>{{end}}{{if and .Editable .Browse.RowIDs}}<th></th>{{end}}</tr></thead>
 								<tbody>
 									{{range $i, $row := .Browse.Rows}}
@@ -95,13 +93,13 @@
 											{{range $row}}<td class="tw-text-12">{{.}}</td>{{end}}
 											{{if and $.Editable $.Browse.RowIDs}}
 												{{$rid := index $.Browse.RowIDs $i}}
-												<td class="tw-text-12 tw-whitespace-nowrap">
-													<a href="{{$.DataLink}}?table={{$.BrowseTable}}&offset={{$.Browse.Offset}}&edit={{$rid}}">{{ctx.Locale.Tr "company.data.edit"}}</a>
-													<form method="post" action="{{$.DataLink}}/delete" class="tw-inline tw-ml-2" data-company-confirm="{{ctx.Locale.Tr "company.data.delete_confirm"}}">
+												<td class="company-db-row-actions">
+													<a class="ui mini basic icon button" href="{{$.DataLink}}?table={{$.BrowseTable}}&page={{$.BrowsePage}}&size={{$.BrowsePageSize}}&edit={{$rid}}" data-tooltip-content="{{ctx.Locale.Tr "company.data.edit"}}" aria-label="{{ctx.Locale.Tr "company.data.edit"}}">{{svg "octicon-pencil" 14}}</a>
+													<form method="post" action="{{$.DataLink}}/delete" class="tw-inline" data-company-confirm="{{ctx.Locale.Tr "company.data.delete_confirm"}}">
 														{{$.CsrfTokenHtml}}
 														<input type="hidden" name="table" value="{{$.BrowseTable}}">
 														<input type="hidden" name="rowid" value="{{$rid}}">
-														<button class="ui tiny basic negative button company-db-inline-btn">{{ctx.Locale.Tr "company.data.delete"}}</button>
+														<button class="ui mini basic icon button" data-tooltip-content="{{ctx.Locale.Tr "company.data.delete"}}" aria-label="{{ctx.Locale.Tr "company.data.delete"}}">{{svg "octicon-trash" 14}}</button>
 													</form>
 												</td>
 											{{end}}
@@ -110,25 +108,22 @@
 								</tbody>
 							</table>
 						</div>
-						{{/* Paging is for a table read, where the offset is part of the
-						     query. A typed query runs as written, so a "next" link would
-						     re-run it and show the same rows again; it is capped instead,
-						     and the cap is stated. */}}
-						<div class="tw-flex tw-gap-2 tw-items-center tw-mt-2">
-							{{if .BrowseSQL}}
-								<span class="text-grey tw-text-12">
-									{{if .Browse.More}}{{ctx.Locale.Tr "company.data.browse_capped" .BrowsePageSize}}{{else}}{{ctx.Locale.Tr "company.data.browse_count" (len .Browse.Rows)}}{{end}}
-								</span>
-							{{else}}
-								{{if .Browse.Offset}}
-									<a class="ui tiny basic button" href="{{.DataLink}}?table={{.BrowseTable}}&offset={{Eval .Browse.Offset "-" .BrowsePageSize}}">{{ctx.Locale.Tr "company.data.browse_prev"}}</a>
-								{{end}}
-								{{if .Browse.More}}
-									<a class="ui tiny basic button" href="{{.DataLink}}?table={{.BrowseTable}}&offset={{Eval .Browse.Offset "+" .BrowsePageSize}}">{{ctx.Locale.Tr "company.data.browse_next"}}</a>
-								{{end}}
-								<span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.data.browse_range" (Eval .Browse.Offset "+" 1) (Eval .Browse.Offset "+" (len .Browse.Rows))}}</span>
+						{{/* A query that could not be counted runs as written, capped at one page. */}}
+						<div class="flex-text-block tw-justify-between tw-flex-wrap tw-mt-2">
+							<span class="text-grey tw-text-12">
+								{{if .BrowsePager}}{{ctx.Locale.Tr "company.data.browse_total" .Browse.Total (Eval .Browse.Offset "+" 1) (Eval .Browse.Offset "+" (len .Browse.Rows))}}
+								{{else if .Browse.More}}{{ctx.Locale.Tr "company.data.browse_capped" .BrowsePageSize}}
+								{{else}}{{ctx.Locale.Tr "company.data.browse_count" (len .Browse.Rows)}}{{end}}
+							</span>
+							{{if .BrowsePager}}
+								<div class="ui compact mini menu">
+									{{range $n := .BrowsePageSizes}}
+										<a class="item{{if eq $n $.BrowsePageSize}} active{{end}}" href="{{$.DataLink}}?table={{$.BrowseTable}}&sql={{$.BrowseSQL}}&size={{$n}}">{{ctx.Locale.Tr "company.data.browse_per_page" $n}}</a>
+									{{end}}
+								</div>
 							{{end}}
 						</div>
+						{{if .BrowsePager}}{{template "company/pager" dict "Pager" .BrowsePager "ParamName" "page"}}{{end}}
 					{{else if .Browse.Columns}}
 						<p class="text-grey">{{ctx.Locale.Tr "company.data.browse_empty"}}</p>
 					{{else if not .BrowseError}}
@@ -163,12 +158,12 @@
 			</div>
 			<p class="text-grey tw-text-12">{{ctx.Locale.Tr "company.data.empty_is_null"}}</p>
 			<button class="ui small primary button">{{ctx.Locale.Tr "company.data.save"}}</button>
-			<a class="ui small button" href="{{.DataLink}}?table={{.BrowseTable}}&offset={{.Browse.Offset}}">{{ctx.Locale.Tr "company.data.cancel"}}</a>
+			<a class="ui small button" href="{{.DataLink}}?table={{.BrowseTable}}&page={{.BrowsePage}}&size={{.BrowsePageSize}}">{{ctx.Locale.Tr "company.data.cancel"}}</a>
 		</form>
 	{{end}}
 	<div class="company-db-tools">
 		<details class="company-db-tool">
-			<summary class="ui small button">{{svg "octicon-plus" 14}} {{ctx.Locale.Tr "company.data.add_row"}}</summary>
+			<summary class="ui tiny basic button">{{svg "octicon-plus" 14}} {{ctx.Locale.Tr "company.data.add_row"}}</summary>
 			<form method="post" action="{{.DataLink}}/insert" class="ui form company-db-editor">
 				{{.CsrfTokenHtml}}
 				<input type="hidden" name="table" value="{{.BrowseTable}}">
@@ -189,7 +184,7 @@
 			</form>
 		</details>
 		<details class="company-db-tool">
-			<summary class="ui small button">{{svg "octicon-upload" 14}} {{ctx.Locale.Tr "company.data.import_csv"}}</summary>
+			<summary class="ui tiny basic button">{{svg "octicon-upload" 14}} {{ctx.Locale.Tr "company.data.import_csv"}}</summary>
 			<form method="post" action="{{.DataLink}}/import" enctype="multipart/form-data" class="ui form company-db-editor"
 			      data-company-confirm="{{ctx.Locale.Tr "company.data.import_confirm"}}">
 				{{.CsrfTokenHtml}}
@@ -203,9 +198,9 @@
 				<button class="ui small primary button">{{ctx.Locale.Tr "company.data.import_run"}}</button>
 			</form>
 		</details>
-		<a class="ui small button" href="{{.DataLink}}/csv?table={{.BrowseTable}}">{{svg "octicon-download" 14}} {{ctx.Locale.Tr "company.data.download_csv"}}</a>
+		<a class="ui tiny basic button" href="{{.DataLink}}/csv?table={{.BrowseTable}}">{{svg "octicon-download" 14}} {{ctx.Locale.Tr "company.data.download_csv"}}</a>
 		<details class="company-db-tool">
-			<summary class="ui small button">{{svg "octicon-columns" 14}} {{ctx.Locale.Tr "company.data.add_column"}}</summary>
+			<summary class="ui tiny basic button">{{svg "octicon-columns" 14}} {{ctx.Locale.Tr "company.data.add_column"}}</summary>
 			<form method="post" action="{{.DataLink}}/add-column" class="ui form company-db-editor">
 				{{.CsrfTokenHtml}}
 				<input type="hidden" name="table" value="{{.BrowseTable}}">

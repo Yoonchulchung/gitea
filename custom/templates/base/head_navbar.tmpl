@@ -30,10 +30,12 @@
 			{{if not ctx.Consts.RepoUnitTypeIssues.UnitGlobalDisabled}}
 				<a class="item{{if .PageIsIssues}} active{{end}}" href="{{AppSubUrl}}/issues">{{ctx.Locale.Tr "issues"}}</a>
 			{{end}}
-			{{if not ctx.Consts.RepoUnitTypePullRequests.UnitGlobalDisabled}}
-				{{/* Only administrators see this menu, and what they do on /pulls
-				     is approve deploys — so it is called that. */}}
-				<a class="item{{if .PageIsPulls}} active{{end}}" href="{{AppSubUrl}}/pulls">{{ctx.Locale.Tr "company.nav.deploy_approvals"}}</a>
+			{{if .CompanyApprovalsLink}}
+				{{/* deploys and projects alike — company/approvals_page.go */}}
+				<a class="item{{if .PageIsCompanyApprovals}} active{{end}}" href="{{.CompanyApprovalsLink}}">
+					{{ctx.Locale.Tr "company.approvals.title"}}
+					{{if .CompanyPendingApprovals}}<span class="ui small label tw-ml-1">{{.CompanyPendingApprovals}}</span>{{end}}
+				</a>
 			{{end}}
 			{{if not (and ctx.Consts.RepoUnitTypeIssues.UnitGlobalDisabled ctx.Consts.RepoUnitTypePullRequests.UnitGlobalDisabled)}}
 				{{if .ShowMilestonesDashboardPage}}

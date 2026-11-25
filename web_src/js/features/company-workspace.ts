@@ -1542,6 +1542,16 @@ export function initCompanyWorkspace() {
     }
 
     const aiChatEl = el.querySelector<HTMLElement>('.company-workspace-ai-chat');
+    // An example on the empty-editor guide becomes the request, ready to edit and send.
+    for (const example of el.querySelectorAll<HTMLElement>('[data-company-prompt]')) {
+      example.addEventListener('click', () => {
+        const input = aiChatEl?.querySelector<HTMLTextAreaElement>('.company-ai-chat-input');
+        if (!input) return;
+        input.value = example.getAttribute('data-company-prompt')!;
+        input.dispatchEvent(new Event('input'));
+        input.focus();
+      });
+    }
     if (aiChatEl) {
       chatHandle = initChatPanel(aiChatEl, {
         sendUrl: aiUrl,

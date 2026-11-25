@@ -81,6 +81,9 @@ func TestDynamicTrKeysComeFromOurOwnVocabulary(t *testing.T) {
 		".Hint":                  true, // LogFinding: taken from failureHints, never from the log; its argument is escaped by Tr
 		".PlatformAIUnavailable": true, // platformAIState.unavailableReason: a constant set
 		".Blocked":               true, // ProjectMigration.Blocked: one of planProjectMigration's constants
+		"$req.Status.Key":        true, // ApprovalStatus.Key: a constant set
+		"$.RestoreLabel":         true, // data_snapshot_rows: constant keys from its two callers
+		"$.RestoreConfirm":       true,
 	}
 	for _, path := range companyTemplateRoots(t) {
 		body, err := os.ReadFile(path)

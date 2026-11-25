@@ -127,10 +127,20 @@ func GateNonAdminUI(ctx *context.Context) {
 	// refusal survivable rather than a trap.
 	clearLocalPasswordChange(ctx)
 
+	// The list stays reachable by address; only the menu goes once every deploy no longer needs approval.
+	showDeployRequests := currentDeployApprovalPolicy(ctx).WaivedBy == nil
+	ctx.Data["CompanyShowDeployRequests"] = showDeployRequests
+	ctx.Data["CompanyQuickDeploy"] = !showDeployRequests
 	if ctx.Doer.IsAdmin {
+		if n, err := CountPendingApprovals(ctx); err == nil {
+			ctx.Data["CompanyPendingApprovals"] = n
+		}
+		ctx.Data["CompanyApprovalsLink"] = approvalsLink()
 		return // admins keep full native access — see docs/company/projects.md
 	}
-	ctx.Data["CompanyDeployRequestsLink"] = setting.AppSubURL + deployRequestsPath
+	if showDeployRequests {
+		ctx.Data["CompanyDeployRequestsLink"] = setting.AppSubURL + deployRequestsPath
+	}
 	ctx.Data["CompanyNewRepoLink"] = setting.AppSubURL + newProjectPath
 
 	if path == "/" || isRepoScopedAllow(path) || isPrefixAllowed(path) || isNotificationsInboxAllow(path) || isUserSettingsAllowed(path) {

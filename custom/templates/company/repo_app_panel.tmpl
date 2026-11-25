@@ -14,14 +14,9 @@
 				<span>{{ctx.Locale.Tr "company.sidebar.app"}}</span>
 				<span class="text-grey tw-text-12 tw-font-normal">{{ctx.Locale.Tr "company.sidebar.not_deployed"}}</span>
 			</div>
-			{{if .CanControl}}
-				<div class="tw-flex tw-gap-2 tw-flex-wrap">
-					<a class="ui compact tiny basic button" href="{{.AppLink}}">{{ctx.Locale.Tr "company.app.title"}}</a>
-					<a class="ui compact tiny basic button" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_deploy"}}</a>
-				</div>
-			{{end}}
+			{{/* The app page and the deploy button are in the repository header. */}}
 		</div>
-	{{else}}
+	{{else if or (not ctx.RootData.CompanyQuickDeploy) .Cause .ShowState}}
 	<div class="flex-relaxed-list company-app-panel">
 		<div class="repo-home-sidebar-header flex-text-block tw-justify-between">
 			<span>{{ctx.Locale.Tr "company.sidebar.app"}}</span>
@@ -36,9 +31,6 @@
 				{{if $.CompanyApp.ShowState}}
 					<span class="company-app-state {{$.CompanyApp.Status}}">{{ctx.Locale.Tr $.CompanyApp.StatusLabel}}</span>
 				{{end}}
-				<a class="flex-text-inline muted tw-font-normal" href="{{AppSubUrl}}{{.AppURL}}" target="_blank" rel="noopener">
-					{{svg "octicon-link-external"}} {{ctx.Locale.Tr "company.sidebar.open_app"}}
-				</a>
 			</span>
 		</div>
 
@@ -57,6 +49,8 @@
 		{{end}}
 
 
+		{{/* Nothing is requested while deploys need no approval. */}}
+		{{if not ctx.RootData.CompanyQuickDeploy}}
 		<div class="repo-home-sidebar-header flex-text-block"><span>{{ctx.Locale.Tr "company.sidebar.perms"}}</span></div>
 		{{$app := .}}
 		{{range .Rows}}
@@ -78,14 +72,8 @@
 				<span class="company-perm-value">{{if .MemoryMeasured}}{{ctx.Locale.Tr "company.sidebar.memory_used" .MemoryUsed .MemoryLimit}}{{else}}{{ctx.Locale.Tr "company.sidebar.memory_limit" .MemoryLimit}}{{end}}</span>
 			</div>
 		{{end}}
+		{{end}}
 
-		<div class="tw-flex tw-gap-2 tw-mt-2 tw-flex-wrap">
-			<a class="ui tiny basic button" href="{{.AppLink}}">{{ctx.Locale.Tr "company.app.title"}}</a>
-			{{/* Straight to the logs from the panel that just said something is
-			     wrong — the next question after "why" is always "show me". */}}
-			{{if .CanControl}}<a class="ui tiny basic button" href="{{.AppLink}}/logs">{{ctx.Locale.Tr "company.app.logs"}}</a>{{end}}
-			<a class="ui tiny basic button" href="{{.DeployLink}}">{{ctx.Locale.Tr "company.app.request_permission"}}</a>
-		</div>
 	</div>
 	{{end}}
 	{{end}}

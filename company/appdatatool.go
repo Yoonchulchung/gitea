@@ -84,6 +84,7 @@ type dataToolResult struct {
 	Integrity string           `json:"integrity"`
 	Rows      map[string]int   `json:"rows"`
 	Changed   int              `json:"changed"`
+	Total     int              `json:"total"` // rows a browse could page through; -1 when unknown
 	Applied   []map[string]any `json:"applied"`
 	Objects   []string         `json:"objects"`
 	// Files maps a table name to the CSV holding it. The two differ whenever
@@ -345,6 +346,8 @@ type BrowseResult struct {
 	Rows      [][]string
 	RowIDs    []int64 // parallel to Rows; empty when the rows cannot be addressed for editing
 	Offset    int
+	Limit     int
+	Total     int // -1 for a query that could not be counted, which is shown capped
 	More      bool
 	Schema    []BrowseColumn
 	CreateSQL string
@@ -360,8 +363,8 @@ type BrowseResult struct {
 // refuses a write whatever the statement says, which means it is safe while
 // the app is serving requests, and an administrator answering "what does this
 // app actually have in it" should not have to stop it to find out.
-func BrowseAppData(ctx context.Context, owner, repo, table, statement string, offset int) (*BrowseResult, error) {
-	payload := map[string]any{"mode": "browse", "limit": browsePageSize, "offset": offset}
+func BrowseAppData(ctx context.Context, owner, repo, table, statement string, offset, limit int) (*BrowseResult, error) {
+	payload := map[string]any{"mode": "browse", "limit": limit, "offset": offset}
 	if statement = strings.TrimSpace(statement); statement != "" {
 		payload["sql"] = statement
 	} else if table != "" {
@@ -376,21 +379,21 @@ func BrowseAppData(ctx context.Context, owner, repo, table, statement string, of
 			// useful thing to say back, whichever audience is reading — so it
 			// is shown rather than replaced by the generic sentence. Redacted
 			// anyway: an error raised while opening the file names its path.
-			return &BrowseResult{Tables: result.Tables, Table: table, Offset: offset},
+			return &BrowseResult{Tables: result.Tables, Table: table, Offset: offset, Limit: limit, Total: -1},
 				userErrorf("%s", RedactServerPaths(result.Error))
 		}
 		return nil, err
 	}
 	return &BrowseResult{
 		Tables: result.Tables, Table: table, Columns: result.Columns,
-		Rows: result.Cells, RowIDs: result.RowIDs, Offset: offset, More: result.More,
+		Rows: result.Cells, RowIDs: result.RowIDs, Offset: offset, Limit: limit, Total: result.Total, More: result.More,
 		Schema: result.Schema, CreateSQL: result.CreateSQL, Indexes: result.Indexes,
 	}, nil
 }
 
-// browsePageSize is one screenful. Small on purpose: this is for looking at
-// data, and anyone who needs all of it wants the export instead.
-const browsePageSize = 50
+// browsePageSizes are the screenfuls offered. Small on purpose: this is for
+// looking at data, and anyone who needs all of it wants the export instead.
+var browsePageSizes = []int{20, 50, 100}
 
 // WriteExportBundle streams a zip of everything needed to take this app's
 // data elsewhere.
@@ -552,6 +555,44 @@ def tables(conn):
 def run(out):
     payload = json.load(open(sys.argv[1]))
     mode, db = payload["mode"], payload["db"]
+    if mode == "adopt":
+        # An uploaded file: opened immutable so nothing is written beside it,
+        # and copied into a clean snapshot only once it checks out.
+        os.makedirs(payload["snapshotDir"], exist_ok=True)
+        path = os.path.join(payload["snapshotDir"], payload["name"])
+        tmp = path + ".partial"
+        try:
+            src = sqlite3.connect("file:%s?mode=ro&immutable=1" % urllib.parse.quote(payload["src"]), uri=True)
+            verdict = src.execute("PRAGMA integrity_check").fetchone()[0]
+            if verdict == "ok":
+                dst = sqlite3.connect(tmp)
+                src.backup(dst)
+                dst.close()
+            src.close()
+        except sqlite3.DatabaseError as e:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            out["error"] = "not a usable SQLite database: %s" % e
+            return
+        if verdict != "ok":
+            out["error"] = "the file failed its integrity check: %s" % verdict
+            return
+        os.replace(tmp, path)
+        out["snapshot"], out["integrity"] = path, verdict
+        out["ok"] = True
+        return
+    if mode == "snapshot" and not os.path.exists(db):
+        # Nothing stored yet still downloads as a real, empty database, not as
+        # an error; app.db itself is left absent.
+        os.makedirs(payload["snapshotDir"], exist_ok=True)
+        path = os.path.join(payload["snapshotDir"], payload["name"])
+        empty = sqlite3.connect(path + ".partial")
+        empty.execute("VACUUM")  # writes the header, so the file is a database and not 0 bytes
+        empty.close()
+        os.replace(path + ".partial", path)
+        out["snapshot"], out["integrity"] = path, "ok"
+        out["ok"] = True
+        return
     if not os.path.exists(db):
         out["error"] = "this app has no database yet"
         return
@@ -627,13 +668,23 @@ def run(out):
         full = bool(payload.get("full"))
         sql, table = payload.get("sql"), payload.get("table")
         rowids = None
+        out["total"] = -1
         if sql:
-            cur = conn.execute(sql)
+            # Wrapped so it can be counted and paged; one that cannot be (not a
+            # SELECT) runs as written and is shown capped.
+            stmt = re.sub(r";\s*(--[^\n]*\s*)*$", "", sql.strip())
+            try:
+                out["total"] = conn.execute("SELECT COUNT(*) FROM (%s\n)" % stmt).fetchone()[0]
+                cur = conn.execute("SELECT * FROM (%s\n) LIMIT ? OFFSET ?" % stmt, (limit, offset))
+            except sqlite3.Error:
+                out["total"] = -1
+                cur = conn.execute(sql)
         elif table:
             if table not in [t["name"] for t in listing]:
                 out["error"] = "no such table"
                 return
             quoted = table.replace('"', '""')
+            out["total"] = next(t["rows"] for t in listing if t["name"] == table)
             # The rowid comes along so a row can be edited or deleted by
             # identity rather than by matching its values. A WITHOUT ROWID
             # table has none, and its rows are shown but not editable.

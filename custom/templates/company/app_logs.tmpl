@@ -3,10 +3,8 @@
 	{{template "repo/header" .}}
 	<div class="ui container">
 		{{template "base/alert" .}}
-		<h2 class="tw-flex tw-items-center tw-gap-3">
-			<a href="{{.AppLink}}">{{ctx.Locale.Tr "company.app.title"}}</a>
-			<span class="text-grey">/</span> {{ctx.Locale.Tr "company.logs.title"}}
-		</h2>
+		<div class="company-app-titlebar">{{template "company/app_title"}}</div>
+		{{template "company/app_tabs"}}
 
 		<div class="ui segment">
 			{{/* `ui form` so the input gets the instance's own field styling — a

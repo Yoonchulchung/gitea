@@ -287,6 +287,9 @@ func withDependencies(ctx *context.Context, repo *repo_model.Repository, require
 		}
 	}
 	for _, item := range packageRequests(resolved, settings.AllowedPackages()) {
+		if !packagesNeedApproval(ctx) {
+			break
+		}
 		if seen[normalizePackageName(item.Value)] {
 			continue
 		}

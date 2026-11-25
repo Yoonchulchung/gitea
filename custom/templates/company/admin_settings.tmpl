@@ -22,63 +22,69 @@
 
 				<div class="ui divider"></div>
 
+				{{/* Each switch carries its own explanation under its label; a switch
+				     that depends on another sits under that one's label and fades with
+				     it. Kept out of `.field`, whose disabled rules fight the toggle's
+				     hidden input. */}}
 				<h5>{{ctx.Locale.Tr "company.adminsettings.ai_header"}}</h5>
 				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.ai_explain"}}</p>
-				<div class="field">
-					<div class="ui checkbox">
+				<div class="company-setting">
+					<div class="ui toggle checkbox">
 						<input id="ai_users_enabled" type="checkbox" name="ai_users_enabled" value="true" {{if .AIUsersEnabled}}checked{{end}}
 						       data-company-enables="#anthropic_visible">
 						<label for="ai_users_enabled">{{ctx.Locale.Tr "company.adminsettings.ai_users"}}</label>
 					</div>
+					<div class="company-setting-help">{{ctx.Locale.Tr "company.adminsettings.ai_users_explain"}}</div>
 				</div>
-				{{/* Its own paragraph, not the field's `help`: inside a checkbox
-				     field that renders on the label's line and reads as part of it. */}}
-				<p class="text-grey tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.adminsettings.ai_users_explain"}}</p>
-				{{/* Indented under the switch above, and switched off with it: while
-				     nobody is offered AI there is no provider to choose between, and
-				     a control that decides nothing should not invite a decision. The
-				     saved answer is kept either way — turning AI back on restores what
-				     was chosen (company/adminsettings.go). */}}
-				<div class="field tw-ml-4">
-					<div class="ui checkbox">
+				{{/* The saved answer is kept while it is switched off — turning AI
+				     back on restores what was chosen (company/adminsettings.go). */}}
+				<div class="company-setting company-setting-sub">
+					<div class="ui toggle checkbox">
 						<input id="anthropic_visible" type="checkbox" name="anthropic_visible" value="true" {{if .AnthropicVisible}}checked{{end}} {{if not .AIUsersEnabled}}disabled{{end}}>
 						<label for="anthropic_visible">{{ctx.Locale.Tr "company.adminsettings.ai_anthropic"}}</label>
 					</div>
+					<div class="company-setting-help">{{ctx.Locale.Tr "company.adminsettings.ai_admin_note"}}</div>
 				</div>
-				{{/* Said plainly, because an administrator who cannot see the option
-				     on their own settings page would otherwise read the toggle as
-				     broken. */}}
-				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.ai_admin_note"}}</p>
-
 
 				<div class="ui divider"></div>
 
-				<h5>{{ctx.Locale.Tr "company.adminsettings.approval_header"}}</h5>
+				<h5 id="deploy-approval">{{ctx.Locale.Tr "company.adminsettings.approval_header"}}</h5>
 				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.approval_explain"}}</p>
-				<div class="field">
-					<div class="ui checkbox">
+				<div class="company-setting">
+					<div class="ui toggle checkbox">
 						<input id="approval_every_deploy" type="checkbox" name="approval_every_deploy" value="true" {{if .ApprovalEveryDeploy}}checked{{end}}
 						       data-company-disables="#package_approval, #network_approval">
 						<label for="approval_every_deploy">{{ctx.Locale.Tr "company.adminsettings.approval_every_deploy"}}</label>
 					</div>
+					<div class="company-setting-help">
+						{{if .ApprovalWaivedBy}}{{ctx.Locale.Tr "company.adminsettings.approval_waived_by" .ApprovalWaivedBy.Name}}
+						{{else}}{{ctx.Locale.Tr "company.adminsettings.approval_every_deploy_explain"}}{{end}}
+					</div>
 				</div>
-				<p class="text-grey tw-text-13 tw-mt-1">
-					{{if .ApprovalWaivedBy}}{{ctx.Locale.Tr "company.adminsettings.approval_waived_by" .ApprovalWaivedBy.Name}}
-					{{else}}{{ctx.Locale.Tr "company.adminsettings.approval_every_deploy_explain"}}{{end}}
-				</p>
-				<div class="field tw-ml-4">
-					<div class="ui checkbox">
+				<div class="company-setting company-setting-sub">
+					<div class="ui toggle checkbox">
 						<input id="package_approval" type="checkbox" name="package_approval" value="true" {{if .PackageApproval}}checked{{end}} {{if .ApprovalEveryDeploy}}disabled{{end}}>
 						<label for="package_approval">{{ctx.Locale.Tr "company.adminsettings.approval_packages"}}</label>
 					</div>
 				</div>
-				<div class="field tw-ml-4">
-					<div class="ui checkbox">
+				<div class="company-setting company-setting-sub">
+					<div class="ui toggle checkbox">
 						<input id="network_approval" type="checkbox" name="network_approval" value="true" {{if .NetworkApproval}}checked{{end}} {{if .ApprovalEveryDeploy}}disabled{{end}}>
 						<label for="network_approval">{{ctx.Locale.Tr "company.adminsettings.approval_network"}}</label>
 					</div>
 				</div>
-				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.approval_other_note"}}</p>
+				<p class="text-grey tw-text-12 tw-mt-2">{{ctx.Locale.Tr "company.adminsettings.approval_other_note"}}</p>
+
+				<div class="ui divider"></div>
+
+				<h5>{{ctx.Locale.Tr "company.adminsettings.project_header"}}</h5>
+				<div class="company-setting">
+					<div class="ui toggle checkbox">
+						<input id="project_approval" type="checkbox" name="project_approval" value="true" {{if .ProjectApproval}}checked{{end}}>
+						<label for="project_approval">{{ctx.Locale.Tr "company.adminsettings.project_approval"}}</label>
+					</div>
+					<div class="company-setting-help">{{ctx.Locale.Tr "company.adminsettings.project_approval_explain"}}</div>
+				</div>
 
 				<button class="ui primary button tw-mt-3">{{ctx.Locale.Tr "company.adminsettings.save"}}</button>
 			</form>
