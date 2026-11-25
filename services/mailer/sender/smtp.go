@@ -12,6 +12,7 @@ import (
 	"net/mail"
 	"net/smtp"
 	"os"
+	"slices"
 	"strings"
 
 	"gitea.dev/modules/log"
@@ -27,75 +28,11 @@ var _ Sender = &SMTPSender{}
 func (s *SMTPSender) Send(from string, to []string, msg io.WriterTo) error {
 	opts := setting.MailService
 
-	var network string
-	var address string
-	if opts.Protocol == "smtp+unix" {
-		network = "unix"
-		address = opts.SMTPAddr
-	} else {
-		network = "tcp"
-		address = net.JoinHostPort(opts.SMTPAddr, opts.SMTPPort)
-	}
-
-	conn, err := net.Dial(network, address)
+	client, err := dialSMTP()
 	if err != nil {
-		return fmt.Errorf("failed to establish network connection to SMTP server: %w", err)
+		return err
 	}
-	defer conn.Close()
-
-	var tlsconfig *tls.Config
-	if opts.Protocol == "smtps" || opts.Protocol == "smtp+starttls" {
-		tlsconfig = &tls.Config{
-			InsecureSkipVerify: opts.ForceTrustServerCert,
-			ServerName:         opts.SMTPAddr,
-		}
-
-		if opts.UseClientCert {
-			cert, err := tls.LoadX509KeyPair(opts.ClientCertFile, opts.ClientKeyFile)
-			if err != nil {
-				return fmt.Errorf("could not load SMTP client certificate: %w", err)
-			}
-			tlsconfig.Certificates = []tls.Certificate{cert}
-		}
-	}
-
-	if opts.Protocol == "smtps" {
-		conn = tls.Client(conn, tlsconfig)
-	}
-
-	host := "localhost"
-	if opts.Protocol == "smtp+unix" {
-		host = opts.SMTPAddr
-	}
-	client, err := smtp.NewClient(conn, host)
-	if err != nil {
-		return fmt.Errorf("could not initiate SMTP session: %w", err)
-	}
-
-	if opts.EnableHelo {
-		hostname := opts.HeloHostname
-		if len(hostname) == 0 {
-			hostname, err = os.Hostname()
-			if err != nil {
-				return fmt.Errorf("could not retrieve system hostname: %w", err)
-			}
-		}
-
-		if err = client.Hello(hostname); err != nil {
-			return fmt.Errorf("failed to issue HELO command: %w", err)
-		}
-	}
-
-	if opts.Protocol == "smtp+starttls" {
-		hasStartTLS, _ := client.Extension("STARTTLS")
-		if hasStartTLS {
-			if err = client.StartTLS(tlsconfig); err != nil {
-				return fmt.Errorf("failed to start TLS connection: %w", err)
-			}
-		} else {
-			log.Warn("StartTLS requested, but SMTP server does not support it; falling back to regular SMTP")
-		}
-	}
+	defer func() { client.Close() }()
 
 	canAuth, options := client.Extension("AUTH")
 	if len(opts.User) > 0 {
@@ -103,23 +40,23 @@ func (s *SMTPSender) Send(from string, to []string, msg io.WriterTo) error {
 			return errors.New("SMTP server does not support AUTH, but credentials provided")
 		}
 
-		var auth smtp.Auth
-
-		if strings.Contains(options, "CRAM-MD5") {
-			auth = smtp.CRAMMD5Auth(opts.User, opts.Passwd)
-		} else if strings.Contains(options, "PLAIN") {
-			auth = smtp.PlainAuth("", opts.User, opts.Passwd, host)
-		} else if strings.Contains(options, "LOGIN") {
-			// Patch for AUTH LOGIN
-			auth = LoginAuth(opts.User, opts.Passwd)
-		} else if strings.Contains(options, "NTLM") {
-			auth = NtlmAuth(opts.User, opts.Passwd)
-		}
-
-		if auth != nil {
-			if err = client.Auth(auth); err != nil {
+		// Some servers advertise mechanisms they reject, so fall back to the next one like Python's smtplib.
+		// A failed client.Auth quits the session, so each retry needs a new connection.
+		auths := smtpAuths(options, opts.User, opts.Passwd)
+		for i, auth := range auths {
+			if err = client.Auth(auth); err == nil {
+				break
+			}
+			if i == len(auths)-1 {
 				return fmt.Errorf("failed to authenticate SMTP: %w", err)
 			}
+			log.Warn("SMTP authentication failed, trying the next mechanism: %v", err)
+			client.Close()
+			next, err := dialSMTP()
+			if err != nil {
+				return err
+			}
+			client = next
 		}
 	}
 
@@ -160,6 +97,113 @@ func (s *SMTPSender) Send(from string, to []string, msg io.WriterTo) error {
 	}
 
 	return nil
+}
+
+func dialSMTP() (*smtp.Client, error) {
+	opts := setting.MailService
+
+	var network string
+	var address string
+	if opts.Protocol == "smtp+unix" {
+		network = "unix"
+		address = opts.SMTPAddr
+	} else {
+		network = "tcp"
+		address = net.JoinHostPort(opts.SMTPAddr, opts.SMTPPort)
+	}
+
+	conn, err := net.Dial(network, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to establish network connection to SMTP server: %w", err)
+	}
+
+	client, err := initSMTPClient(conn)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return client, nil
+}
+
+func initSMTPClient(conn net.Conn) (*smtp.Client, error) {
+	opts := setting.MailService
+
+	var tlsconfig *tls.Config
+	if opts.Protocol == "smtps" || opts.Protocol == "smtp+starttls" {
+		tlsconfig = &tls.Config{
+			InsecureSkipVerify: opts.ForceTrustServerCert,
+			ServerName:         opts.SMTPAddr,
+		}
+
+		if opts.UseClientCert {
+			cert, err := tls.LoadX509KeyPair(opts.ClientCertFile, opts.ClientKeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("could not load SMTP client certificate: %w", err)
+			}
+			tlsconfig.Certificates = []tls.Certificate{cert}
+		}
+	}
+
+	if opts.Protocol == "smtps" {
+		conn = tls.Client(conn, tlsconfig)
+	}
+
+	client, err := smtp.NewClient(conn, smtpServerName())
+	if err != nil {
+		return nil, fmt.Errorf("could not initiate SMTP session: %w", err)
+	}
+
+	if opts.EnableHelo {
+		hostname := opts.HeloHostname
+		if len(hostname) == 0 {
+			hostname, err = os.Hostname()
+			if err != nil {
+				return nil, fmt.Errorf("could not retrieve system hostname: %w", err)
+			}
+		}
+
+		if err = client.Hello(hostname); err != nil {
+			return nil, fmt.Errorf("failed to issue HELO command: %w", err)
+		}
+	}
+
+	if opts.Protocol == "smtp+starttls" {
+		hasStartTLS, _ := client.Extension("STARTTLS")
+		if hasStartTLS {
+			if err = client.StartTLS(tlsconfig); err != nil {
+				return nil, fmt.Errorf("failed to start TLS connection: %w", err)
+			}
+		} else {
+			log.Warn("StartTLS requested, but SMTP server does not support it; falling back to regular SMTP")
+		}
+	}
+	return client, nil
+}
+
+func smtpServerName() string {
+	if setting.MailService.Protocol == "smtp+unix" {
+		return setting.MailService.SMTPAddr
+	}
+	return "localhost"
+}
+
+// smtpAuths returns the supported mechanisms the server advertises, in order of preference
+func smtpAuths(options, user, passwd string) []smtp.Auth {
+	advertised := strings.Fields(strings.ToUpper(options))
+	var auths []smtp.Auth
+	if slices.Contains(advertised, "CRAM-MD5") {
+		auths = append(auths, smtp.CRAMMD5Auth(user, passwd))
+	}
+	if slices.Contains(advertised, "PLAIN") {
+		auths = append(auths, smtp.PlainAuth("", user, passwd, smtpServerName()))
+	}
+	if slices.Contains(advertised, "LOGIN") {
+		auths = append(auths, LoginAuth(user, passwd))
+	}
+	if slices.Contains(advertised, "NTLM") {
+		auths = append(auths, NtlmAuth(user, passwd))
+	}
+	return auths
 }
 
 func sanitizeEmailAddress(raw string) (string, error) {
