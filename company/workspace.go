@@ -35,7 +35,7 @@ const tplWorkspace templates.TplName = "company/workspace"
 // populated for free, no separate owner/repo lookup needed here.
 func requireWorkspaceWrite(ctx *context.Context) bool {
 	if !ctx.Repo.Permission.CanWrite(unit.TypeCode) {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return false
 	}
 	return true
@@ -226,7 +226,7 @@ func WorkspaceSave(ctx *context.Context) {
 		if errors.As(err, &shaErr) {
 			conflict, cerr := buildWorkspaceConflict(ctx, target, branch, shaErr)
 			if cerr != nil {
-				ctx.ServerError("buildWorkspaceConflict", cerr)
+				ctx.ServerErrorAuto(cerr)
 				return
 			}
 			ctx.JSON(http.StatusConflict, map[string]any{"conflict": conflict})
@@ -247,7 +247,7 @@ func WorkspaceSave(ctx *context.Context) {
 			ctx.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		}
-		ctx.ServerError("ChangeRepoFiles", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 

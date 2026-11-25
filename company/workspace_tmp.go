@@ -275,7 +275,7 @@ func WorkspaceTmpSave(ctx *context.Context) {
 	if err := saveTmpEntry(ctx.Doer.ID, ctx.Repo.Repository.ID, ctx.Repo.BranchName, workspaceTmpEntry{
 		Path: req.Path, Content: req.Content, CreatedAt: req.CreatedAt, BaseSha: req.BaseSha, Removed: req.Removed,
 	}); err != nil {
-		ctx.ServerError("saveTmpEntry", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, map[string]any{"ok": true})
@@ -291,7 +291,7 @@ func WorkspaceTmpList(ctx *context.Context) {
 	}
 	entries, err := listTmpEntries(ctx.Doer.ID, ctx.Repo.Repository.ID, ctx.Repo.BranchName)
 	if err != nil {
-		ctx.ServerError("listTmpEntries", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, map[string]any{"entries": entries})

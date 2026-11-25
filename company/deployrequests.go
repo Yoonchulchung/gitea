@@ -129,12 +129,12 @@ type deployRequestView struct {
 func DeployRequests(ctx *context.Context) {
 	central, err := centralDeployRepo(ctx)
 	if err != nil {
-		ctx.ServerError("centralDeployRepo", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	branches, err := visibleDeployBranches(ctx, ctx.Doer)
 	if err != nil {
-		ctx.ServerError("visibleDeployBranches", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -143,12 +143,12 @@ func DeployRequests(ctx *context.Context) {
 
 	requested, requestedTotal, err := loadDeployRequestPage(ctx, central, branches, false, requestedPage)
 	if err != nil {
-		ctx.ServerError("load requested deploy requests", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	deployed, deployedTotal, err := loadDeployRequestPage(ctx, central, branches, true, deployedPage)
 	if err != nil {
-		ctx.ServerError("load deployed deploy requests", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -286,15 +286,15 @@ func CancelDeployRequest(ctx *context.Context) {
 	id := ctx.PathParamInt64("id")
 	pr, err := issues_model.GetPullRequestByID(ctx, id)
 	if err != nil {
-		ctx.NotFound(err)
+		ctx.NotFound()
 		return
 	}
 	if err := pr.LoadIssue(ctx); err != nil {
-		ctx.ServerError("LoadIssue", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if err := pr.LoadBaseRepo(ctx); err != nil {
-		ctx.ServerError("LoadBaseRepo", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	// pr.Issue.PosterID is the central repo's own owner (see deploy.go's
@@ -302,11 +302,11 @@ func CancelDeployRequest(ctx *context.Context) {
 	// name (deployBranchName/parseDeployBranchName).
 	_, _, requesterID, ok := parseDeployBranchName(pr.HeadBranch)
 	if !ok {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	if !ctx.Doer.IsAdmin && requesterID != ctx.Doer.ID {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	if pr.Issue.IsClosed {
@@ -321,11 +321,11 @@ func CancelDeployRequest(ctx *context.Context) {
 	}
 
 	if _, err := issue_service.CreateIssueComment(ctx, ctx.Doer, pr.BaseRepo, pr.Issue, cancelCommentPrefix+reason, nil); err != nil {
-		ctx.ServerError("CreateIssueComment", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if err := issue_service.CloseIssue(ctx, pr.Issue, ctx.Doer, ""); err != nil {
-		ctx.ServerError("CloseIssue", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 

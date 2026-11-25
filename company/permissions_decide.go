@@ -47,7 +47,7 @@ func DeployRequestPermissions(ctx *gitea_context.Context) {
 	}
 	requests := LoadPermissionRequests(deptOwner, deptName, pr.ID)
 	if len(requests) == 0 {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 
@@ -126,21 +126,21 @@ func decisionRedirect(ctx *gitea_context.Context, pr *issues_model.PullRequest) 
 func decidableDeployRequest(ctx *gitea_context.Context) (*issues_model.PullRequest, string, string, bool) {
 	pr, err := issues_model.GetPullRequestByID(ctx, ctx.PathParamInt64("id"))
 	if err != nil {
-		ctx.NotFound(err)
+		ctx.NotFound()
 		return nil, "", "", false
 	}
 	if err := pr.LoadIssue(ctx); err != nil {
-		ctx.ServerError("LoadIssue", err)
+		ctx.ServerErrorAuto(err)
 		return nil, "", "", false
 	}
 	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, false)
 	if !ok {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return nil, "", "", false
 	}
 	_, _, requesterID, ok := parseDeployBranchName(pr.HeadBranch)
 	if !ok || (!ctx.Doer.IsAdmin && requesterID != ctx.Doer.ID) {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return nil, "", "", false
 	}
 	if pr.Issue.IsClosed {

@@ -159,7 +159,7 @@ func WorkspaceAI(ctx *context.Context) {
 
 	gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, repo)
 	if err != nil {
-		ctx.ServerError("RepositoryFromRequestContextOrOpen", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 

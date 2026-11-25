@@ -326,7 +326,7 @@ func cleanupPreviewHomes() {
 // at a copy — and a request here touches nothing the live app can see.
 func AppPreviewProxy(ctx *gitea_context.Context) {
 	if !ctx.IsSigned || ctx.Doer == nil || !ctx.Doer.IsAdmin {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	pv, ok := previewOf(ctx.PathParam("owner"), ctx.PathParam("repo"))
@@ -366,17 +366,17 @@ const previewMountSegments = 4
 // request to the app it is for, or answers the request itself.
 func deployRequestTarget(ctx *gitea_context.Context) (owner, repo string, pr *issues_model.PullRequest, ok bool) {
 	if ctx.Doer == nil || !ctx.Doer.IsAdmin {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return "", "", nil, false
 	}
 	pr, err := issues_model.GetPullRequestByID(ctx, ctx.PathParamInt64("id"))
 	if err != nil {
-		ctx.NotFound(err)
+		ctx.NotFound()
 		return "", "", nil, false
 	}
 	owner, repo, ok = verifyDeployRequestPR(ctx, pr, false)
 	if !ok {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return "", "", nil, false
 	}
 	return owner, repo, pr, true
@@ -391,7 +391,7 @@ func DeployRequestPreview(ctx *gitea_context.Context) {
 	}
 	gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, pr.BaseRepo)
 	if err != nil {
-		ctx.ServerError("RepositoryFromRequestContextOrOpen", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	commit, err := gitRepo.GetBranchCommit(ctx, pr.HeadBranch)

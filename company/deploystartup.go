@@ -423,7 +423,7 @@ asyncio.run(run())
 // on the request form, for the form to refresh while the check runs.
 func StartupCheckStatus(ctx *gitea_context.Context) {
 	if !ctx.Repo.Permission.CanRead(unit.TypeCode) || isCentralDeployRepo(ctx.Repo.Repository) {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	check, ok := EnsureStartupCheck(ctx, ctx.Repo.Repository, false)
@@ -435,7 +435,7 @@ func StartupCheckStatus(ctx *gitea_context.Context) {
 // StartupCheckRerun is POST /{owner}/{repo}/deploy/startup-check.
 func StartupCheckRerun(ctx *gitea_context.Context) {
 	if !ctx.Repo.Permission.CanRead(unit.TypeCode) || isCentralDeployRepo(ctx.Repo.Repository) {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	EnsureStartupCheck(ctx, ctx.Repo.Repository, true)

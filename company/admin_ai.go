@@ -25,7 +25,7 @@ func adminAIPage() string { return setting.AppSubURL + "/-/admin/company-ai" }
 func AdminAI(ctx *gitea_context.Context) {
 	st, err := loadPlatformAI(ctx)
 	if err != nil {
-		ctx.ServerError("loadPlatformAI", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	ctx.Data["Title"] = ctx.Locale.TrString("company.platform_ai.title")
@@ -164,7 +164,7 @@ func formConfig(st platformAIState, cfg PlatformAI, key, headers string) (aiUser
 func AdminAIModels(ctx *gitea_context.Context) {
 	st, err := loadPlatformAI(ctx)
 	if err != nil {
-		ctx.ServerError("loadPlatformAI", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	cfg, key, headers, err := platformAIForm(ctx, st)
@@ -192,7 +192,7 @@ func AdminAIModels(ctx *gitea_context.Context) {
 func savePlatformAIForm(ctx *gitea_context.Context) bool {
 	st, err := loadPlatformAI(ctx)
 	if err != nil {
-		ctx.ServerError("loadPlatformAI", err)
+		ctx.ServerErrorAuto(err)
 		return false
 	}
 	cfg, key, headers, err := platformAIForm(ctx, st)

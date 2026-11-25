@@ -158,7 +158,7 @@ func AdminActivity(ctx *context.Context) {
 		IncludeVisibility: structs.VisibleTypePrivate, // an admin page: a private department is still one of theirs
 	})
 	if err != nil {
-		ctx.ServerError("list departments", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	// Named in the URL rather than numbered, so the link an administrator
@@ -167,7 +167,7 @@ func AdminActivity(ctx *context.Context) {
 	if name := ctx.FormString("dept"); name != "" {
 		i := slices.IndexFunc(departments, func(o *organization.Organization) bool { return strings.EqualFold(o.Name, name) })
 		if i < 0 {
-			ctx.NotFound(nil) // a hand-edited URL; showing everything under that name would be a lie
+			ctx.NotFound() // a hand-edited URL; showing everything under that name would be a lie
 			return
 		}
 		orgID = departments[i].ID
@@ -180,7 +180,7 @@ func AdminActivity(ctx *context.Context) {
 		Where(oneRowPerAction(orgID)).
 		Count(&activities_model.Action{})
 	if err != nil {
-		ctx.ServerError("count cross-department activity", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -191,7 +191,7 @@ func AdminActivity(ctx *context.Context) {
 		Desc("created_unix").
 		Limit(perPage, (page-1)*perPage).
 		Find(&actions); err != nil {
-		ctx.ServerError("list cross-department activity", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -203,7 +203,7 @@ func AdminActivity(ctx *context.Context) {
 	}
 	repos, err := repo_model.GetRepositoriesMapByIDs(ctx, repoIDs)
 	if err != nil {
-		ctx.ServerError("GetRepositoriesMapByIDs", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	// The person, not just the repository. Without this the feed answered
@@ -211,7 +211,7 @@ func AdminActivity(ctx *context.Context) {
 	// one thing an audit view exists to say.
 	actors, err := user_model.GetUsersMapByIDs(ctx, userIDs)
 	if err != nil {
-		ctx.ServerError("GetUsersMapByIDs", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 

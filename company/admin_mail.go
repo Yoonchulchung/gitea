@@ -39,7 +39,7 @@ func AdminMail(ctx *context.Context) {
 func AdminMailRule(ctx *context.Context) {
 	rule, found := MailRuleByID(ctx, ctx.PathParam("id"))
 	if !found {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	ctx.Data["Title"] = rule.Name
@@ -66,7 +66,7 @@ func AdminMailRuleAdd(ctx *context.Context) {
 func AdminMailRuleSave(ctx *context.Context) {
 	rule, found := MailRuleByID(ctx, ctx.PathParam("id"))
 	if !found {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	rule.Name = strings.TrimSpace(ctx.FormString("name"))

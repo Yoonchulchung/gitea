@@ -113,19 +113,19 @@ func SetDeployRequestPageData(ctx *context.Context) {
 // pull_request.id the same way CancelDeployRequest is.
 func TriggerDeployRequestAIReview(ctx *context.Context) {
 	if !ctx.Doer.IsAdmin {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 
 	id := ctx.PathParamInt64("id")
 	pr, err := issues_model.GetPullRequestByID(ctx, id)
 	if err != nil {
-		ctx.NotFound(err)
+		ctx.NotFound()
 		return
 	}
 	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, false) // loads pr.Issue itself, see there
 	if !ok {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	if reason := PlatformAIUnavailableReason(ctx); reason != "" {

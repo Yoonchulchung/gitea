@@ -103,7 +103,7 @@ func setProjectPanelData(ctx *context.Context) {
 func ProjectMembersPost(ctx *context.Context) {
 	repo, err := repo_model.GetRepositoryByOwnerAndName(ctx, ctx.PathParam("owner"), ctx.PathParam("repo"))
 	if err != nil || !IsProjectRepo(ctx, repo) || !CanManageProject(ctx, ctx.Doer, repo) {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	back := repo.Link()
@@ -117,7 +117,7 @@ func ProjectMembersPost(ctx *context.Context) {
 	}
 	ownerID, err := ProjectOwnerID(ctx, repo.ID)
 	if err != nil {
-		ctx.ServerError("ProjectOwnerID", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 

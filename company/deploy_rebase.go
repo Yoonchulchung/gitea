@@ -79,12 +79,12 @@ func DeployRequestRebase(ctx *gitea_context.Context) {
 	back := fmt.Sprintf("%s/pulls/%d", central.Link(), pr.Issue.Index)
 	centralOwner, err := user_model.GetUserByID(ctx, central.OwnerID)
 	if err != nil {
-		ctx.ServerError("GetUserByID", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, central)
 	if err != nil {
-		ctx.ServerError("RepositoryFromRequestContextOrOpen", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	head, err := gitRepo.GetBranchCommit(ctx, pr.HeadBranch)
@@ -95,7 +95,7 @@ func DeployRequestRebase(ctx *gitea_context.Context) {
 	}
 	main, err := gitRepo.GetBranchCommit(ctx, central.DefaultBranch)
 	if err != nil {
-		ctx.ServerError("GetBranchCommit", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	prefix := deployPathPrefix(owner, repo)
@@ -120,18 +120,18 @@ func DeployRequestRebase(ctx *gitea_context.Context) {
 		Message:   pr.Issue.Title,
 		Files:     files,
 	}); err != nil {
-		ctx.ServerError("ChangeRepoFiles", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	// The old request first, as DeployPost does for a superseded one: two
 	// open requests for one app would be one too many for the person deciding.
 	if err := cancelOpenDeployRequests(ctx, central, owner, repo, ctx.Doer); err != nil {
-		ctx.ServerError("cancelOpenDeployRequests", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	pullIssue, err := openPullRequest(ctx, central, central, newBranch, pr.Issue.Title, pr.Issue.Content, centralOwner)
 	if err != nil {
-		ctx.ServerError("openPullRequest", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	deptRepo, err := repo_model.GetRepositoryByOwnerAndName(ctx, owner, repo)

@@ -177,7 +177,7 @@ func rejectionReasons(ctx *context.Context, pr *issues_model.PullRequest) ([]*is
 func DeployStatus(ctx *context.Context) {
 	pr, err := latestDeployRequest(ctx, ctx.Repo.Repository.OwnerName, ctx.Repo.Repository.Name)
 	if err != nil {
-		ctx.ServerError("latestDeployRequest", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if pr == nil {
@@ -186,7 +186,7 @@ func DeployStatus(ctx *context.Context) {
 	}
 	s, err := deployStatusFor(ctx, pr)
 	if err != nil {
-		ctx.ServerError("deployStatusFor", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	resp := map[string]any{"status": s.Status, "date": s.Date.AsTime().Unix()}
@@ -196,7 +196,7 @@ func DeployStatus(ctx *context.Context) {
 	if s.Status == "rejected" {
 		reasons, err := rejectionReasons(ctx, pr)
 		if err != nil {
-			ctx.ServerError("rejectionReasons", err)
+			ctx.ServerErrorAuto(err)
 			return
 		}
 		if len(reasons) > 0 {

@@ -34,22 +34,22 @@ func AISettings(ctx *gitea_context.Context) {
 	// bookmarked URL. Not found rather than an explanation: the explanation is
 	// the thing that should not reach a department.
 	if !AIOfferedTo(ctx) {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	provider, err := user_model.GetUserSetting(ctx, ctx.Doer.ID, userSettingAIProvider, aiProviderOpenAI)
 	if err != nil {
-		ctx.ServerError("GetUserSetting", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	modelID, err := user_model.GetUserSetting(ctx, ctx.Doer.ID, userSettingAIModelID)
 	if err != nil {
-		ctx.ServerError("GetUserSetting", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	reasoningEffort, err := user_model.GetUserSetting(ctx, ctx.Doer.ID, userSettingAIReasoningEffort)
 	if err != nil {
-		ctx.ServerError("GetUserSetting", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	// Read raw, not via getUserSecret: this page only needs "is a key
@@ -59,12 +59,12 @@ func AISettings(ctx *gitea_context.Context) {
 	// migration into every settings page load.
 	apiKeyStored, err := user_model.GetUserSetting(ctx, ctx.Doer.ID, userSettingAIAPIKey)
 	if err != nil {
-		ctx.ServerError("GetUserSetting", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
 	if raw, err := getUserSecret(ctx, ctx.Doer.ID, userSettingAIHeaders); err != nil {
-		ctx.ServerError("getUserSecret", err)
+		ctx.ServerErrorAuto(err)
 		return
 	} else if headers, err := parseAIHeaders(raw); err == nil {
 		ctx.Data["HeaderNames"] = aiHeaderNames(headers)
@@ -99,7 +99,7 @@ func AISettingsPost(ctx *gitea_context.Context) {
 	// or hand-made form. Saving a key for a feature nobody is offered would
 	// leave it waiting to work the moment the switch flips.
 	if !AIOfferedTo(ctx) {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	provider := strings.TrimSpace(ctx.Req.FormValue("provider"))
@@ -113,7 +113,7 @@ func AISettingsPost(ctx *gitea_context.Context) {
 	apiKey := strings.TrimSpace(ctx.Req.FormValue("api_key"))
 	savedHeaders, err := getUserSecret(ctx, ctx.Doer.ID, userSettingAIHeaders)
 	if err != nil {
-		ctx.ServerError("getUserSecret", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	saved, _ := parseAIHeaders(savedHeaders) // unreadable saved headers are replaced by whatever the form says
@@ -125,26 +125,26 @@ func AISettingsPost(ctx *gitea_context.Context) {
 	}
 
 	if err := user_model.SetUserSetting(ctx, ctx.Doer.ID, userSettingAIProvider, provider); err != nil {
-		ctx.ServerError("SetUserSetting", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if err := user_model.SetUserSetting(ctx, ctx.Doer.ID, userSettingAIModelID, modelID); err != nil {
-		ctx.ServerError("SetUserSetting", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if err := user_model.SetUserSetting(ctx, ctx.Doer.ID, userSettingAIReasoningEffort, reasoningEffort); err != nil {
-		ctx.ServerError("SetUserSetting", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if apiKey != "" {
 		if err := setUserSecret(ctx, ctx.Doer.ID, userSettingAIAPIKey, apiKey); err != nil {
-			ctx.ServerError("SetUserSetting", err)
+			ctx.ServerErrorAuto(err)
 			return
 		}
 	}
 	if headersText != savedHeaders {
 		if err := setUserSecret(ctx, ctx.Doer.ID, userSettingAIHeaders, headersText); err != nil {
-			ctx.ServerError("SetUserSetting", err)
+			ctx.ServerErrorAuto(err)
 			return
 		}
 	}
@@ -181,7 +181,7 @@ func AIListModels(ctx *gitea_context.Context) {
 	if apiKey == "" {
 		saved, err := getUserSecret(ctx, ctx.Doer.ID, userSettingAIAPIKey)
 		if err != nil {
-			ctx.ServerError("GetUserSetting", err)
+			ctx.ServerErrorAuto(err)
 			return
 		}
 		apiKey = saved
@@ -195,7 +195,7 @@ func AIListModels(ctx *gitea_context.Context) {
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url+"/models", nil)
 	if err != nil {
-		ctx.ServerError("NewRequestWithContext", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -213,7 +213,7 @@ func AIListModels(ctx *gitea_context.Context) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		ctx.ServerError("ReadAll", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if resp.StatusCode != http.StatusOK {

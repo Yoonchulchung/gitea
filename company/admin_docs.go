@@ -21,7 +21,7 @@ func AdminDocs(ctx *context.Context) {
 		if doc := AppDocByID(id); doc != nil {
 			html, err := markdown.RenderString(markup.NewRenderContext(ctx), doc.Body)
 			if err != nil {
-				ctx.ServerError("RenderString", err)
+				ctx.ServerErrorAuto(err)
 				return
 			}
 			ctx.Data["Doc"] = doc

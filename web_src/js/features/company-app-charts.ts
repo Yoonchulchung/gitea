@@ -15,7 +15,7 @@ import {
   type Chart as ChartType,
   type Plugin,
 } from 'chart.js';
-import {chartJsColors} from '../utils/color.ts';
+import {chartJsColor} from '../utils/color.ts';
 import {POST} from '../modules/fetch.ts';
 import {toggleElem} from '../utils/dom.ts';
 import {htmlEscape} from '../utils/html.ts';
@@ -50,8 +50,8 @@ function registerOnce() {
     BarController, BarElement, CategoryScale, Filler, Legend, LinearScale,
     LineController, LineElement, PointElement, TimeScale, Tooltip,
   );
-  Chart.defaults.color = chartJsColors.text;
-  Chart.defaults.borderColor = chartJsColors.border;
+  Chart.defaults.color = chartJsColor('text');
+  Chart.defaults.borderColor = chartJsColor('border');
   // A minimal time adapter, matching ChartCanvas.vue's. Only the units these
   // charts actually ask for are implemented.
   //
@@ -110,9 +110,9 @@ function deployMarkers(annotations: Annotation[]): Plugin {
       ctx.save();
       ctx.setLineDash([4, 3]);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = chartJsColors.text;
+      ctx.strokeStyle = chartJsColor('text');
       ctx.stroke(normal);
-      ctx.strokeStyle = chartJsColors.deletions;
+      ctx.strokeStyle = chartJsColor('deletions');
       ctx.stroke(bad);
       ctx.restore();
     },
@@ -178,20 +178,20 @@ export function initCompanyAppCharts() {
   const charts: Record<string, {datasets: any[]}> = {
     requests: {
       datasets: [
-        {label: text('requests'), data: at('requests'), borderColor: chartJsColors.commits, tension: 0.3, pointRadius: 0},
-        {label: text('errors'), data: at('errors'), borderColor: chartJsColors.deletions, tension: 0.3, pointRadius: 0},
+        {label: text('requests'), data: at('requests'), borderColor: chartJsColor('commits'), tension: 0.3, pointRadius: 0},
+        {label: text('errors'), data: at('errors'), borderColor: chartJsColor('deletions'), tension: 0.3, pointRadius: 0},
       ],
     },
     resources: {
       datasets: [
-        {label: text('memory'), data: at('memMB'), borderColor: chartJsColors.deletions, tension: 0.3, pointRadius: 0},
-        {label: text('cpu'), data: at('cpu'), borderColor: chartJsColors.commits, tension: 0.3, pointRadius: 0},
-        {label: text('data'), data: at('dataMB'), borderColor: chartJsColors.text, borderDash: [3, 3], tension: 0.3, pointRadius: 0},
+        {label: text('memory'), data: at('memMB'), borderColor: chartJsColor('deletions'), tension: 0.3, pointRadius: 0},
+        {label: text('cpu'), data: at('cpu'), borderColor: chartJsColor('commits'), tension: 0.3, pointRadius: 0},
+        {label: text('data'), data: at('dataMB'), borderColor: chartJsColor('text'), borderDash: [3, 3], tension: 0.3, pointRadius: 0},
       ],
     },
     latency: {
       datasets: [
-        {label: text('p95'), data: at('p95'), borderColor: chartJsColors.commits, tension: 0.3, pointRadius: 0},
+        {label: text('p95'), data: at('p95'), borderColor: chartJsColor('commits'), tension: 0.3, pointRadius: 0},
       ],
     },
   };
@@ -236,22 +236,22 @@ export function initCompanySystemCharts() {
     cpu: {
       options,
       datasets: [
-        {label: text('cpu'), data: at('cpu'), borderColor: chartJsColors.commits, ...line},
-        {label: text('load'), data: at('load1'), borderColor: chartJsColors.text, borderDash: [3, 3], ...line},
+        {label: text('cpu'), data: at('cpu'), borderColor: chartJsColor('commits'), ...line},
+        {label: text('load'), data: at('load1'), borderColor: chartJsColor('text'), borderDash: [3, 3], ...line},
       ],
     },
     memory: {
       options,
       datasets: [
-        {label: text('memory'), data: at('memUsedMB'), borderColor: chartJsColors.deletions, ...line},
-        {label: text('apps'), data: at('appsMemMB'), borderColor: chartJsColors.commits, ...line},
-        {label: text('total'), data: at('memTotalMB'), borderColor: chartJsColors.text, borderDash: [3, 3], ...line},
+        {label: text('memory'), data: at('memUsedMB'), borderColor: chartJsColor('deletions'), ...line},
+        {label: text('apps'), data: at('appsMemMB'), borderColor: chartJsColor('commits'), ...line},
+        {label: text('total'), data: at('memTotalMB'), borderColor: chartJsColor('text'), borderDash: [3, 3], ...line},
       ],
     },
     disk: {
       options: percent,
       datasets: [
-        {label: text('disk'), data: at('diskPct'), borderColor: chartJsColors.deletions, ...line},
+        {label: text('disk'), data: at('diskPct'), borderColor: chartJsColor('deletions'), ...line},
       ],
     },
   };

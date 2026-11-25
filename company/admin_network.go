@@ -121,7 +121,7 @@ func AdminNetworkApp(ctx *context.Context) {
 	owner, repo := ctx.PathParam("owner"), ctx.PathParam("repo")
 	ref, known := LookupApp(owner, repo)
 	if !known {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	recent, blocked := RecentAccess(ref.Owner, ref.Repo, accessRingSize)

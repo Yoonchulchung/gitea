@@ -32,7 +32,8 @@ func (*deployBranchCleanupNotifier) RenameRepository(ctx context.Context, doer *
 	followRepoRename(repo.OwnerName, oldRepoName, repo.OwnerName, repo.Name)
 }
 
-func (*deployBranchCleanupNotifier) TransferRepository(ctx context.Context, doer *user_model.User, repo *repo_model.Repository, oldOwnerName string) {
+func (*deployBranchCleanupNotifier) TransferRepository(ctx context.Context, doer *user_model.User, repo *repo_model.Repository, oldOwner *user_model.User) {
+	oldOwnerName := oldOwner.Name
 	followCentralRepoMove(ctx, oldOwnerName, repo.Name, repo.OwnerName, repo.Name)
 	followPolicyRename(ctx, doer, oldOwnerName, repo.Name, repo.OwnerName, repo.Name)
 	followRepoRename(oldOwnerName, repo.Name, repo.OwnerName, repo.Name)

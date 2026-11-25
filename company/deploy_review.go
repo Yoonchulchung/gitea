@@ -431,17 +431,17 @@ func newDeployReviewMCPServer(gitRepo *git.Repository, branch, prefix, diff stri
 // platform AI like everything else on this page.
 func DeployRequestChat(ctx *gitea_context.Context) {
 	if !ctx.Doer.IsAdmin {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	pr, err := issues_model.GetPullRequestByID(ctx, ctx.PathParamInt64("id"))
 	if err != nil {
-		ctx.NotFound(err)
+		ctx.NotFound()
 		return
 	}
 	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, true)
 	if !ok {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	if !AIEnabled() {
@@ -450,7 +450,7 @@ func DeployRequestChat(ctx *gitea_context.Context) {
 	}
 	st, err := loadPlatformAI(ctx)
 	if err != nil {
-		ctx.ServerError("loadPlatformAI", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if reason := st.unavailableReason(); reason != "" {
@@ -459,7 +459,7 @@ func DeployRequestChat(ctx *gitea_context.Context) {
 	}
 	uc, err := st.config()
 	if err != nil {
-		ctx.ServerError("platform AI config", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	var req workspaceAIRequest
@@ -471,7 +471,7 @@ func DeployRequestChat(ctx *gitea_context.Context) {
 	central := pr.BaseRepo
 	gitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, central)
 	if err != nil {
-		ctx.ServerError("RepositoryFromRequestContextOrOpen", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	var diffBuf strings.Builder

@@ -157,7 +157,7 @@ func AdminDeploys(ctx *context.Context) {
 
 	var repos []*repo_model.Repository
 	if err := db.GetEngine(ctx).In("id", orgOwnedRepoIDs(0)).Find(&repos); err != nil {
-		ctx.ServerError("list org-owned repos", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 

@@ -100,7 +100,7 @@ func codeReviewStatusFor(prID int64) CodeReviewStatus {
 // DeployRequestAIReviewStatus is GET /company/deploy-request/{id}/ai-review.
 func DeployRequestAIReviewStatus(ctx *gitea_context.Context) {
 	if !ctx.Doer.IsAdmin {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	ctx.JSON(http.StatusOK, codeReviewStatusFor(ctx.PathParamInt64("id")))

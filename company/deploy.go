@@ -16,6 +16,7 @@ import (
 	"time"
 
 	issues_model "gitea.dev/models/issues"
+	access_model "gitea.dev/models/perm/access"
 	repo_model "gitea.dev/models/repo"
 	"gitea.dev/models/unit"
 	user_model "gitea.dev/models/user"
@@ -201,7 +202,7 @@ type deployFilePreview struct {
 // before they click through.
 func DeployForm(ctx *context.Context) {
 	if !ctx.Repo.Permission.CanRead(unit.TypeCode) || isCentralDeployRepo(ctx.Repo.Repository) {
-		ctx.NotFound(nil) // the central repository cannot request a deploy of itself
+		ctx.NotFound() // the central repository cannot request a deploy of itself
 		return
 	}
 	renderDeployForm(ctx)
@@ -214,12 +215,12 @@ func DeployForm(ctx *context.Context) {
 func renderDeployForm(ctx *context.Context) {
 	files, err := deployFilePreviews(ctx, ctx.Repo.Repository)
 	if err != nil {
-		ctx.ServerError("deployFilePreviews", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	pr, err := latestDeployRequest(ctx, ctx.Repo.Repository.OwnerName, ctx.Repo.Repository.Name)
 	if err != nil {
-		ctx.ServerError("latestDeployRequest", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	// What this deploy needs that the app is not allowed yet, worked out
@@ -269,7 +270,7 @@ func renderDeployForm(ctx *context.Context) {
 	if pr != nil {
 		status, err := deployStatusFor(ctx, pr)
 		if err != nil {
-			ctx.ServerError("deployStatusFor", err)
+			ctx.ServerErrorAuto(err)
 			return
 		}
 		ctx.Data["DeployRequestStatus"] = status
@@ -310,7 +311,7 @@ func renderDeployForm(ctx *context.Context) {
 			formHeadingKey = "company.deploy.resubmit_heading"
 			reasons, err := rejectionReasons(ctx, pr)
 			if err != nil {
-				ctx.ServerError("rejectionReasons", err)
+				ctx.ServerErrorAuto(err)
 				return
 			}
 			ctx.Data["RejectionComments"] = reasons
@@ -693,7 +694,7 @@ func groupDiffSegments(rows []deploySplitRow) []deployDiffSegment {
 // against them without granting any real access.
 func DeployPost(ctx *context.Context) {
 	if !ctx.Repo.Permission.CanRead(unit.TypeCode) || isCentralDeployRepo(ctx.Repo.Repository) {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	deptRepo := ctx.Repo.Repository
@@ -712,18 +713,18 @@ func DeployPost(ctx *context.Context) {
 
 	central, err := centralDeployRepo(ctx)
 	if err != nil {
-		ctx.ServerError("centralDeployRepo", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	centralOwner, err := user_model.GetUserByID(ctx, central.OwnerID)
 	if err != nil {
-		ctx.ServerError("GetUserByID", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
 	files, err := snapshotFilesUnderPrefix(ctx, deptRepo, central, deployPathPrefix(deptRepo.OwnerName, deptRepo.Name))
 	if err != nil {
-		ctx.ServerError("snapshotFilesUnderPrefix", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	// Checked before anything is written. The build performs these anyway; the
@@ -808,7 +809,7 @@ func DeployPost(ctx *context.Context) {
 		Message:   title,
 		Files:     files,
 	}); err != nil {
-		ctx.ServerError("ChangeRepoFiles", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -819,7 +820,7 @@ func DeployPost(ctx *context.Context) {
 	// out of date. Done only after the snapshot above succeeds, so a
 	// failed submission never cancels the still-good previous request.
 	if err := cancelOpenDeployRequests(ctx, central, deptRepo.OwnerName, deptRepo.Name, ctx.Doer); err != nil {
-		ctx.ServerError("cancelOpenDeployRequests", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -829,7 +830,7 @@ func DeployPost(ctx *context.Context) {
 	}
 	pullIssue, err := openPullRequest(ctx, central, central, newBranch, title, content, centralOwner)
 	if err != nil {
-		ctx.ServerError("openPullRequest", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -1181,7 +1182,10 @@ func openPullRequest(ctx *context.Context, target, headRepo *repo_model.Reposito
 		return nil, err
 	}
 
-	ci, err := git_service.GetCompareInfo(ctx, target, headRepo, headGitRepo, baseRef, headRef, false, true)
+	ci, err := git_service.GetCompareInfo(ctx, git_service.CompareBaseHead{
+		BaseRepo: target, BaseGitRepo: headGitRepo, BaseRef: baseRef, // the central repository is both sides
+		HeadRepo: headRepo, HeadGitRepo: headGitRepo, HeadRef: headRef,
+	}, false, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1205,7 +1209,11 @@ func openPullRequest(ctx *context.Context, target, headRepo *repo_model.Reposito
 		MergeBase:  ci.CompareBase,
 		Type:       issues_model.PullRequestGitea,
 	}
-	if err := pull_svc.NewPullRequest(ctx, &pull_svc.NewPullRequestOptions{
+	posterPerm, err := access_model.GetDoerRepoPermission(ctx, target, poster)
+	if err != nil {
+		return nil, err
+	}
+	if err := pull_svc.NewPullRequest(ctx, posterPerm, &pull_svc.NewPullRequestOptions{
 		Repo:        target,
 		Issue:       pullIssue,
 		PullRequest: pullRequest,
@@ -1229,11 +1237,11 @@ func Submitted(ctx *context.Context) {
 
 	pr, err := latestDeployRequest(ctx, deptRepo.OwnerName, deptRepo.Name)
 	if err != nil {
-		ctx.ServerError("latestDeployRequest", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if pr == nil {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 

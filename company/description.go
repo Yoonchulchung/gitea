@@ -22,16 +22,16 @@ func resolveWritableRepo(ctx *context.Context) *repo_model.Repository {
 	owner, repoName := ctx.PathParam("owner"), ctx.PathParam("repo")
 	target, err := repo_model.GetRepositoryByOwnerAndName(ctx, owner, repoName)
 	if err != nil {
-		ctx.NotFound(err)
+		ctx.NotFound()
 		return nil
 	}
 	perm, err := access_model.GetDoerRepoPermission(ctx, target, ctx.Doer)
 	if err != nil {
-		ctx.ServerError("GetDoerRepoPermission", err)
+		ctx.ServerErrorAuto(err)
 		return nil
 	}
 	if !perm.CanWrite(unit.TypeCode) {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return nil
 	}
 	return target
@@ -62,7 +62,7 @@ func UpdateDescription(ctx *context.Context) {
 
 	target.Description = req.Description
 	if err := repo_model.UpdateRepositoryColsWithAutoTime(ctx, target, "description"); err != nil {
-		ctx.ServerError("UpdateRepositoryColsWithAutoTime", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 

@@ -160,7 +160,7 @@ func parseAutoApproveDelay(raw string) int {
 // DeployRequestAutoApproveStatus is GET /company/deploy-request/{id}/auto-approve.
 func DeployRequestAutoApproveStatus(ctx *gitea_context.Context) {
 	if !ctx.Doer.IsAdmin {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	ctx.JSON(http.StatusOK, autoApproveStatusFor(ctx.PathParamInt64("id")))
@@ -169,16 +169,16 @@ func DeployRequestAutoApproveStatus(ctx *gitea_context.Context) {
 // DeployRequestAutoApproveStop is POST /company/deploy-request/{id}/auto-approve/stop.
 func DeployRequestAutoApproveStop(ctx *gitea_context.Context) {
 	if !ctx.Doer.IsAdmin {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	pr, err := issues_model.GetPullRequestByID(ctx, ctx.PathParamInt64("id"))
 	if err != nil {
-		ctx.NotFound(err)
+		ctx.NotFound()
 		return
 	}
 	if err := pr.LoadBaseRepo(ctx); err != nil {
-		ctx.ServerError("LoadBaseRepo", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if stopAutoApprove(pr.ID, ctx.Doer.Name) {
@@ -194,17 +194,17 @@ func DeployRequestAutoApproveStop(ctx *gitea_context.Context) {
 // its countdown — run again.
 func DeployRequestAutoApproveStart(ctx *gitea_context.Context) {
 	if !ctx.Doer.IsAdmin {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	pr, err := issues_model.GetPullRequestByID(ctx, ctx.PathParamInt64("id"))
 	if err != nil {
-		ctx.NotFound(err)
+		ctx.NotFound()
 		return
 	}
 	deptOwner, deptName, ok := verifyDeployRequestPR(ctx, pr, false)
 	if !ok {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	back := pr.BaseRepo.Link() + "/pulls/" + strconv.FormatInt(pr.Index, 10)
@@ -220,7 +220,7 @@ func DeployRequestAutoApproveStart(ctx *gitea_context.Context) {
 	}
 	centralOwner, err := user_model.GetUserByID(ctx, pr.BaseRepo.OwnerID)
 	if err != nil {
-		ctx.ServerError("GetUserByID", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	ScheduleDeployAIReview(pr.BaseRepo, centralOwner, pr.ID, deptOwner, deptName)

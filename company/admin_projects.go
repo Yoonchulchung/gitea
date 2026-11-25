@@ -36,17 +36,17 @@ type AdminProjectRow struct {
 func AdminProjects(ctx *gitea_context.Context) {
 	org, err := ProjectOrg(ctx)
 	if err != nil {
-		ctx.ServerError("ProjectOrg", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	var repos []*repo_model.Repository
 	if err := db.GetEngine(ctx).Where("owner_id = ?", org.ID).Asc("lower_name").Find(&repos); err != nil {
-		ctx.ServerError("list projects", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	var owners []*ProjectOwner
 	if err := db.GetEngine(ctx).Find(&owners); err != nil {
-		ctx.ServerError("list project owners", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	ownerOf := make(map[int64]int64, len(owners))
@@ -57,7 +57,7 @@ func AdminProjects(ctx *gitea_context.Context) {
 	}
 	users, err := user_model.GetUsersMapByIDs(ctx, ownerIDs)
 	if err != nil {
-		ctx.ServerError("GetUsersMapByIDs", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -87,7 +87,7 @@ func AdminProjects(ctx *gitea_context.Context) {
 
 	plan, err := PlanProjectMigration(ctx)
 	if err != nil {
-		ctx.ServerError("PlanProjectMigration", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	movable := 0
@@ -116,7 +116,7 @@ func AdminProjectOwnerPost(ctx *gitea_context.Context) {
 	back := setting.AppSubURL + adminProjectsPath
 	repo, err := repo_model.GetRepositoryByID(ctx, ctx.FormInt64("repo_id"))
 	if err != nil || !IsProjectRepo(ctx, repo) {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	name := strings.TrimSpace(ctx.FormString("owner"))
@@ -150,7 +150,7 @@ func AdminProjectHandoverPost(ctx *gitea_context.Context) {
 	}
 	projects, err := projectsOwnedBy(ctx, fromID)
 	if err != nil {
-		ctx.ServerError("projectsOwnedBy", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	for i, repo := range projects {

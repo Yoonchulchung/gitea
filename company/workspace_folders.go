@@ -43,7 +43,7 @@ func WorkspaceExpandedFolders(ctx *context.Context) {
 	}
 	paths, err := user_model.GetUserSettingJSON(ctx, ctx.Doer.ID, userSettingExpandedFoldersKey(ctx.Repo.Repository.ID), []string{})
 	if err != nil {
-		ctx.ServerError("GetUserSettingJSON", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, map[string]any{"paths": paths})
@@ -63,7 +63,7 @@ func WorkspaceExpandedFoldersSave(ctx *context.Context) {
 		return
 	}
 	if err := user_model.SetUserSettingJSON(ctx, ctx.Doer.ID, userSettingExpandedFoldersKey(ctx.Repo.Repository.ID), req.Paths); err != nil {
-		ctx.ServerError("SetUserSettingJSON", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, map[string]any{"ok": true})

@@ -12,7 +12,7 @@ import {
   Tooltip,
   type TooltipItem,
 } from 'chart.js';
-import {chartJsColors} from '../utils/color.ts';
+import {chartJsColor} from '../utils/color.ts';
 import {registerGlobalInitFunc} from '../modules/observer.ts';
 
 // The platform AI's token usage on /-/admin/company-ai (company/ai_usage.go's
@@ -68,11 +68,11 @@ export function initCompanyAIUsageCharts() {
       swatch.style.backgroundColor = colors[swatch.getAttribute('data-swatch') as 'input' | 'output'];
     }
     const surface = cssVar('--color-box-body') || cssVar('--color-body');
-    const grid = {color: chartJsColors.border, drawTicks: false};
-    const ticks = {color: chartJsColors.text, font: {size: 11}, padding: 6};
+    const grid = {color: chartJsColor('border'), drawTicks: false};
+    const ticks = {color: chartJsColor('text'), font: {size: 11}, padding: 6};
     const legend = {
       position: 'top' as const, align: 'start' as const,
-      labels: {color: chartJsColors.text, usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8, padding: 14, font: {size: 12}},
+      labels: {color: chartJsColor('text'), usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8, padding: 14, font: {size: 12}},
     };
     const tooltip = {padding: 10, boxPadding: 4, usePointStyle: true, titleFont: {size: 12}, bodyFont: {size: 12}};
 

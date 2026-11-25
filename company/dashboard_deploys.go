@@ -48,7 +48,7 @@ type dashboardDeploy struct {
 // feed buried it. Mounted ahead of Home on /activity (routers/web/web.go).
 func SetActivityLogPage(ctx *context.Context) {
 	if ctx.Doer == nil || !ctx.Doer.IsAdmin {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	ctx.Data["CompanyActivityLog"] = true

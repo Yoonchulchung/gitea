@@ -115,7 +115,7 @@ func GateNonAdminUI(ctx *context.Context) {
 		// Accounts come from the company directory; a sign-up form would only
 		// make accounts nobody provisioned.
 		if strings.HasPrefix(path, "/user/sign_up") {
-			ctx.NotFound(nil)
+			ctx.NotFound()
 		}
 		return // anonymous: REQUIRE_SIGNIN_VIEW + LANDING_PAGE already force them to /user/login, no /company hop needed
 	}

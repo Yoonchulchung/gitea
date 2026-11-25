@@ -35,44 +35,44 @@ func DeployRequestFiles(ctx *context.Context) {
 	id := ctx.PathParamInt64("id")
 	pr, err := issues_model.GetPullRequestByID(ctx, id)
 	if err != nil {
-		ctx.NotFound(err)
+		ctx.NotFound()
 		return
 	}
 	if err := pr.LoadHeadRepo(ctx); err != nil {
-		ctx.ServerError("LoadHeadRepo", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if err := pr.LoadBaseRepo(ctx); err != nil {
-		ctx.ServerError("LoadBaseRepo", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
 	ownerName, repoName, _, ok := parseDeployBranchName(pr.HeadBranch)
 	if !ok {
-		ctx.NotFound(nil)
+		ctx.NotFound()
 		return
 	}
 	deptRepo, err := repoFollowingMoves(ctx, ownerName, repoName)
 	if err != nil {
-		ctx.NotFound(err)
+		ctx.NotFound()
 		return
 	}
 
 	if !ctx.Doer.IsAdmin {
 		perm, err := access_model.GetDoerRepoPermission(ctx, deptRepo, ctx.Doer)
 		if err != nil {
-			ctx.ServerError("GetDoerRepoPermission", err)
+			ctx.ServerErrorAuto(err)
 			return
 		}
 		if !perm.CanWrite(unit.TypeCode) {
-			ctx.NotFound(nil)
+			ctx.NotFound()
 			return
 		}
 	}
 
 	headGitRepo, err := git.RepositoryFromRequestContextOrOpen(ctx, pr.HeadRepo)
 	if err != nil {
-		ctx.ServerError("RepositoryFromRequestContextOrOpen", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -81,7 +81,10 @@ func DeployRequestFiles(ctx *context.Context) {
 	baseRef := git.RefNameFromBranch(pr.BaseBranch)
 	headRef := git.RefNameFromBranch(pr.HeadBranch)
 	var beforeCommitID, afterCommitID string
-	if ci, err := git_service.GetCompareInfo(ctx, pr.BaseRepo, pr.HeadRepo, headGitRepo, baseRef, headRef, false, true); err == nil {
+	if ci, err := git_service.GetCompareInfo(ctx, git_service.CompareBaseHead{
+		BaseRepo: pr.BaseRepo, BaseGitRepo: headGitRepo, BaseRef: baseRef, // a deploy request's two sides are both the central repository
+		HeadRepo: pr.HeadRepo, HeadGitRepo: headGitRepo, HeadRef: headRef,
+	}, false, true); err == nil {
 		beforeCommitID, afterCommitID = ci.CompareBase, ci.HeadCommitID
 	} else {
 		// Once this PR is closed, deployBranchCleanupNotifier
@@ -95,7 +98,7 @@ func DeployRequestFiles(ctx *context.Context) {
 		// 500.
 		snapshotID, ok := loadDeploySnapshot(pr.ID)
 		if !ok {
-			ctx.ServerError("GetCompareInfo", err)
+			ctx.ServerErrorAuto(err)
 			return
 		}
 		beforeCommitID, afterCommitID = pr.MergeBase, snapshotID
@@ -116,7 +119,7 @@ func DeployRequestFiles(ctx *context.Context) {
 	filesUnavailable := diffErr != nil
 
 	if err := pr.LoadIssue(ctx); err != nil {
-		ctx.ServerError("LoadIssue", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -133,11 +136,11 @@ func DeployRequestFiles(ctx *context.Context) {
 		Type:    issues_model.CommentTypeComment,
 	})
 	if err != nil {
-		ctx.ServerError("FindComments", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 	if err := comments.LoadPosters(ctx); err != nil {
-		ctx.ServerError("LoadPosters", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
@@ -157,7 +160,7 @@ func DeployRequestFiles(ctx *context.Context) {
 
 	status, err := deployStatusFor(ctx, pr)
 	if err != nil {
-		ctx.ServerError("deployStatusFor", err)
+		ctx.ServerErrorAuto(err)
 		return
 	}
 
