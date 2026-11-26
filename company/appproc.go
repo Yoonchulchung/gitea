@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -312,10 +313,15 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 		// department's screen.
 		return errNoRelease
 	}
-	if _, err := os.Stat(filepath.Join(target, "app", "main.py")); err != nil {
-		// The app contract is a fixed convention, not a config file, so a
-		// missing main.py is the one thing we can and must check up front —
-		// otherwise the failure surfaces as an opaque uvicorn traceback.
+	// The app contract is a fixed convention, not a config file, so its
+	// entry file is the one thing we can and must check up front — otherwise
+	// the failure surfaces as an opaque uvicorn traceback.
+	runtime, staticRoot := releaseRuntime(target)
+	entry := "main.py"
+	if runtime == RuntimeStatic {
+		entry = path.Join(staticRoot, "index.html")
+	}
+	if _, err := os.Stat(filepath.Join(target, "app", filepath.FromSlash(entry))); err != nil {
 		return userKeyError("company.err.no_main_py")
 	}
 
@@ -391,8 +397,10 @@ func (s *appSupervisor) startLocked(settings AppSettings, appEnv map[string]stri
 	if _, statErr := os.Stat(cmd.Path); statErr != nil {
 		return audienceKeyError("company.err.venv_broken", "company.err.venv_broken.admin", cmd.Path)
 	}
-	if err := installPlatformShim(filepath.Join(target, ".venv")); err != nil {
-		return err
+	if runtime == RuntimePython {
+		if err := installPlatformShim(filepath.Join(target, ".venv")); err != nil {
+			return err
+		}
 	}
 	brokerOn := settings.Network.Mode == NetworkBroker || settings.Network.Mode == NetworkOpen
 	if brokerOn {

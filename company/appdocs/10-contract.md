@@ -1,10 +1,15 @@
 # 앱 계약 — 플랫폼이 앱에 기대하는 것
 > 부서 앱이 이 플랫폼에서 실행되기 위한 최소 규칙: 파일 구조, 시작 명령, 환경 변수, 헬스 체크.
-keywords: main.py, app, uvicorn, FastAPI, health, 시작, 실행, 환경변수, 구조, 계약, 파일
+keywords: main.py, app, uvicorn, FastAPI, health, 시작, 실행, 환경변수, 구조, 계약, 파일, index.html, 정적, static, html, 웹사이트
 always: yes
 
+## 앱 종류
+- 배포할 때 파일을 보고 종류를 정한다. 저장소 루트에 `main.py`가 있으면 **Python 앱**(FastAPI), `main.py` 없이 `pom.xml`이 있으면 **Java 앱**(Spring Boot), 둘 다 없이 `index.html`이 있으면 **정적 웹사이트**다.
+- 정적 웹사이트: `index.html`을 `dist/`, `build/`, 저장소 루트, `public/` 순서로 찾아 그 폴더의 파일을 그대로 제공한다. 서버 코드도 데이터베이스도 없으므로, 데이터를 저장하거나 서버에서 처리할 일이 없을 때만 고른다. 파일이 없는 확장자 없는 경로는 `index.html`을 돌려주므로 단일 페이지 앱의 라우트도 열린다. `.`으로 시작하는 파일은 제공되지 않는다.
+- 아래 내용은 Python 앱의 규칙이다. 데이터를 저장하거나 서버에서 계산해야 하면, 직원이 Java를 원하지 않는 한 Python 앱으로 만든다. Java 앱의 규칙은 "Java 앱" 문서에 있다.
+
 ## 저장소 구조와 시작 명령
-- 저장소 루트에 `main.py`가 있어야 하고, 그 안에 ASGI 앱 객체 `app`이 있어야 한다. 보통 `from fastapi import FastAPI` / `app = FastAPI()`.
+- Python 앱은 저장소 루트에 `main.py`가 있어야 하고, 그 안에 ASGI 앱 객체 `app`이 있어야 한다. 보통 `from fastapi import FastAPI` / `app = FastAPI()`.
 - 플랫폼은 앱을 항상 `uvicorn main:app --uds ${SOCKET} --root-path ${ROOT_PATH}` 로 시작한다. 시작 명령은 부서가 바꿀 수 없다. `if __name__ == "__main__": uvicorn.run(...)` 블록은 있어도 무시된다.
 - 포트를 열지 않는다. 앱은 유닉스 소켓으로만 서비스되고, 플랫폼의 프록시가 `/apps/{부서}/{저장소}/` 에서 그 소켓으로 연결한다. `--host 0.0.0.0` 같은 설정은 의미가 없다.
 - `main.py`가 import 되는 순간 실행되는 코드(모듈 최상위)에서 예외가 나면 앱은 시작하지 못한다. 정의되지 않은 이름, 없는 모듈, 파일 열기 실패가 대표적이다.

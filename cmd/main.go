@@ -139,6 +139,7 @@ func NewMainApp(appVer AppVersion) *cli.Command {
 		newGenerateCommand(),
 		newDocsCommand(),
 		company.NewDeptAppExecCommand(), // see docs/company/patches.md
+		company.NewDeptAppStaticCommand(),
 	}
 
 	// TODO: we should eventually drop the default command,

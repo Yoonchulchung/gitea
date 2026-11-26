@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"gitea.dev/company"
+	org_model "gitea.dev/models/organization"
 	repo_model "gitea.dev/models/repo"
 	"gitea.dev/models/unittest"
 	user_model "gitea.dev/models/user"
@@ -96,9 +97,21 @@ func TestCompanyProjects(t *testing.T) {
 		assert.Equal(t, "/projects/repo3", resp.Header().Get("Location"))
 	})
 
-	t.Run("NoDepartmentPages", func(t *testing.T) {
-		resp := member.MakeRequest(t, NewRequest(t, "GET", "/org/org3/dashboard"), http.StatusSeeOther)
+	t.Run("OrganizationsAreGiteas", func(t *testing.T) {
+		owner.MakeRequest(t, NewRequest(t, "GET", "/org/org3/dashboard"), http.StatusOK) // user4 is a member of org3
+		owner.MakeRequest(t, NewRequest(t, "GET", "/org3"), http.StatusOK)
+		resp := owner.MakeRequest(t, NewRequest(t, "GET", "/user5"), http.StatusSeeOther) // a person's profile stays closed
 		assert.Equal(t, "/", resp.Header().Get("Location"))
+
+		// Added on the members page, a member joins as an owner.
+		outsider := loginUser(t, "user10")
+		outsider.MakeRequest(t, NewRequestWithValues(t, "POST", "/company/org/org3/members", map[string]string{"user": "user10"}), http.StatusNotFound)
+		loginUser(t, "user1").MakeRequest(t, NewRequestWithValues(t, "POST", "/company/org/org3/members", map[string]string{"user": "user10"}), http.StatusSeeOther)
+		outsider.MakeRequest(t, NewRequest(t, "GET", "/org/org3/dashboard"), http.StatusOK)
+		org3 := unittest.AssertExistsAndLoadBean(t, &org_model.Organization{Name: "org3"})
+		isOwner, err := org3.IsOwnedBy(t.Context(), 10)
+		require.NoError(t, err)
+		assert.True(t, isOwner)
 	})
 
 	t.Run("NoSignUp", func(t *testing.T) {

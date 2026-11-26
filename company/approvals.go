@@ -63,8 +63,10 @@ type ApprovalRequest struct {
 	// RefID is the central pull request a deploy is decided on.
 	RefID int64 `xorm:"INDEX"`
 	// RepoID is the project an approval created.
-	RepoID      int64
-	DeciderID   int64
+	RepoID    int64
+	DeciderID int64
+	// AINote is what the platform AI said about a request it looked at.
+	AINote      string             `xorm:"'ai_note' TEXT"`
 	CreatedUnix timeutil.TimeStamp `xorm:"created"`
 	DecidedUnix timeutil.TimeStamp
 

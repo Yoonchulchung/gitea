@@ -1,0 +1,132 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-security")}}
+	<div class="admin-setting-content">
+		{{$s := .Summary}}
+		<h4 class="ui top attached header">
+			{{ctx.Locale.Tr "company.security.title"}}
+			<div class="ui right tw-flex tw-gap-1">
+				{{range $r := (StringUtils.Split "24h,7d,30d" ",")}}
+					<a class="ui mini {{if eq $r $.Range}}primary{{else}}basic{{end}} button" href="?range={{$r}}">{{$r}}</a>
+				{{end}}
+			</div>
+		</h4>
+		<div class="ui attached segment">
+			{{if $s.Attacked}}
+				<div class="ui warning message tw-m-0">{{svg "octicon-alert" 16}} {{ctx.Locale.Tr "company.security.verdict_attacked" $s.Total}}</div>
+			{{else if $s.Total}}
+				<div class="ui info message tw-m-0">{{svg "octicon-info" 16}} {{ctx.Locale.Tr "company.security.verdict_noise" $s.Total}}</div>
+			{{else}}
+				<div class="ui positive message tw-m-0">{{svg "octicon-shield-check" 16}} {{ctx.Locale.Tr "company.security.verdict_clear"}}</div>
+			{{end}}
+			<div class="company-security-kinds tw-mt-4">
+				{{range .Kinds}}
+					{{$n := index $s.ByKind .}}
+					<div class="company-security-kind{{if $n}} hit{{end}}">
+						<span>{{ctx.Locale.Tr (print "company.security.kind." .)}}</span>
+						<b>{{$n}}</b>
+					</div>
+				{{end}}
+			</div>
+		</div>
+
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.security.timeline"}}</h4>
+		<div class="ui attached segment">
+			<div class="company-security-bars">
+				{{range $s.Buckets}}
+					<div class="company-security-bar" data-tooltip-content="{{.Label}} · {{.Count}}">
+						<span style="height: {{.Pct}}%"></span>
+					</div>
+				{{end}}
+			</div>
+			{{if $s.Buckets}}
+				<div class="company-security-axis text-grey tw-text-12"><span>{{(index $s.Buckets 0).Label}}</span><span>{{ctx.Locale.Tr "company.security.now"}}</span></div>
+			{{end}}
+		</div>
+
+		<div class="company-security-tops tw-mt-4">
+			<div>
+				<h4 class="ui top attached header">{{ctx.Locale.Tr "company.security.top_sources"}}</h4>
+				<div class="ui attached segment">
+					{{if $s.Sources}}
+						<table class="ui very basic compact table">
+							<tbody>
+								{{range $s.Sources}}
+									<tr>
+										<td><code>{{.Name}}</code><div class="text-grey tw-text-12">{{range $i, $k := .Kinds}}{{if $i}} · {{end}}{{ctx.Locale.Tr (print "company.security.kind." $k)}}{{end}}</div></td>
+										<td class="tw-text-right"><b>{{.Count}}</b><div class="text-grey tw-text-12">{{DateUtils.TimeSince .LastAt}}</div></td>
+									</tr>
+								{{end}}
+							</tbody>
+						</table>
+					{{else}}<p class="text-grey tw-m-0">{{ctx.Locale.Tr "company.security.none"}}</p>{{end}}
+				</div>
+			</div>
+			<div>
+				<h4 class="ui top attached header">{{ctx.Locale.Tr "company.security.top_paths"}}</h4>
+				<div class="ui attached segment">
+					{{if $s.Paths}}
+						<table class="ui very basic compact table">
+							<tbody>{{range $s.Paths}}<tr><td><code>{{.Name}}</code></td><td class="tw-text-right"><b>{{.Count}}</b></td></tr>{{end}}</tbody>
+						</table>
+					{{else}}<p class="text-grey tw-m-0">{{ctx.Locale.Tr "company.security.none"}}</p>{{end}}
+				</div>
+				<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.security.top_apps"}}</h4>
+				<div class="ui attached segment">
+					{{if $s.Apps}}
+						<table class="ui very basic compact table">
+							<tbody>{{range $s.Apps}}<tr><td><a href="{{AppSubUrl}}/-/admin/company-network/{{.Name}}">{{.Name}}</a></td><td class="tw-text-right"><b>{{.Count}}</b></td></tr>{{end}}</tbody>
+						</table>
+					{{else}}<p class="text-grey tw-m-0">{{ctx.Locale.Tr "company.security.none"}}</p>{{end}}
+				</div>
+			</div>
+		</div>
+
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.security.recent"}}</h4>
+		<div class="ui attached segment">
+			{{if $s.Recent}}
+				<table class="ui very basic compact table">
+					<thead><tr>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.security.col_time"}}</th>
+						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.security.col_kind"}}</th>
+						<th>{{ctx.Locale.Tr "company.security.col_source"}}</th>
+						<th>{{ctx.Locale.Tr "company.security.col_target"}}</th>
+					</tr></thead>
+					<tbody>
+						{{range $s.Recent}}
+							<tr>
+								<td class="tw-text-13">{{DateUtils.TimeSince .At}}</td>
+								<td><span class="company-security-tag {{.Kind}}">{{ctx.Locale.Tr (print "company.security.kind." .Kind)}}</span></td>
+								<td>{{if .Source}}<code>{{.Source}}</code>{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.security.from_app"}}</span>{{end}}</td>
+								<td class="tw-text-13">{{if .App}}{{.App}}{{if .Detail}} · {{end}}{{end}}{{if .Detail}}<code class="gt-ellipsis">{{.Detail}}</code>{{end}}</td>
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			{{else}}<p class="text-grey tw-m-0">{{ctx.Locale.Tr "company.security.none"}}</p>{{end}}
+		</div>
+
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.security.alert"}}</h4>
+		<div class="ui attached segment">
+			{{if .AlertReady}}
+				<p class="tw-m-0">{{svg "octicon-bell" 14}} {{ctx.Locale.Tr "company.security.alert_on" .AlertWindow .AlertTotal .AlertLogins}}</p>
+			{{else}}
+				<p class="tw-m-0">{{svg "octicon-bell-slash" 14}} {{ctx.Locale.Tr "company.security.alert_off" .MailLink}}</p>
+			{{end}}
+		</div>
+		<p class="text-grey tw-text-13 tw-mt-2">{{ctx.Locale.Tr "company.security.scope"}}</p>
+	</div>
+<style>
+.company-security-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.company-security-kind { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 12px; border: 1px solid var(--color-secondary); border-radius: var(--border-radius); color: var(--color-text-light-2); font-size: 13px; }
+.company-security-kind b { font-size: 18px; color: var(--color-text-light-3); font-variant-numeric: tabular-nums; }
+.company-security-kind.hit { border-color: var(--color-warning-border); background: var(--color-warning-bg); color: var(--color-text); }
+.company-security-kind.hit b { color: var(--color-warning-text); }
+.company-security-bars { display: flex; align-items: flex-end; gap: 2px; height: 80px; }
+.company-security-bar { flex: 1 1 0; height: 100%; display: flex; align-items: flex-end; background: var(--color-secondary-alpha-40); border-radius: 2px; }
+.company-security-bar > span { display: block; width: 100%; background: var(--color-warning-text); border-radius: 2px; }
+.company-security-axis { display: flex; justify-content: space-between; margin-top: 4px; }
+.company-security-tops { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.company-security-tag { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 12px; background: var(--color-secondary-alpha-60); white-space: nowrap; }
+.company-security-tag.ban, .company-security-tag.login_failed, .company-security-tag.outbound_refused { background: var(--color-error-bg); color: var(--color-error-text); }
+@media (max-width: 900px) { .company-security-tops { grid-template-columns: 1fr; } }
+</style>
+{{template "admin/layout_footer" .}}

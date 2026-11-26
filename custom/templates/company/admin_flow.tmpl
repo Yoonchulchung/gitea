@@ -1,0 +1,70 @@
+{{/* The platform as a resource tree: Gitea, the app proxy, each app and what
+     it runs on, each box with its live state. Layout: company/admin_flow.go. */}}
+{{$f := .Flow}}
+<h4 class="ui top attached header tw-mt-4">
+	{{ctx.Locale.Tr "company.admin.flow_header"}}
+	<span class="text-grey tw-text-12 tw-font-normal">{{ctx.Locale.Tr "company.admin.flow_window"}}</span>
+</h4>
+<div class="ui attached segment company-flow">
+	<div class="company-flow-scroll">
+		<div class="company-flow-canvas" style="width: {{$f.Width}}px; height: {{$f.Height}}px">
+			<svg class="company-flow-edges" width="{{$f.Width}}" height="{{$f.Height}}" aria-hidden="true">
+				{{range $f.Edges}}<path d="{{.Path}}"/>{{end}}
+			</svg>
+			{{range $f.Nodes}}
+				<a {{if .Link}}href="{{.Link}}" {{end}}class="company-flow-node{{if .Root}} root{{end}}{{if .App}} app{{end}} {{.Health}}" style="left: {{.X}}px; top: {{.Y}}px; width: {{.W}}px; height: {{.H}}px">
+					<span class="company-flow-head">
+						<span class="company-flow-icon">{{svg .Icon (Iif .Root 26 22)}}{{if .Kind}}<small>{{.Kind}}</small>{{end}}</span>
+						<span class="company-flow-body">
+							<span class="company-flow-name gt-ellipsis" title="{{.Name}}">{{.Name}}</span>
+							<span class="company-flow-marks">
+								{{if eq .Health "ok"}}<span class="company-flow-heart ok">{{svg "octicon-heart-fill" 14}}</span>
+								{{else if eq .Health "bad"}}<span class="company-flow-heart bad">{{svg "octicon-heart-fill" 14}}</span>
+								{{else if eq .Health "busy"}}<span class="company-flow-heart busy">{{svg "octicon-heart-fill" 14}}</span>
+								{{else if eq .Health "idle"}}<span class="company-flow-heart idle">{{svg "octicon-heart" 14}}</span>{{end}}
+								{{if eq .Synced "ok"}}<span class="company-flow-sync ok">{{svg "octicon-check-circle-fill" 14}}</span>
+								{{else if eq .Synced "busy"}}<span class="company-flow-sync busy">{{svg "octicon-sync" 14}}</span>{{end}}
+							</span>
+						</span>
+						{{if .Spark}}<span class="company-flow-spark">{{template "company/sparkline" dict "Points" .Spark}}</span>{{end}}
+					</span>
+					{{if .Metrics}}
+						<span class="company-flow-metrics">
+							{{range .Metrics}}
+								<span class="company-flow-metric {{.Level}}">
+									<small>{{.Label}}</small>
+									<b class="gt-ellipsis" title="{{.Value}}">{{.Value}}</b>
+									{{if .Gauge}}<span class="company-flow-gauge"><span style="width: {{.Pct}}%"></span></span>{{end}}
+								</span>
+							{{end}}
+						</span>
+					{{end}}
+					{{if .Badges}}
+						<span class="company-flow-badges">
+							{{range .Badges}}<span class="company-flow-badge{{if .Warn}} warn{{end}}">{{.Text}}</span>{{end}}
+						</span>
+					{{end}}
+				</a>
+			{{end}}
+		</div>
+	</div>
+
+	<div class="company-flow-deploy">
+		<span class="company-flow-deploy-label">{{ctx.Locale.Tr "company.admin.flow_deploy"}}</span>
+		<span class="company-flow-chip">{{svg "octicon-repo" 14}} {{ctx.Locale.Tr "company.admin.flow_deploy_repo"}}</span>
+		{{svg "octicon-arrow-right" 12 "company-flow-chev"}}
+		{{if $f.ApprovalOn}}
+			<a class="company-flow-chip" href="{{AppSubUrl}}/company/approvals">{{svg "octicon-git-pull-request" 14}} {{ctx.Locale.Tr "company.admin.flow_deploy_approval"}}</a>
+		{{else}}
+			<span class="company-flow-chip muted">{{svg "octicon-rocket" 14}} {{ctx.Locale.Tr "company.admin.flow_deploy_direct"}}</span>
+		{{end}}
+		{{svg "octicon-arrow-right" 12 "company-flow-chev"}}
+		<span class="company-flow-chip">{{svg "octicon-package" 14}} {{ctx.Locale.Tr "company.admin.flow_deploy_build"}}</span>
+		{{svg "octicon-arrow-right" 12 "company-flow-chev"}}
+		<span class="company-flow-chip">{{svg "octicon-check-circle" 14}} {{ctx.Locale.Tr "company.admin.flow_deploy_check"}}</span>
+		{{svg "octicon-arrow-right" 12 "company-flow-chev"}}
+		<span class="company-flow-chip">{{svg "octicon-sync" 14}} {{ctx.Locale.Tr "company.admin.flow_deploy_swap"}}</span>
+		{{svg "octicon-arrow-right" 12 "company-flow-chev"}}
+		<span class="company-flow-chip">{{svg "octicon-play" 14}} {{ctx.Locale.Tr "company.admin.flow_deploy_run"}}{{if $f.Down}} · <span class="text-red">{{ctx.Locale.Tr "company.admin.flow_down" $f.Down}}</span>{{end}}</span>
+	</div>
+</div>

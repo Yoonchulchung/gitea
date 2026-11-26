@@ -52,7 +52,10 @@ func appOnCentral(ctx context.Context, owner, repo string) bool {
 	if err != nil {
 		return false
 	}
-	_, found := readCentralFile(ctx, central, deployPathPrefix(owner, repo)+"/main.py")
+	_, _, found := detectRuntime(func(rel string) bool {
+		_, ok := readCentralFile(ctx, central, deployPathPrefix(owner, repo)+"/"+rel)
+		return ok
+	})
 	return found
 }
 

@@ -171,8 +171,16 @@ func runStartupCheck(ctx context.Context, rec *startupRecord, repoID int64, sha 
 		finish("unavailable", "", err, "")
 		return
 	}
-	if _, err := os.Stat(filepath.Join(appDir, "main.py")); err != nil {
-		finish("failed", "app", userKeyError("company.err.no_main_py"), "")
+	switch runtime, root, _ := detectRuntimeDir(appDir); runtime {
+	case RuntimeStatic:
+		finish("passed", "", nil, "static site: /"+root) // files are served as they are; nothing to start
+		return
+	case RuntimeJava:
+		// Building a Java app takes minutes; the deploy builds it and checks it starts, and keeps the running version if it does not.
+		finish("passed", "", nil, "java: built and started at deploy")
+		return
+	case "":
+		finish("failed", "app", errNoEntry, "")
 		return
 	}
 

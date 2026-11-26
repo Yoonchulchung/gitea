@@ -4,6 +4,7 @@
 package company
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"sync"
 
 	"gitea.dev/modules/log"
+	"gitea.dev/modules/process"
 	"gitea.dev/modules/setting"
 )
 
@@ -292,6 +294,16 @@ var sandboxReadOnlyBinds = []string{
 // where `ps` shows them to anyone on the host. bwrap passes its own
 // environment through to the child.
 func buildAppCommand(release string, p appPaths, settings AppSettings, rootPath, dataDir string) (*exec.Cmd, error) {
+	switch rt, root := releaseRuntime(release); rt {
+	case RuntimeStatic:
+		return buildSandboxCommand(release, p, settings, dataDir, "", staticServerArgs(p, release, root))
+	case RuntimeJava:
+		args, err := javaStartArgs(p, release, root, settings.Limits.MemoryMB)
+		if err != nil {
+			return nil, err
+		}
+		return buildSandboxCommand(release, p, settings, dataDir, "", args)
+	}
 	args := buildStartArgs(settings.Start, appSocketForProcess(p), rootPath)
 	if len(args) == 0 {
 		return nil, errors.New("the start command in apps.yml is empty")
@@ -319,13 +331,35 @@ func buildSandboxCommand(release string, p appPaths, settings AppSettings, dataD
 		return nil, errors.New("this app cannot be isolated on this host, so it was not started — " + detail)
 	}
 	interpreter := filepath.Join(release, ".venv", "bin", args[0])
+	var hostDirs []string // directories outside the usual binds the program needs to read
+	switch {
+	case args[0] == platformProgram:
+		self, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("buildSandboxCommand: locating the Gitea binary: %w", err)
+		}
+		interpreter = self
+	case filepath.IsAbs(args[0]): // a server tool, such as the JDK
+		interpreter = args[0]
+		hostDirs = append(hostDirs, javaHome(args[0]))
+	case !dirExists(filepath.Join(release, ".venv")) && strings.HasPrefix(args[0], "python"):
+		// The data and migration helpers on a release that is not Python:
+		// the server's own Python runs them.
+		info, err := pythonProbe()
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", errNoPython, err)
+		}
+		interpreter = info.Path
+		args = append([]string{info.Path}, args[1:]...)
+		hostDirs = append(hostDirs, filepath.Dir(filepath.Dir(info.Path)))
+	}
 
 	switch mode {
 	case SandboxBubblewrap:
 		bwrapPath, _ := sandboxProbe()
-		return bwrapCommand(bwrapPath, release, p, settings, args, dataDir, snapshotDir), nil
+		return bwrapCommand(bwrapPath, release, p, settings, interpreter, hostDirs, args, dataDir, snapshotDir), nil
 	case SandboxLandlock:
-		return landlockCommand(release, p, settings, interpreter, args, dataDir, snapshotDir)
+		return landlockCommand(release, p, settings, interpreter, hostDirs, args, dataDir, snapshotDir)
 	default:
 		log.Warn("company: starting an app WITHOUT a sandbox: %s", detail)
 		argv := cgroupArgs(settings.Limits, append([]string{interpreter}, args[1:]...))
@@ -334,7 +368,7 @@ func buildSandboxCommand(release string, p appPaths, settings AppSettings, dataD
 }
 
 // bwrapCommand builds the bubblewrap invocation.
-func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, args []string, dataDir, snapshotDir string) *exec.Cmd {
+func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, program string, hostDirs, args []string, dataDir, snapshotDir string) *exec.Cmd {
 	bwrapArgs := []string{
 		// A fresh namespace of every kind. --unshare-all includes the
 		// network, which is what makes "requests.get() reaches nothing"
@@ -366,15 +400,31 @@ func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, a
 	if _, err := os.Stat(p.ctl); err == nil {
 		bwrapArgs = append(bwrapArgs, "--ro-bind", p.ctl, sandboxCtlPath)
 	}
+	// The code and its dependencies are read-only: an app that cannot
+	// rewrite its own release cannot persist a backdoor into it.
+	bwrapArgs = append(bwrapArgs, "--ro-bind", filepath.Join(release, "app"), "/app")
+	inside := filepath.Join("/venv", "bin", args[0])
+	switch {
+	case args[0] == platformProgram:
+		inside = "/platform/gitea"
+		bwrapArgs = append(bwrapArgs, "--ro-bind", program, inside)
+	case filepath.IsAbs(args[0]):
+		inside = args[0]
+		for _, dir := range hostDirs {
+			if !underReadOnlyBinds(dir) {
+				bwrapArgs = append(bwrapArgs, "--ro-bind", dir, dir)
+			}
+		}
+	default:
+		if venv := filepath.Join(release, ".venv"); dirExists(venv) {
+			bwrapArgs = append(bwrapArgs, "--ro-bind", venv, "/venv")
+		}
+	}
 	bwrapArgs = append(bwrapArgs,
-		// The code and its dependencies are read-only: an app that cannot
-		// rewrite its own release cannot persist a backdoor into it.
-		"--ro-bind", filepath.Join(release, "app"), "/app",
-		"--ro-bind", filepath.Join(release, ".venv"), "/venv",
 		"--bind", p.run, "/run", // the socket, and scratch
 		"--chdir", "/app",
 		"--",
-		filepath.Join("/venv", "bin", args[0]),
+		inside,
 	)
 	bwrapArgs = append(bwrapArgs, args[1:]...)
 
@@ -397,7 +447,7 @@ func bwrapCommand(bwrapPath, release string, p appPaths, settings AppSettings, a
 // Denying /tmp matters because, with no mount namespace, /tmp is shared with
 // every other app on the host; each app gets a private directory under its
 // own run directory instead, pointed at by HOME and TMPDIR.
-func landlockCommand(release string, p appPaths, settings AppSettings, interpreter string, args []string, dataDir, snapshotDir string) (*exec.Cmd, error) {
+func landlockCommand(release string, p appPaths, settings AppSettings, interpreter string, hostDirs, args []string, dataDir, snapshotDir string) (*exec.Cmd, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("locating the Gitea binary for the sandbox helper: %w", err)
@@ -407,9 +457,20 @@ func landlockCommand(release string, p appPaths, settings AppSettings, interpret
 	for _, dir := range sandboxReadOnlyBinds {
 		argv = append(argv, "--ro", dir)
 	}
+	argv = append(argv, "--ro", filepath.Join(release, "app"))
+	switch {
+	case args[0] == platformProgram:
+		argv = append(argv, "--ro", interpreter)
+	case len(hostDirs) > 0:
+		for _, dir := range hostDirs {
+			argv = append(argv, "--ro", dir)
+		}
+	default:
+		if venv := filepath.Join(release, ".venv"); dirExists(venv) {
+			argv = append(argv, "--ro", venv)
+		}
+	}
 	argv = append(argv,
-		"--ro", filepath.Join(release, "app"),
-		"--ro", filepath.Join(release, ".venv"),
 		"--ro", "/dev/urandom", "--ro", "/dev/null",
 		// /proc as a whole stays denied — that is what replaces the PID
 		// namespace bubblewrap would have given, and without it an app could
@@ -479,4 +540,74 @@ func NetworkEnforced() (bool, string) {
 		return false, detail
 	}
 	return true, ""
+}
+
+// underReadOnlyBinds reports whether dir is already visible in the sandbox.
+func underReadOnlyBinds(dir string) bool {
+	for _, bind := range sandboxReadOnlyBinds {
+		if dir == bind || strings.HasPrefix(dir, bind+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// buildToolCommand runs a build step in the sandbox with the network open:
+// a pom.xml can run any plugin, so a build is untrusted code too, and only
+// the build directory, its caches and the tools it reads are visible to it.
+func buildToolCommand(ctx context.Context, workDir string, writable, tools, argv []string) (*process.Cmd, error) {
+	limits := AppLimits{MemoryMB: javaBuildMemoryMB, Processes: 256, OpenFiles: 8192, TmpMB: 512}
+	mode, detail := sandboxMode()
+	switch mode {
+	case SandboxBubblewrap:
+		bwrapPath, _ := sandboxProbe()
+		args := []string{
+			"--unshare-all", "--share-net", "--die-with-parent", "--new-session",
+			"--proc", "/proc", "--dev", "/dev",
+			"--size", strconv.Itoa(limits.TmpMB << 20), "--tmpfs", "/tmp",
+		}
+		for _, dir := range append(append([]string{}, sandboxReadOnlyBinds...), "/etc/hosts") {
+			if _, err := os.Lstat(dir); err == nil {
+				args = append(args, "--ro-bind", dir, dir)
+			}
+		}
+		for _, dir := range tools {
+			if !underReadOnlyBinds(dir) {
+				args = append(args, "--ro-bind", dir, dir)
+			}
+		}
+		for _, dir := range append([]string{workDir}, writable...) {
+			args = append(args, "--bind", dir, dir)
+		}
+		args = append(append(args, "--chdir", workDir, "--"), argv...)
+		full := cgroupArgs(limits, append(prlimitArgs(limits), append([]string{bwrapPath}, args...)...))
+		return process.CommandContext(ctx, full[0], full[1:]...), nil //nolint:gosec // the platform's own tools; the repository only supplies files
+	case SandboxLandlock:
+		self, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("buildToolCommand: locating the Gitea binary: %w", err)
+		}
+		full := []string{self, "deptapp-exec", "--allow-network"}
+		for _, dir := range append(append(append([]string{}, sandboxReadOnlyBinds...), "/etc/hosts", "/dev/urandom", "/dev/null", "/proc/self"), tools...) {
+			full = append(full, "--ro", dir)
+		}
+		for _, dir := range append([]string{workDir}, writable...) {
+			full = append(full, "--rw", dir)
+		}
+		full = append(full, "--gitea-pid", strconv.Itoa(os.Getpid()),
+			"--memory-mb", strconv.Itoa(limits.MemoryMB), "--processes", strconv.Itoa(limits.Processes),
+			"--open-files", strconv.Itoa(limits.OpenFiles), "--")
+		full = cgroupArgs(limits, append(full, argv...))
+		cmd := process.CommandContext(ctx, full[0], full[1:]...) //nolint:gosec // the platform's own tools; the repository only supplies files
+		cmd.Dir = workDir
+		return cmd, nil
+	default:
+		if !allowUnsandboxed() {
+			return nil, errors.New("this build cannot be isolated on this host, so it was not run — " + detail)
+		}
+		log.Warn("company: running a build WITHOUT a sandbox: %s", detail)
+		cmd := process.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // development hosts only, by explicit opt-in
+		cmd.Dir = workDir
+		return cmd, nil
+	}
 }

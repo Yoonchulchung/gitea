@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"sync"
+	"time"
 )
 
 // Every department app is a Python app, so a host without a working Python
@@ -21,9 +21,10 @@ import (
 // requirements.txt over and over against a problem only an administrator can
 // fix.
 
-// pythonProbe resolves the interpreter once. The answer cannot change while
-// this process runs, and the check spawns processes.
-var pythonProbe = sync.OnceValues(func() (pythonInfo, error) {
+// pythonProbe resolves the interpreter, again each minute: it spawns
+// processes, and an interpreter an administrator installs or fixes should be
+// used without a restart.
+var pythonProbe = probeEvery(time.Minute, func() (pythonInfo, error) {
 	path, err := lookupTool("PYTHON_PATH", "python3")
 	if err != nil {
 		return pythonInfo{}, errors.New("python3 was not found — install it, or set [company] PYTHON_PATH to where it lives")

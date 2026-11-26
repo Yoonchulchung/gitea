@@ -39,6 +39,8 @@ func AdminAI(ctx *gitea_context.Context) {
 	ctx.Data["PlatformAIUnavailable"] = st.unavailableReason()
 	ctx.Data["AutoApproveDelegate"] = AutoApproveDelegate(ctx)
 	ctx.Data["AutoApproveDelay"] = int(AutoApproveDelay(ctx).Seconds())
+	ctx.Data["ProjectAIDelegate"] = ProjectAIDelegate(ctx)
+	ctx.Data["ProjectApprovalRequired"] = ProjectApprovalRequired(ctx)
 	month := ctx.FormString("month")
 	if !aiUsageMonthR.MatchString(month) {
 		month = time.Now().Format("2006-01")
@@ -60,6 +62,7 @@ func AdminAI(ctx *gitea_context.Context) {
 	ctx.Data["KnownPricesJSON"] = knownModelPricesJSON()
 	ctx.Data["KnownPricesAsOf"] = knownModelPricesAsOf
 	ctx.Data["UsageMonths"] = aiUsageMonths()
+	ctx.Data["DeployApprovalOff"] = currentDeployApprovalPolicy(ctx).WaivedBy != nil
 	ctx.HTML(http.StatusOK, tplAdminAI)
 }
 
@@ -91,7 +94,26 @@ func AdminAIPost(ctx *gitea_context.Context) {
 			return
 		}
 	}
-	if err := system_model.SetSettings(ctx, map[string]string{settingKeyAutoApproveBy: autoApprove, settingKeyAutoApproveDelay: delay}); err != nil {
+	projectAI := ""
+	if ctx.FormBool("project_ai_approve") {
+		if reason := PlatformAIUnavailableReason(ctx); reason != "" {
+			ctx.Flash.Error(ctx.Locale.TrString("company.adminsettings.auto_approve_refused", ctx.Locale.TrString(reason)))
+			ctx.Redirect(adminAIPage())
+			return
+		}
+		projectAI = strconv.FormatInt(ctx.Doer.ID, 10)
+		if delegate := ProjectAIDelegate(ctx); delegate != nil {
+			projectAI = strconv.FormatInt(delegate.ID, 10)
+		}
+	}
+	settings := map[string]string{settingKeyAutoApproveBy: autoApprove, settingKeyAutoApproveDelay: delay, settingKeyProjectAIBy: projectAI}
+	// The deploy switches are shown disabled, and so not posted, while deploys
+	// need no approval: what was chosen is kept for when approval comes back.
+	if currentDeployApprovalPolicy(ctx).WaivedBy != nil {
+		delete(settings, settingKeyAutoApproveBy)
+		delete(settings, settingKeyAutoApproveDelay)
+	}
+	if err := system_model.SetSettings(ctx, settings); err != nil {
 		ctx.Flash.Error(AdminErrorL(ctx.Locale, err))
 	} else {
 		invalidatePlatformSettings()

@@ -103,6 +103,7 @@ func Workspace(ctx *context.Context) {
 	}
 	ctx.Data["UploadMaxMB"] = workspaceUploadMaxBytes >> 20
 	ctx.Data["PackagesNeedApproval"] = packagesNeedApproval(ctx)
+	ctx.Data["Guide"] = buildWorkspaceGuide(ctx.Locale, ctx.Repo.Owner.Name, ctx.Repo.Repository.Name, packagesNeedApproval(ctx))
 	ctx.Data["SourceMaxMB"] = maxSourceBytes >> 20
 	ctx.HTML(http.StatusOK, tplWorkspace)
 }

@@ -25,8 +25,8 @@
 		{{if and .IsSigned .MustChangePassword}}
 			{{/* No links */}}
 		{{else if and .IsSigned .IsAdmin}}
-			{{/* non-admins: none of these — same reasoning as repo/header.tmpl and
-			     user/dashboard/navbar.tmpl, see docs/company/repo-ui.md */}}
+			{{/* non-admins: none of these — same reasoning as repo/header.tmpl,
+			     see docs/company/repo-ui.md */}}
 			{{if not ctx.Consts.RepoUnitTypeIssues.UnitGlobalDisabled}}
 				<a class="item{{if .PageIsIssues}} active{{end}}" href="{{AppSubUrl}}/issues">{{ctx.Locale.Tr "issues"}}</a>
 			{{end}}
@@ -102,12 +102,24 @@
 				</div><!-- end content create new menu -->
 			</div><!-- end dropdown menu create new -->
 			{{else if .CompanyNewRepoLink}}
-			{{/* non-admins: "+" goes straight to the new-project page — no
-			     dropdown, since it was the only real option anyway.
-			     Set by company/gate.go — see docs/company/projects.md. */}}
-			<a class="item" href="{{.CompanyNewRepoLink}}" data-tooltip-content="{{ctx.Locale.Tr "company.project.new_title"}}">
-				{{svg "octicon-plus"}}
-			</a>
+			{{/* non-admins: a new project, or an organization as Gitea offers it. */}}
+			<div class="ui dropdown jump item" data-tooltip-content="{{ctx.Locale.Tr "create_new"}}">
+				<span class="flex-text-block">
+					{{svg "octicon-plus"}}
+					<span class="not-mobile flex-text-block">{{svg "octicon-triangle-down"}}</span>
+					<span class="only-mobile">{{ctx.Locale.Tr "create_new"}}</span>
+				</span>
+				<div class="menu">
+					<a class="item" href="{{.CompanyNewRepoLink}}">
+						{{svg "octicon-plus"}} {{ctx.Locale.Tr "company.project.new_title"}}
+					</a>
+					{{if .SignedUser.CanCreateOrganization}}
+					<a class="item" href="{{AppSubUrl}}/org/create">
+						{{svg "octicon-organization"}} {{ctx.Locale.Tr "new_org"}}
+					</a>
+					{{end}}
+				</div>
+			</div>
 			{{end}}
 
 			<div class="ui dropdown jump item" data-tooltip-content="{{ctx.Locale.Tr "user_profile_and_more"}}" data-signed-in-username="{{.SignedUser.Name}}">

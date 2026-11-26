@@ -64,8 +64,9 @@ func ProjectNewPost(ctx *context.Context) {
 		return
 	}
 	if ctx.Data["ProjectNeedsApproval"] == true {
-		_, err := RequestProject(ctx, ctx.Doer, name, description)
+		req, err := RequestProject(ctx, ctx.Doer, name, description)
 		if err == nil {
+			ScheduleProjectAIReview(req, ctx.Doer)
 			ctx.Flash.Success(ctx.Locale.TrString("company.project_request.sent", name))
 			ctx.Redirect(setting.AppSubURL + newProjectPath)
 			return

@@ -309,29 +309,6 @@
    made of. The title is the one line read first, so it is the dark one. */
 .company-kpi-title { font-size: 1.05rem; font-weight: 600; color: var(--color-text); margin: 0; line-height: 1.2; }
 /* The app list (custom/templates/company/admin_deploys.tmpl). */
-.company-fleet-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0 8px; }
-.company-fleet-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-.company-fleet-tab { padding: 6px 12px; border-radius: 6px; color: var(--color-text-light); font-size: .9rem; }
-.company-fleet-tab b { font-weight: 600; margin-left: 2px; }
-.company-fleet-tab.active { background: var(--color-active); color: var(--color-text); font-weight: 600; }
-.company-fleet-controls { display: flex; gap: 12px; align-items: center; }
-.company-fleet { border: 1px solid var(--color-secondary); border-radius: 6px; overflow: hidden; }
-.company-fleet-table.ui.table { margin: 0 !important; }
-.company-fleet-table th { font-size: .8rem; color: var(--color-text-light-2); font-weight: 500; }
-.company-fleet-check { width: 32px; }
-.company-fleet-name { font-weight: 600; }
-.company-fleet-sub { font-size: .78rem; color: var(--color-text-light-2); margin-top: 2px; }
-.company-fleet-sub.odd { color: var(--color-warning-text); }
-.company-fleet-pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: .8rem; background: var(--color-active); }
-.company-fleet-pill.running { background: var(--color-success-bg); }
-.company-fleet-pill.failed, .company-fleet-pill.suspended { background: var(--color-error-bg); }
-.company-fleet-pill.undeployed { border: 1px dashed var(--color-secondary-dark-2, var(--color-secondary)); background: transparent; color: var(--color-text-light-2); }
-.company-fleet-mem { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.company-fleet-bar { display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: var(--color-secondary); overflow: hidden; }
-.company-fleet-bar-fill { display: block; height: 100%; background: var(--color-success-text); }
-.company-fleet-bar-fill.hot { background: var(--color-error-text); }
-.company-fleet-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--color-secondary); flex-wrap: wrap; }
-.company-fleet-pager { display: flex; align-items: center; gap: 8px; }
 .company-kpis-titled .company-kpi { gap: 4px; }
 .company-kpis-titled .company-kpi b { margin-top: 2px; }
 .company-kpi.bad b { color: var(--color-error-text); }
@@ -456,6 +433,10 @@
 .company-app-links .item { gap: 6px; }
 .company-app-danger-header.ui.header { color: var(--color-red); }
 .company-app-danger.ui.segment { border-color: var(--color-red-badge-bg, var(--color-red)); }
+/* An organization's members page (custom/templates/org/member/members.tmpl). */
+.company-org-members-search .ui.input { width: 240px; }
+.company-org-members-add { width: 100%; max-width: 420px; }
+.company-org-members .item-trailing .ui.button { min-width: 76px; justify-content: center; margin: 0 0 0 6px; }
 /* The repository header's two actions (custom/templates/repo/header.tmpl):
    same size, one outlined, one filled. */
 .company-header-btn {

@@ -37,6 +37,7 @@
 				<div class="company-kpi{{if eq .Fleet.RoomApps 0}} warn{{end}}"><h3 class="company-kpi-title">{{ctx.Locale.Tr "company.admin.kpi_room"}}</h3><b>{{.Fleet.RoomApps}}<small> {{ctx.Locale.Tr "company.admin.kpi_room_unit"}} · {{.Fleet.RoomMB}}MB</small></b></div>
 			{{end}}
 		</div>
+		{{template "company/admin_flow" .}}
 		<h4 class="ui top attached header tw-mt-4">
 			{{ctx.Locale.Tr "company.admin.system_header"}}
 			<div class="ui right tw-flex tw-gap-1">
@@ -113,156 +114,6 @@
 			</div>
 		{{end}}
 
-		{{/* The list: a state tab, an owner, an order, ten at a time — and a
-		     row that says what the app is before the figures say how it is
-		     doing. Ticked rows can be stopped or started together
-		     (company/admin_bulk.go; the counting and the auto-submitting
-		     selects are in web_src/js/features/company-app-charts.ts). */}}
-		{{/* Links, not a form. A filter that navigates the moment it changes has
-		     nothing to save, but a <select> inside a <form> is tracked as an
-		     unsaved edit (web_src/js/modules/are-you-sure.ts) — and because the
-		     change event reaches the form after the auto-submit, it was marked
-		     dirty again on the way out and the browser asked whether to leave.
-		     The state tabs beside these were already links; now the whole
-		     toolbar is one kind of thing. */}}
-		<div class="company-fleet-toolbar">
-			<div class="company-fleet-tabs">
-				{{$q := .}}
-				<a class="company-fleet-tab{{if or (eq .ListState "") (eq .ListState "all")}} active{{end}}" href="?state=all&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.admin.tab_all"}} <b>{{.CountTotal}}</b></a>
-				<a class="company-fleet-tab{{if eq .ListState "running"}} active{{end}}" href="?state=running&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.status.running"}} <b>{{.CountRunning}}</b></a>
-				<a class="company-fleet-tab{{if eq .ListState "stopped"}} active{{end}}" href="?state=stopped&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.status.stopped"}} <b>{{.CountStopped}}</b></a>
-				<a class="company-fleet-tab{{if eq .ListState "failed"}} active{{end}}" href="?state=failed&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.status.failed"}} <b>{{.CountFailed}}</b></a>
-				<a class="company-fleet-tab{{if eq .ListState "undeployed"}} active{{end}}" href="?state=undeployed&owner={{.ListOwner}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.admin.tab_undeployed"}} <b>{{.CountUndeployed}}</b></a>
-			</div>
-			<div class="company-fleet-controls">
-				{{$sortNames := dict "recent" (ctx.Locale.Tr "company.admin.sort_recent") "name" (ctx.Locale.Tr "company.admin.sort_name") "memory" (ctx.Locale.Tr "company.admin.sort_memory")}}
-				{{$sort := or .ListSort "recent"}}
-				<div class="ui dropdown jump company-filter-menu">
-					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.filter_owner"}}</span>
-					<span class="company-filter-menu-value">{{if .ListOwner}}{{.ListOwner}}{{else}}{{ctx.Locale.Tr "company.admin.tab_all"}}{{end}}</span>
-					{{svg "octicon-triangle-down" 14 "dropdown icon"}}
-					<div class="menu">
-						<a class="item{{if not .ListOwner}} active{{end}}" href="?state={{.ListState}}&sort={{.ListSort}}">{{ctx.Locale.Tr "company.admin.tab_all"}}</a>
-						{{range .Owners}}
-							<a class="item{{if eq $.ListOwner .}} active{{end}}" href="?state={{$.ListState}}&owner={{PathEscape .}}&sort={{$.ListSort}}">{{.}}</a>
-						{{end}}
-					</div>
-				</div>
-				<div class="ui dropdown jump company-filter-menu">
-					<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.filter_sort"}}</span>
-					<span class="company-filter-menu-value">{{index $sortNames $sort}}</span>
-					{{svg "octicon-triangle-down" 14 "dropdown icon"}}
-					<div class="menu">
-						<a class="item{{if eq $sort "recent"}} active{{end}}" href="?state={{.ListState}}&owner={{.ListOwner}}&sort=recent">{{ctx.Locale.Tr "company.admin.sort_recent"}}</a>
-						<a class="item{{if eq $sort "name"}} active{{end}}" href="?state={{.ListState}}&owner={{.ListOwner}}&sort=name">{{ctx.Locale.Tr "company.admin.sort_name"}}</a>
-						<a class="item{{if eq $sort "memory"}} active{{end}}" href="?state={{.ListState}}&owner={{.ListOwner}}&sort=memory">{{ctx.Locale.Tr "company.admin.sort_memory"}}</a>
-					</div>
-				</div>
-			</div>
-		</div>
-		<form method="post" action="{{AppSubUrl}}/-/admin/company-deploys/bulk" class="company-fleet" id="fleet-bulk">
-			{{.CsrfTokenHtml}}
-			<table class="ui very basic table company-fleet-table">
-				<thead>
-					<tr>
-						<th class="company-fleet-check"><input type="checkbox" class="company-fleet-check-all" aria-label="{{ctx.Locale.Tr "company.admin.select_all"}}"></th>
-						<th>{{ctx.Locale.Tr "company.admin.col_app"}}</th>
-						<th class="tw-w-1/12">{{ctx.Locale.Tr "company.admin.col_status"}}</th>
-						<th class="tw-w-1/8">{{ctx.Locale.Tr "company.admin.col_deploy"}}</th>
-						<th class="tw-w-1/8">{{ctx.Locale.Tr "company.admin.col_requests"}}</th>
-						<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_memory"}}</th>
-						{{if $.DataEnabled}}<th class="tw-w-1/6">{{ctx.Locale.Tr "company.admin.col_data"}}</th>{{end}}
-						<th class="tw-w-1/12"></th>
-					</tr>
-				</thead>
-				<tbody>
-					{{range .Rows}}
-						<tr>
-							<td class="company-fleet-check"><input type="checkbox" name="app" value="{{.State.Owner}}/{{.State.Repo}}" class="company-fleet-check-row"></td>
-							<td>
-								{{if .Repo}}
-									<a class="company-fleet-name" href="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .State.Owner}}/{{PathEscape .State.Repo}}">{{.State.Owner}}/{{.State.Repo}}</a>
-									<a class="muted tw-ml-1 tw-text-12" href="{{.Repo.Link}}">{{svg "octicon-link-external" 12}}</a>
-								{{else}}
-									<span class="company-fleet-name">{{.State.Owner}}/{{.State.Repo}}</span>
-								{{end}}
-								<div class="company-fleet-sub{{if or .Odd (not .Repo)}} odd{{end}}">
-									{{if not .Repo}}{{svg "octicon-alert" 12}} {{ctx.Locale.Tr "company.admin.repo_gone"}}
-									{{else if .Odd}}{{svg "octicon-alert" 12}} {{ctx.Locale.Tr "company.admin.sub_odd_name"}}
-									{{else if eq .Kind "running"}}FastAPI · {{if .State.Sandboxed}}{{ctx.Locale.Tr "company.admin.sub_sandboxed"}}{{else}}<span class="text-red">{{ctx.Locale.Tr "company.admin.unsandboxed"}}</span>{{end}}{{if .NetworkOpen}} · <span class="text-red">{{ctx.Locale.Tr "company.admin.network_open"}}</span>{{end}}
-									{{else if eq .Kind "failed"}}{{ctx.Locale.Tr "company.admin.sub_failed"}}{{if .State.Reason}} · <code>{{.State.Reason}}</code>{{end}}
-									{{else if eq .Kind "undeployed"}}{{ctx.Locale.Tr "company.admin.sub_undeployed"}}
-									{{else}}{{ctx.Locale.Tr "company.admin.sub_stopped"}}{{end}}
-								</div>
-							</td>
-							<td>
-								{{if eq .Kind "undeployed"}}
-									<span class="company-fleet-pill undeployed">{{ctx.Locale.Tr "company.admin.tab_undeployed"}}</span>
-								{{else}}
-									<span class="company-fleet-pill {{.State.Actual}}">{{template "company/admin_deploys_status" .State}}</span>
-								{{end}}
-							</td>
-							<td class="tw-text-13">
-								{{if .State.UpdatedAt}}{{DateUtils.TimeSince .State.UpdatedAt}}{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.admin.never_deployed"}}</span>{{end}}
-							</td>
-							<td class="tw-text-13">
-								{{if .Sparkline}}
-									{{template "company/sparkline" dict "Points" .Sparkline}}
-									<b class="tw-ml-1">{{.Requests}}</b>
-								{{else}}
-									<span class="text-grey">—</span>
-								{{end}}
-							</td>
-							<td class="tw-text-13">
-								{{if .MemLimitMB}}
-									<div class="company-fleet-mem">
-										<span class="company-fleet-bar"><span class="company-fleet-bar-fill{{if ge .MemPct 90}} hot{{end}}" style="width: {{.MemPct}}%"></span></span>
-										<span>{{if .MemPeakMB}}{{.MemNowMB}}{{else}}<span class="text-grey">—</span>{{end}} <span class="text-grey">/ {{.MemLimitMB}}MB</span></span>
-									</div>
-								{{else}}
-									<span class="text-grey">—</span>
-								{{end}}
-							</td>
-							{{if $.DataEnabled}}
-								<td class="tw-text-13">
-									{{if and .HasData .Data.QuotaBytes}}
-										<div class="company-fleet-mem">
-											<span class="company-fleet-bar"><span class="company-fleet-bar-fill{{if .Data.Warning}} hot{{end}}" style="width: {{if gt .Data.Percent 100}}100{{else}}{{.Data.Percent}}{{end}}%"></span></span>
-											<span><span{{if .Data.Full}} class="company-data-full"{{else if .Data.Warning}} class="company-data-warn"{{end}}>{{FormatByteSize .Data.Bytes}}</span> <span class="text-grey">/ {{.Data.QuotaMB}}MB</span></span>
-										</div>
-									{{else if .HasData}}
-										<span>{{FormatByteSize .Data.Bytes}}</span>
-									{{else}}
-										<span class="text-grey">—</span>
-									{{end}}
-								</td>
-							{{end}}
-							<td class="tw-text-right">
-								{{if and .Repo (eq .Kind "undeployed")}}
-									{{template "company/deploy_button" dict "DeployLink" (print .Repo.Link "/deploy") "Class" "ui tiny basic button" "Label" "company.admin.first_deploy"}}
-								{{else if .Repo}}
-									<a class="ui tiny basic button" href="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .State.Owner}}/{{PathEscape .State.Repo}}">{{ctx.Locale.Tr "company.admin.manage"}}</a>
-								{{end}}
-							</td>
-						</tr>
-					{{else}}
-						<tr><td colspan="{{if .DataEnabled}}8{{else}}7{{end}}" class="text-grey">{{ctx.Locale.Tr "company.admin.no_repos"}}</td></tr>
-					{{end}}
-				</tbody>
-			</table>
-			<div class="company-fleet-foot">
-				<span class="text-grey tw-text-13">{{ctx.Locale.Tr "company.admin.showing" .ListFrom .ListTo .ListTotal}} · {{ctx.Locale.Tr "company.admin.selected" 0}}</span>
-				<span class="company-fleet-bulk tw-hidden">
-					<button class="ui tiny button" name="verb" value="stop">{{ctx.Locale.Tr "company.app.stop"}}</button>
-					<button class="ui tiny button" name="verb" value="start">{{ctx.Locale.Tr "company.app.start"}}</button>
-				</span>
-				<span class="company-fleet-pager">
-					{{if gt .ListPage 1}}<a class="ui tiny basic button" href="?{{.ListQuery}}&page={{Eval .ListPage "-" 1}}">{{ctx.Locale.Tr "company.admin.prev"}}</a>{{else}}<span class="ui tiny basic button disabled">{{ctx.Locale.Tr "company.admin.prev"}}</span>{{end}}
-					<span class="tw-text-13">{{.ListPage}} / {{.ListPages}}</span>
-					{{if lt .ListPage .ListPages}}<a class="ui tiny basic button" href="?{{.ListQuery}}&page={{Eval .ListPage "+" 1}}">{{ctx.Locale.Tr "company.admin.next"}}</a>{{else}}<span class="ui tiny basic button disabled">{{ctx.Locale.Tr "company.admin.next"}}</span>{{end}}
-				</span>
-			</div>
-		</form>
 	</div>
 <style>
 .company-deploys-attention-header { background: var(--color-error-bg) !important; }
@@ -270,6 +121,49 @@
 .company-deploy-state.running { color: var(--color-success-text); }
 .company-deploy-state.failed, .company-deploy-state.suspended { color: var(--color-error-text); }
 .company-deploy-state.queued, .company-deploy-state.building, .company-deploy-state.activating { color: var(--color-warning-text); }
+.company-flow { background: var(--color-secondary-bg) !important; }
+.company-flow-scroll { overflow: auto; max-height: 640px; }
+.company-flow-canvas { position: relative; margin: 0 auto; }
+.company-flow-edges { position: absolute; inset: 0; pointer-events: none; }
+.company-flow-edges path { fill: none; stroke: var(--color-text-light-3); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.company-flow-node { position: absolute; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 0 10px; background: var(--color-box-body); border: 1px solid var(--color-secondary); border-radius: 4px; box-shadow: 0 1px 2px var(--color-shadow); color: var(--color-text); }
+.company-flow-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.company-flow-spark { width: 56px; flex: 0 0 56px; }
+.company-flow-spark .company-sparkline { width: 56px; height: 20px; }
+.company-flow-metrics { display: flex; flex-direction: column; gap: 5px; border-top: 1px solid var(--color-secondary); padding-top: 7px; }
+.company-flow-metric { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; column-gap: 8px; line-height: 1.2; }
+.company-flow-metric small { font-size: 11px; color: var(--color-text-light-2); white-space: nowrap; }
+.company-flow-metric b { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.company-flow-gauge { grid-column: 1 / -1; display: block; height: 6px; margin-top: 3px; border-radius: 3px; background: var(--color-secondary); overflow: hidden; }
+.company-flow-gauge > span { display: block; height: 100%; border-radius: 3px; background: var(--color-primary); }
+.company-flow-node.app .company-flow-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 18px; row-gap: 6px; }
+.company-flow-metric.hot b { color: var(--color-red); }
+.company-flow-node.app .company-flow-spark { width: 90px; flex-basis: 90px; }
+.company-flow-node.app .company-flow-spark .company-sparkline { width: 90px; }
+.company-flow-metric.ok .company-flow-gauge > span { background: var(--color-green); }
+.company-flow-metric.warn .company-flow-gauge > span { background: var(--color-yellow); }
+.company-flow-metric.hot .company-flow-gauge > span { background: var(--color-red); }
+a.company-flow-node[href]:hover { border-color: var(--color-primary); color: var(--color-text); }
+.company-flow-node.bad { border-color: var(--color-red); }
+.company-flow-icon { display: flex; flex-direction: column; align-items: center; width: 44px; flex: 0 0 44px; color: var(--color-text-light-2); }
+.company-flow-icon small { font-size: 10px; line-height: 1.2; margin-top: 2px; white-space: nowrap; }
+.company-flow-node.root .company-flow-icon { width: 48px; height: 48px; flex-basis: 48px; margin-left: -4px; justify-content: center; border-radius: 50%; background: var(--color-text-light-3); color: var(--color-box-body); border: 4px solid var(--color-box-body); box-shadow: 0 0 0 1px var(--color-secondary); }
+.company-flow-body { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; gap: 2px; }
+.company-flow-name { font-size: 13px; }
+.company-flow-marks { display: flex; gap: 3px; height: 14px; }
+.company-flow-heart.ok, .company-flow-sync.ok { color: var(--color-green); }
+.company-flow-heart.bad { color: var(--color-red); }
+.company-flow-heart.busy, .company-flow-sync.busy { color: var(--color-yellow); }
+.company-flow-heart.idle { color: var(--color-text-light-3); }
+.company-flow-badges { position: absolute; right: 2px; bottom: -9px; display: flex; gap: 2px; }
+.company-flow-badge { font-size: 10.5px; line-height: 16px; padding: 0 5px; border: 1px solid var(--color-secondary-dark-2); border-radius: 3px; background: var(--color-secondary-alpha-60); color: var(--color-text-light-1); white-space: nowrap; }
+.company-flow-badge.warn { border-color: var(--color-red); color: var(--color-red); background: var(--color-error-bg); }
+.company-flow-deploy { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-secondary); }
+.company-flow-deploy-label { font-size: 12px; font-weight: 600; margin-right: 4px; }
+.company-flow-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--color-secondary); background: var(--color-box-body); font-size: 12px; color: var(--color-text); }
+a.company-flow-chip { border-color: var(--color-primary); }
+.company-flow-chip.muted { color: var(--color-text-light-2); }
+.company-flow-chev { color: var(--color-text-light-3); }
 .company-deploy-state.stopped { color: var(--color-text-light-2); }
 </style>
 {{template "admin/layout_footer" .}}

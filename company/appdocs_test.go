@@ -37,6 +37,10 @@ func TestAppDocsLoadAndAnswerInBothLanguages(t *testing.T) {
 	require.NotEmpty(t, hits)
 	assert.Contains(t, []string{"30-data", "90-errors"}, hits[0].DocID)
 
+	hits = SearchAppDocs("Spring Boot로 게시판 만들어줘", 3)
+	require.NotEmpty(t, hits)
+	assert.Equal(t, "15-java", hits[0].DocID)
+
 	ctx := AppDocsContext("입력 화면으로 가면 index.html 404가 나요")
 	assert.Contains(t, ctx, "main.py", "the contract is always there")
 	assert.Contains(t, ctx, "상대 경로", "and the section about links")

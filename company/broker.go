@@ -301,6 +301,9 @@ func pathAllowed(patterns []string, path string) bool {
 // it answers nothing. Written to the app's own log directory so it rotates
 // with everything else and is read on the same admin screen.
 func (b *appBroker) audit(method, target string, status int, bytes int64, note string) {
+	if status == http.StatusForbidden || note == "request path refused" {
+		RecordSecurityEvent(SecurityEvent{Kind: SecOutboundRefused, App: b.owner + "/" + b.repo, Detail: method + " " + target})
+	}
 	p := appPathsFor(b.owner, b.repo)
 	f, err := openRotatingLog(p.logs, brokerLogName)
 	if err != nil {

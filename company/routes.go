@@ -44,7 +44,8 @@ func RegisterRoutes(m *web.Router) {
 		m.Get("/projects/new", ProjectNew)
 		m.Post("/projects/new", ProjectNewPost)
 		m.Post("/projects/requests/{id}/cancel", ProjectRequestCancel)
-		m.Get("/approvals", Approvals) // administrators only, checked inside — company/approvals_page.go
+		m.Post("/org/{org}/members", OrgMemberAdd) // an owner adds an owner — company/org_members.go
+		m.Get("/approvals", Approvals)             // administrators only, checked inside — company/approvals_page.go
 		m.Post("/approvals/{id}/approve", ApprovalApprove)
 		m.Post("/approvals/{id}/reject", ApprovalReject)
 		m.Post("/project/{owner}/{repo}/members", ProjectMembersPost) // the owner shares a project with anyone, from any department — company/project_members.go
@@ -115,13 +116,14 @@ func RegisterAdminRoutes(m *web.Router) {
 	// /{owner}/{repo}/… route would be reachable by non-admins the moment
 	// it existed.
 	m.Get("/company-deploys", AdminDeploys)
-	m.Post("/company-deploys/bulk", AdminBulkControl) // the apps ticked on the list — company/admin_bulk.go
 	// Package policy is its own page: the dashboard is about what is
 	// happening now, this is about what every app may install.
 	// Outbound access across every app at once. Per-app it was already
 	// visible; the question is which apps have an exception, and that one
 	// cannot be answered a page at a time.
 	m.Get("/company-network", AdminNetwork)
+	m.Get("/company-proxy", AdminProxy)       // what the app proxy applies — company/admin_proxy.go
+	m.Get("/company-security", AdminSecurity) // what was tried against the platform — company/secevents.go
 	m.Post("/company-network/unban", AdminNetworkUnban)
 	m.Post("/company-network/block", AdminNetworkBlock) // the list every app is refused — company/blocklist.go
 	m.Post("/company-network/unblock", AdminNetworkUnblock)

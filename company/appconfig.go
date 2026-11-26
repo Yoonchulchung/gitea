@@ -444,7 +444,25 @@ func SettingsFor(owner, repo string) AppSettings {
 	appsConfigCache.mu.RUnlock()
 	s := cfg.EffectiveSettings(owner, repo)
 	s.Access = effectiveAccess(owner, repo, s.Access)
+	// A JVM needs more memory and threads than the Python defaults; a limit
+	// written for this app wins.
+	if currentRuntime(owner, repo) == RuntimeJava {
+		app := cfg.app(owner, repo)
+		if app == nil || app.Limits.MemoryMB == 0 {
+			s.Limits.MemoryMB = max(s.Limits.MemoryMB, javaMemoryMBDefault)
+		}
+		if app == nil || app.Limits.Processes == 0 {
+			s.Limits.Processes = max(s.Limits.Processes, javaProcessesDefault)
+		}
+	}
 	return s
+}
+
+func (c *AppsConfig) app(owner, repo string) *AppSettings {
+	if c == nil {
+		return nil
+	}
+	return c.Apps[owner+"/"+repo]
 }
 
 // configuredAccess is the ceiling policy sets, before the department's own

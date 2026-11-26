@@ -351,6 +351,7 @@ func appProxyWith(key string, ref AppRef, socket, prefix string, segments int) *
 			}
 			if errors.Is(err, errDownloadBlocked) {
 				RecordBlockedDownload(ref.Owner, ref.Repo)
+				RecordSecurityEvent(SecurityEvent{Kind: SecDownloadBlocked, App: ref.Owner + "/" + ref.Repo, Detail: r.URL.Path})
 				http.Error(w, "This app is not allowed to send files. Ask an administrator to approve file downloads for it.",
 					http.StatusForbidden)
 				return

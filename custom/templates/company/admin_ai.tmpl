@@ -77,30 +77,46 @@
 				</div>
 			</div>
 
-			<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminsettings.auto_approve_header"}}</h4>
-			<div class="ui attached segment">
+			<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminsettings.auto_approve_header"}}{{if .DeployApprovalOff}}{{template "company/approval_off_badge"}}{{end}}</h4>
+			{{/* With deploy approval off there is nothing for the AI to approve. */}}
+			<div class="ui attached segment{{if .DeployApprovalOff}} company-locked{{end}}" {{if .DeployApprovalOff}}inert{{end}}>
 				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.adminsettings.auto_approve_explain"}}</p>
 				{{/* Not offered until the platform AI works; once on, it stays changeable so it can be turned off.
 				     Saving the AI above in the same press counts: the switch is checked after it is stored. */}}
-				<div class="field">
-					<div class="ui checkbox">
+				<div class="company-setting">
+					<div class="ui toggle checkbox">
 						<input id="ai_auto_approve" type="checkbox" name="ai_auto_approve" value="true" {{if .AutoApproveDelegate}}checked{{else if .PlatformAIUnavailable}}disabled{{end}}>
 						<label for="ai_auto_approve">{{ctx.Locale.Tr "company.adminsettings.auto_approve"}}</label>
 					</div>
+					{{if .AutoApproveDelegate}}
+						<div class="company-setting-help">{{ctx.Locale.Tr "company.adminsettings.auto_approve_delegate" .AutoApproveDelegate.Name}}</div>
+						{{if .PlatformAIUnavailable}}<div class="company-setting-help text-red">{{ctx.Locale.Tr "company.adminsettings.auto_approve_ai_missing"}}</div>{{end}}
+					{{else if .PlatformAIUnavailable}}
+						<div class="company-setting-help">{{ctx.Locale.Tr "company.adminsettings.auto_approve_unavailable"}}</div>
+					{{end}}
 				</div>
 				<div class="inline field tw-mt-2">
 					<label for="auto_approve_delay">{{ctx.Locale.Tr "company.platform_ai.delay"}}</label>
 					<input id="auto_approve_delay" name="auto_approve_delay" type="number" min="0" max="3600" step="1" class="tw-w-24" value="{{.AutoApproveDelay}}">
 					<span class="text-grey tw-text-13 tw-ml-2">{{ctx.Locale.Tr "company.platform_ai.delay_help"}}</span>
 				</div>
-				{{if .AutoApproveDelegate}}
-					<p class="text-grey tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.adminsettings.auto_approve_delegate" .AutoApproveDelegate.Name}}</p>
-					{{if .PlatformAIUnavailable}}<p class="text-red tw-text-13">{{ctx.Locale.Tr "company.adminsettings.auto_approve_ai_missing"}}</p>{{end}}
-				{{else if .PlatformAIUnavailable}}
-					<p class="text-grey tw-text-13 tw-mt-1">{{ctx.Locale.Tr "company.adminsettings.auto_approve_unavailable"}}</p>
-				{{end}}
-				<button class="ui primary button tw-mt-3">{{ctx.Locale.Tr "company.adminsettings.save"}}</button>
+
 			</div>
+
+			<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.platform_ai.project_header"}}</h4>
+			<div class="ui attached segment">
+				<p class="text-grey tw-text-13">{{ctx.Locale.Tr "company.platform_ai.project_explain"}}</p>
+				<div class="company-setting">
+					<div class="ui toggle checkbox">
+						<input id="project_ai_approve" type="checkbox" name="project_ai_approve" value="true" {{if .ProjectAIDelegate}}checked{{else if .PlatformAIUnavailable}}disabled{{end}}>
+						<label for="project_ai_approve">{{ctx.Locale.Tr "company.platform_ai.project_toggle"}}</label>
+					</div>
+					{{if .ProjectAIDelegate}}<div class="company-setting-help">{{ctx.Locale.Tr "company.platform_ai.project_delegate" .ProjectAIDelegate.Name}}</div>{{end}}
+					{{if not .ProjectApprovalRequired}}<div class="company-setting-help">{{ctx.Locale.Tr "company.platform_ai.project_approval_off"}}</div>{{end}}
+					{{if and (not .ProjectAIDelegate) .PlatformAIUnavailable}}<div class="company-setting-help">{{ctx.Locale.Tr "company.adminsettings.auto_approve_unavailable"}}</div>{{end}}
+				</div>
+			</div>
+			<button class="ui primary button tw-mt-3">{{ctx.Locale.Tr "company.adminsettings.save"}}</button>
 		</form>
 
 		<h4 class="ui top attached header tw-mt-4">

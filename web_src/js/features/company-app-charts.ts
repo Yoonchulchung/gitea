@@ -297,31 +297,6 @@ export function initCompanyKpiEdit() {
   }
 }
 
-// The app list: the header checkbox ticks every row, and the bulk buttons
-// appear with a count once something is ticked. The owner and sort filters
-// are plain links (custom/templates/company/admin_deploys.tmpl) and need
-// nothing from here.
-export function initCompanyFleet() {
-  const bulk = document.querySelector<HTMLFormElement>('#fleet-bulk');
-  if (!bulk) return;
-  const all = bulk.querySelector<HTMLInputElement>('.company-fleet-check-all');
-  const rows = Array.from(bulk.querySelectorAll<HTMLInputElement>('.company-fleet-check-row'));
-  const buttons = bulk.querySelector<HTMLElement>('.company-fleet-bulk');
-  const foot = bulk.querySelector<HTMLElement>('.company-fleet-foot > span');
-  const template = foot?.textContent ?? '';
-  const sync = () => {
-    const n = rows.filter((r) => r.checked).length;
-    buttons?.classList.toggle('tw-hidden', n === 0);
-    if (foot) foot.textContent = template.replace(/\d+(?=\D*$)/, String(n));
-    if (all) all.indeterminate = n > 0 && n < rows.length;
-  };
-  all?.addEventListener('change', () => {
-    for (const r of rows) r.checked = all.checked;
-    sync();
-  });
-  for (const r of rows) r.addEventListener('change', sync);
-}
-
 // Destructive controls (stop, remove, rollback) ask first. Stopping an app
 // disconnects whoever is using it right now, which is not obvious from a
 // button labelled "중지".

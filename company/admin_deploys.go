@@ -6,11 +6,9 @@ package company
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	"gitea.dev/models/db"
 	repo_model "gitea.dev/models/repo"
@@ -64,6 +62,15 @@ type adminDeployRow struct {
 	MemLimitMB int
 	MemNowMB   int
 	MemPeakMB  int
+
+	// For the flow diagram: who may reach the app, where it may connect,
+	// and how its requests fared in the window.
+	Access    string
+	Network   string
+	ErrorRate float64
+	Blocked   int
+	CPUPct    int // average over the window, of one core
+	Measured  bool
 }
 
 // Kind is how the list groups an app: what it is doing, or that it has
@@ -89,48 +96,6 @@ func (r *adminDeployRow) MemPct() int {
 		return 0
 	}
 	return min(r.MemNowMB*100/r.MemLimitMB, 100)
-}
-
-// Odd is a repository name that follows no naming rule — no letter or
-// digit in it — which is what a test left behind looks like.
-func (r *adminDeployRow) Odd() bool {
-	return !strings.ContainsFunc(r.State.Repo, func(c rune) bool { return unicode.IsLetter(c) || unicode.IsDigit(c) })
-}
-
-const adminDeploysPageSize = 10
-
-// filterDeployRows keeps the rows a state tab and an owner select ask for.
-func filterDeployRows(rows []*adminDeployRow, kind, owner string) []*adminDeployRow {
-	out := rows[:0:0]
-	for _, r := range rows {
-		if kind != "" && kind != "all" && r.Kind() != kind {
-			continue
-		}
-		if owner != "" && !strings.EqualFold(r.State.Owner, owner) {
-			continue
-		}
-		out = append(out, r)
-	}
-	return out
-}
-
-// sortDeployRows orders by what the select says: the most recently
-// deployed first, by name, or by memory in use.
-func sortDeployRows(rows []*adminDeployRow, by string) {
-	sort.SliceStable(rows, func(i, j int) bool {
-		a, b := rows[i], rows[j]
-		switch by {
-		case "name":
-			if a.State.Owner != b.State.Owner {
-				return a.State.Owner < b.State.Owner
-			}
-			return a.State.Repo < b.State.Repo
-		case "memory":
-			return a.MemNowMB > b.MemNowMB
-		default:
-			return a.State.UpdatedAt > b.State.UpdatedAt
-		}
-	})
 }
 
 // AdminDeploys lists every department app and its current state.
@@ -170,9 +135,12 @@ func AdminDeploys(ctx *context.Context) {
 		if st == nil {
 			st = &AppState{Owner: repo.OwnerName, Repo: repo.Name, Desired: AppStateStopped, Actual: AppStateStopped}
 		}
+		settings := SettingsFor(st.Owner, st.Repo)
 		row := &adminDeployRow{
 			State: st, Repo: repo, NeedsAttention: needsAttention(st),
-			NetworkOpen: SettingsFor(st.Owner, st.Repo).Network.Mode == NetworkOpen,
+			NetworkOpen: settings.Network.Mode == NetworkOpen,
+			Access:      effectiveAccess(st.Owner, st.Repo, settings.Access),
+			Network:     settings.Network.Mode,
 		}
 		// Only for apps that exist: LoadMetrics on a repository that was never
 		// deployed reads a file that is not there, once per row.
@@ -199,18 +167,11 @@ func AdminDeploys(ctx *context.Context) {
 	})
 
 	attention := make([]*adminDeployRow, 0, len(rows))
-	owners := map[string]bool{}
 	for _, r := range rows {
 		if r.NeedsAttention {
 			attention = append(attention, r)
 		}
-		owners[r.State.Owner] = true
 	}
-	ownerNames := make([]string, 0, len(owners))
-	for o := range owners {
-		ownerNames = append(ownerNames, o)
-	}
-	sort.Strings(ownerNames)
 
 	// The build environment, on the page an admin already opens — a missing
 	// interpreter or a broken base package list stops every deploy, and
@@ -232,55 +193,16 @@ func AdminDeploys(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Locale.TrString("company.admin.nav_deploys")
 	ctx.Data["Attention"] = attention
 	ctx.Data["Fleet"] = summarizeFleet(rows, since) // fills every row's memory figures first
-	ctx.Data["Owners"] = ownerNames
+	ctx.Data["Flow"] = buildPlatformFlow(ctx, rows)
 
-	// The list itself: a state tab, an owner, an order, a page of ten.
-	kind, owner, sortBy := ctx.FormString("state"), ctx.FormString("owner"), ctx.FormString("sort")
-
-	// The tabs label the list, so they count what the list is drawn from —
-	// this department's apps, not every app on the server. Counted before the
-	// state tab is applied and after the owner is, because the tabs are how
-	// the state is chosen: each one says how many it would show.
-	//
-	// They used to count every app whatever the filter said, so picking a
-	// department left "전체 17" above a list of 13.
-	scoped := filterDeployRows(rows, "", owner)
-	var running, stopped, failed, undeployed int
-	for _, r := range scoped {
-		switch r.Kind() {
-		case "running":
+	running := 0
+	for _, r := range rows {
+		if r.Kind() == "running" {
 			running++
-		case "failed":
-			failed++
-		case "undeployed":
-			undeployed++
-		default:
-			stopped++
 		}
 	}
-	ctx.Data["CountTotal"] = len(scoped)
+	ctx.Data["CountTotal"] = len(rows)
 	ctx.Data["CountRunning"] = running
-	ctx.Data["CountUndeployed"] = undeployed
-
-	shown := filterDeployRows(scoped, kind, "")
-	sortDeployRows(shown, sortBy)
-	page := max(ctx.FormInt("page"), 1)
-	pages := max((len(shown)+adminDeploysPageSize-1)/adminDeploysPageSize, 1)
-	page = min(page, pages)
-	from := (page - 1) * adminDeploysPageSize
-	to := min(from+adminDeploysPageSize, len(shown))
-	ctx.Data["Rows"] = shown[from:to]
-	ctx.Data["ListState"] = kind
-	ctx.Data["ListOwner"] = owner
-	ctx.Data["ListSort"] = sortBy
-	ctx.Data["ListPage"] = page
-	ctx.Data["ListPages"] = pages
-	ctx.Data["ListFrom"] = from + 1
-	ctx.Data["ListTo"] = to
-	ctx.Data["ListTotal"] = len(shown)
-	ctx.Data["ListQuery"] = "state=" + url.QueryEscape(kind) + "&owner=" + url.QueryEscape(owner) + "&sort=" + url.QueryEscape(sortBy)
-	ctx.Data["CountStopped"] = stopped
-	ctx.Data["CountFailed"] = failed
 	setSystemData(ctx)
 	ctx.HTML(http.StatusOK, tplAdminDeploys)
 }
@@ -410,6 +332,7 @@ func summarizeFleet(rows []*adminDeployRow, since time.Time) fleetSummary {
 		}
 		summary := SummarizeMetrics(LoadMetrics(row.State.Owner, row.State.Repo, since))
 		out.Requests += summary.Requests
+		row.ErrorRate, row.Blocked = summary.ErrorRate, summary.Blocked
 		// ErrorRate is a percentage of that app's own requests; the fleet's
 		// rate has to come from counts, or a quiet app with one failure would
 		// drag the whole number as hard as a busy one with a hundred.
@@ -422,6 +345,7 @@ func summarizeFleet(rows []*adminDeployRow, since time.Time) fleetSummary {
 			out.Measured = true
 			out.MemMaxMB = max(out.MemMaxMB, summary.MemMaxMB)
 			row.MemPeakMB = summary.MemMaxMB
+			row.CPUPct, row.Measured = summary.CPUAvgPct, true
 			row.MemNowMB = CurrentMemoryMB(row.State.Owner, row.State.Repo)
 		}
 		row.MemLimitMB = SettingsFor(row.State.Owner, row.State.Repo).Limits.MemoryMB

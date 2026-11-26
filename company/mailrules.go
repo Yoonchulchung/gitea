@@ -52,12 +52,15 @@ const (
 	// MailEventApprovalNeeded is sent when AI auto-approval holds a request —
 	// above all one that asks for a permission — so a person is told to decide it.
 	MailEventApprovalNeeded = "approval_needed"
+	// MailEventAttack is sent when security events cross a threshold
+	// (company/secevents.go).
+	MailEventAttack = "attack_detected"
 )
 
 // MailEvents is the order the settings page lists them in: the life of a
 // request, start to finish, then what the platform AI raises on its own.
 func MailEvents() []string {
-	return []string{MailEventRequested, MailEventApprovalNeeded, MailEventApproved, MailEventRejected, MailEventFailed, MailEventSecurityAlert}
+	return []string{MailEventRequested, MailEventApprovalNeeded, MailEventApproved, MailEventRejected, MailEventFailed, MailEventSecurityAlert, MailEventAttack}
 }
 
 // MailFieldsFor names the placeholders a rule for event can use.
@@ -68,6 +71,8 @@ func MailFieldsFor(event string) []string {
 		fields = []string{"app", "title", "requester", "link", "severity", "summary", "details"}
 	case MailEventApprovalNeeded:
 		fields = []string{"app", "title", "requester", "reason", "permissions", "link"}
+	case MailEventAttack:
+		fields = []string{"window", "total", "logins", "bans", "probes", "outbound", "top_sources", "link"}
 	}
 	return fields
 }
@@ -81,6 +86,12 @@ const (
 <p><b>요약</b>: {{summary}}</p>
 <p style="white-space:pre-wrap">{{details}}</p>
 <p><a href="{{link}}">요청 열기</a></p>`
+
+	attackDefaultSubject = "[보안] 공격 의심 — 최근 {{window}}분 {{total}}건"
+	attackDefaultBody    = `<p>최근 {{window}}분 동안 공격으로 보이는 요청이 늘어 이 메일을 보냈습니다. 아래 요청은 모두 차단되었거나 실패했습니다.</p>
+<p><b>전체</b>: {{total}}건<br><b>로그인 실패</b>: {{logins}}건<br><b>차단된 방문자</b>: {{bans}}건<br><b>스캐너·탐색</b>: {{probes}}건<br><b>외부 통신 거부</b>: {{outbound}}건</p>
+<p><b>많이 시도한 곳</b>: {{top_sources}}</p>
+<p><a href="{{link}}">보안 이벤트 열기</a></p>`
 
 	approvalNeededDefaultSubject = "[승인 필요] {{app}} — {{title}}"
 	approvalNeededDefaultBody    = `<p>AI 자동 승인이 이 배포 요청을 보류했습니다. 관리자가 확인하고 결정해야 합니다.</p>
@@ -184,6 +195,8 @@ func AddMailRule(ctx context.Context, name, event string) (string, error) {
 		rule.Subject, rule.Body = securityAlertDefaultSubject, securityAlertDefaultBody
 	case MailEventApprovalNeeded:
 		rule.Subject, rule.Body = approvalNeededDefaultSubject, approvalNeededDefaultBody
+	case MailEventAttack:
+		rule.Subject, rule.Body = attackDefaultSubject, attackDefaultBody
 	}
 	return rule.ID, saveMailRules(ctx, append(MailRules(ctx), rule))
 }

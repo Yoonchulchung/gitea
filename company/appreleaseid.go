@@ -304,6 +304,9 @@ func backfillInstalledPackages() {
 		if _, err := os.Stat(filepath.Join(release, releaseManifestFile)); err == nil {
 			continue // already recorded
 		}
+		if rt, _ := releaseRuntime(release); rt != RuntimePython {
+			continue // no packages to list
+		}
 		venv := filepath.Join(release, ".venv")
 		if _, err := os.Stat(venv); err != nil {
 			// No environment to ask. Rare — a release whose venv was garbage

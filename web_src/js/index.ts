@@ -57,7 +57,7 @@ import {initCompanyWorkspace} from './features/company-workspace.ts';
 import {initCompanyAIReviewProgress, initCompanyAutoApprove, initCompanyDeployPreview, initCompanyDeployReview, initCompanyDeployReviewPackages} from './features/company-deploy-review.ts';
 import {initCompanyDeployStatus} from './features/company-deploy-status.ts';
 import {initCompanyAIUsageCharts} from './features/company-ai-usage-charts.ts';
-import {initCompanyAppCharts, initCompanySystemCharts, initCompanyAutoSubmit, initCompanyConfirmForms, initCompanyDependentToggles, initCompanyFleet, initCompanyKpiEdit, initCompanyMailPreview, initCompanyTagInput} from './features/company-app-charts.ts';
+import {initCompanyAppCharts, initCompanySystemCharts, initCompanyAutoSubmit, initCompanyConfirmForms, initCompanyDependentToggles, initCompanyKpiEdit, initCompanyMailPreview, initCompanyTagInput} from './features/company-app-charts.ts';
 import {initCompanyAppEnv} from './features/company-app-env.ts';
 import {initCompanyDeployForm, initCompanyDeploySubmit, initCompanyStartupCheck} from './features/company-deploy-form.ts';
 import {initCompanySettingsAI} from './features/company-settings-ai.ts';
@@ -187,7 +187,6 @@ const initPerformanceTracer = callInitFunctions([
   initCompanyTagInput,
   initCompanyMailPreview,
   initCompanyKpiEdit, // the pencil on the admin app page's limit cards
-  initCompanyFleet, // the admin app list's filters, ticks and bulk buttons
   initCompanyDeployForm,
   initCompanyDeploySubmit,
   initCompanyStartupCheck,

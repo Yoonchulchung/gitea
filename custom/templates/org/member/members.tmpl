@@ -1,0 +1,86 @@
+{{/*
+	Override of templates/org/member/members.tmpl. An owner adds a member here,
+	as an owner (company/org_members.go), in place of the link to the teams
+	page; the list is a card, and with everyone an owner the role line is a
+	badge only for the exception. Keep in sync with the upstream file; diff it on every Gitea
+	upgrade.
+*/}}
+{{template "base/head" .}}
+<div role="main" aria-label="{{.Title}}" class="page-content organization members">
+	{{template "org/header" .}}
+	<div class="ui container">
+		{{template "base/alert" .}}
+
+		<div class="ui top attached header flex-left-right">
+			<span>{{ctx.Locale.Tr "org.members"}}</span>
+			<form class="ignore-dirty company-org-members-search">
+				<div class="ui small action input">
+					{{template "shared/search/input" dict "Value" .Keyword "Placeholder" (ctx.Locale.Tr "search.user_kind")}}
+					{{template "shared/search/button"}}
+				</div>
+			</form>
+		</div>
+		{{if .IsOrganizationOwner}}
+			<div class="ui attached segment">
+				<form method="post" action="{{AppSubUrl}}/company/org/{{PathEscape .Org.Name}}/members" class="flex-text-block tw-flex-wrap">
+					{{.CsrfTokenHtml}}
+					<div class="ui small action input company-org-members-add">
+						<input name="user" required autocomplete="off" placeholder="{{ctx.Locale.Tr "company.org.add_member_placeholder"}}">
+						<button class="ui small primary button">{{ctx.Locale.Tr "company.org.add_member"}}</button>
+					</div>
+					<span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.org.add_member_help"}}</span>
+				</form>
+			</div>
+		{{end}}
+		<div class="ui attached segment company-org-members">
+			<div class="flex-divided-list items-with-main">
+			{{range .Members}}
+				{{$isPublic := index $.MembersIsPublicMember .ID}}
+				<div class="item tw-items-center">
+					<div class="item-leading">
+						<a href="{{.HomeLink}}">{{ctx.AvatarUtils.Avatar . 32}}</a>
+					</div>
+					<div class="item-main">
+						<div class="item-title flex-text-inline">
+							{{template "shared/user/name" .}}
+							{{if not (index $.MembersIsUserOrgOwner .ID)}}<span class="ui basic tiny label">{{ctx.Locale.Tr "org.members.member"}}</span>{{end}}
+							{{if not $isPublic}}<span class="ui basic tiny label">{{ctx.Locale.Tr "org.members.private"}}</span>{{end}}
+							{{if and $.IsOrganizationOwner (index $.MembersTwoFaStatus .ID)}}<span class="ui basic tiny green label">2FA</span>{{end}}
+						</div>
+					</div>
+					<div class="item-trailing">
+						{{if or (eq $.SignedUser.ID .ID) $.IsOrganizationOwner}}
+							{{if $isPublic}}
+								<a class="ui tiny basic button link-action" href data-url="{{$.OrgLink}}/members/action/private?uid={{.ID}}">{{svg "octicon-eye-closed" 12 "icon"}}{{ctx.Locale.Tr "org.members.public_helper"}}</a>
+							{{else}}
+								<a class="ui tiny basic button link-action" href data-url="{{$.OrgLink}}/members/action/public?uid={{.ID}}">{{svg "octicon-eye" 12 "icon"}}{{ctx.Locale.Tr "org.members.private_helper"}}</a>
+							{{end}}
+						{{end}}
+						{{if eq $.SignedUser.ID .ID}}
+							<button type="button" class="ui tiny basic red button link-action"
+								data-url="{{$.OrgLink}}/members/action/leave?uid={{.ID}}"
+								data-modal-confirm-header="{{ctx.Locale.Tr "org.members.leave"}}"
+								data-modal-confirm-content="{{ctx.Locale.Tr "org.members.leave.detail" $.Org.DisplayName}}"
+								>{{ctx.Locale.Tr "org.members.leave"}}</button>
+						{{else if $.IsOrganizationOwner}}
+							<button type="button" class="ui tiny basic red button link-action"
+								data-url="{{$.OrgLink}}/members/action/remove?uid={{.ID}}"
+								data-modal-confirm-header="{{ctx.Locale.Tr "org.members.remove"}}"
+								data-modal-confirm-content="{{ctx.Locale.Tr "org.members.remove.detail" .DisplayName $.Org.DisplayName}}"
+							>{{ctx.Locale.Tr "org.members.remove"}}</button>
+						{{end}}
+					</div>
+				</div>
+			{{else}}
+				<div class="item">
+					<div class="item-main">
+						{{ctx.Locale.Tr "search.no_results"}}
+					</div>
+				</div>
+			{{end}}
+			</div>
+		</div>
+		{{template "base/paginate" .}}
+	</div>
+</div>
+{{template "base/footer" .}}

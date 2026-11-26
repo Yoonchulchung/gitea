@@ -124,6 +124,15 @@ func guardRequest(ctx *gitea_context.Context, ref AppRef) *guardVerdict {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.seen = now
+	strike := func(why string) {
+		if guardStrike(v, now, key, ref, why) {
+			source := clientIP(ctx.Req)
+			if ctx.IsSigned && ctx.Doer != nil {
+				source = ctx.Doer.Name
+			}
+			RecordSecurityEvent(SecurityEvent{At: now, Kind: SecBan, Source: source, App: ref.Owner + "/" + ref.Repo, Detail: why})
+		}
+	}
 
 	if now.Before(v.bannedTo) {
 		return &guardVerdict{
@@ -137,13 +146,13 @@ func guardRequest(ctx *gitea_context.Context, ref AppRef) *guardVerdict {
 	if ua := strings.ToLower(ctx.Req.UserAgent()); ua != "" {
 		for _, bot := range guardBotAgents {
 			if strings.Contains(ua, bot) {
-				guardStrike(v, now, key, ref, "scanner user agent")
+				strike("scanner user agent")
 				return &guardVerdict{status: http.StatusForbidden, reason: "scanner user agent", body: "Forbidden."}
 			}
 		}
 	}
 	if isProbePath(appRelativePath(ctx.Req.URL.Path)) {
-		guardStrike(v, now, key, ref, "probe for "+ctx.Req.URL.Path)
+		strike("probe for " + ctx.Req.URL.Path)
 		// The same 404 the app would give, so a scanner learns nothing from
 		// the difference between "blocked" and "absent". The audit trail gets
 		// the truth; the wire gets the lie.
@@ -161,7 +170,7 @@ func guardRequest(ctx *gitea_context.Context, ref AppRef) *guardVerdict {
 		v.refilled = now
 	}
 	if v.tokens < 1 {
-		guardStrike(v, now, key, ref, "rate limit")
+		strike("rate limit")
 		return &guardVerdict{
 			status: http.StatusTooManyRequests, reason: "rate limit",
 			body: "Too many requests. Slow down.", retry: time.Second,
@@ -171,11 +180,12 @@ func guardRequest(ctx *gitea_context.Context, ref AppRef) *guardVerdict {
 	return nil
 }
 
-// guardStrike records misbehaviour and bans on the threshold. Caller holds
+// guardStrike records misbehaviour and bans on the threshold, reporting
+// whether this strike was the one that banned. Caller holds
 // v.mu. Logged once at the moment of banning, never per blocked request —
 // a log line per request is how a flood turns a full disk into its second
 // victim.
-func guardStrike(v *guardVisitor, now time.Time, key string, ref AppRef, why string) {
+func guardStrike(v *guardVisitor, now time.Time, key string, ref AppRef, why string) bool {
 	window := time.Duration(companySettingPositiveInt("APP_PROXY_BAN_MINUTES", guardBanMinutesDefault)) * time.Minute
 	if now.Sub(v.strikeAt) > window {
 		v.strikes = 0 // strikes decay with the same clock as the ban
@@ -183,11 +193,12 @@ func guardStrike(v *guardVisitor, now time.Time, key string, ref AppRef, why str
 	v.strikes++
 	v.strikeAt = now
 	if v.strikes < companySettingPositiveInt("APP_PROXY_BAN_STRIKES", guardBanStrikesDefault) {
-		return
+		return false
 	}
 	v.bannedTo = now.Add(window)
 	v.strikes = 0
 	log.Warn("company: proxy guard blocked %s from %s/%s for %s (last: %s)", key, ref.Owner, ref.Repo, window, why)
+	return true
 }
 
 // isProbePath matches against the app-relative path, so the mount prefix a
@@ -287,4 +298,22 @@ func guardBodyLimit(ctx *gitea_context.Context) bool {
 		ctx.Req.Body = http.MaxBytesReader(ctx.Resp, ctx.Req.Body, limit)
 	}
 	return true
+}
+
+// guardBannedNow counts the visitors cut off right now, for the admin page.
+func guardBannedNow(now time.Time) int {
+	n := 0
+	guardVisitors.Range(func(_, v any) bool {
+		gv, ok := v.(*guardVisitor)
+		if !ok {
+			return true
+		}
+		gv.mu.Lock()
+		if now.Before(gv.bannedTo) {
+			n++
+		}
+		gv.mu.Unlock()
+		return true
+	})
+	return n
 }

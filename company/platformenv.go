@@ -88,7 +88,7 @@ func DescribePlatformEnvironment(owner, repo string) PlatformEnvironment {
 // pinned dependency whose wheels do not exist for it.
 func (e PlatformEnvironment) AIContext() string {
 	var b strings.Builder
-	b.WriteString("\n\nThis repository is deployed as an internal web app by the platform itself. " +
+	b.WriteString("\n\nThis repository is deployed, or is about to be, as an internal web app by the platform itself. " +
 		"Facts about the server it runs on, so you do not have to guess at them:\n")
 
 	if e.PythonVersion != "" {
@@ -117,6 +117,15 @@ func (e PlatformEnvironment) AIContext() string {
 	if e.StartCommand != "" {
 		fmt.Fprintf(&b, "- The app is started with: %s — so the code must expose what that expects "+
 			"(for the default, an `app` object in main.py at the repository root).\n", e.StartCommand)
+	}
+	b.WriteString("- A website of only HTML, CSS and JavaScript needs no Python: with an index.html and no main.py " +
+		"at the top (or in dist/, build/ or public/), the platform serves the files as they are. Such a site " +
+		"has no server code and no database, so suggest it only when the employee needs neither.\n")
+	if info, err := javaProbe(); err == nil && info.MavenErr == nil {
+		fmt.Fprintf(&b, "- Java apps (Spring Boot, built with Maven from pom.xml) are also supported: Java %s, Maven %s. "+
+			"Write one only when the employee asks for Java or Spring; otherwise prefer Python.\n", info.JavaVersion, info.MavenVersion)
+	} else {
+		b.WriteString("- This server cannot build Java apps, so never write a pom.xml; if the employee asks for Java or Spring, say it is not available here and offer Python.\n")
 	}
 	if e.MemoryLimitMB > 0 {
 		fmt.Fprintf(&b, "- Memory limit: %s MB. Reading a large file entirely into memory will be "+

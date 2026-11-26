@@ -39,6 +39,8 @@ const (
 	settingKeyAutoApproveBy = "company.deploy.auto_approve_by"
 	// Stored only as "false": an instance that never saved this asks for approval.
 	settingKeyProjectApproval = "company.project.approval_required"
+	// The administrator in whose name the AI approves project requests; empty when nobody has.
+	settingKeyProjectAIBy = "company.project.ai_approve_by"
 )
 
 // platformSettings is read on pages people load constantly — the settings
@@ -57,6 +59,7 @@ var (
 	packageApproval         bool
 	networkApproval         bool
 	projectApprovalOff      bool
+	projectAIBy             int64
 )
 
 func loadPlatformSettings(ctx context.Context) {
@@ -91,6 +94,7 @@ func loadPlatformSettings(ctx context.Context) {
 	packageApproval = all[settingKeyPackageApproval] == "true"
 	networkApproval = all[settingKeyNetworkApproval] == "true"
 	projectApprovalOff = all[settingKeyProjectApproval] == "false"
+	projectAIBy, _ = strconv.ParseInt(all[settingKeyProjectAIBy], 10, 64)
 	platformSettingsLoaded = true
 }
 
@@ -152,6 +156,24 @@ func AutoApproveDelegate(ctx context.Context) *user_model.User {
 	loadPlatformSettings(ctx)
 	platformSettingsMu.RLock()
 	id := autoApproveBy
+	platformSettingsMu.RUnlock()
+	if id == 0 {
+		return nil
+	}
+	u, err := user_model.GetUserByID(ctx, id)
+	if err != nil || !u.IsAdmin || !u.IsActive || u.ProhibitLogin {
+		return nil
+	}
+	return u
+}
+
+// ProjectAIDelegate is the administrator on whose behalf the AI approves
+// project requests, or nil. Like AutoApproveDelegate, an account that stopped
+// being an active administrator takes the delegation with it.
+func ProjectAIDelegate(ctx context.Context) *user_model.User {
+	loadPlatformSettings(ctx)
+	platformSettingsMu.RLock()
+	id := projectAIBy
 	platformSettingsMu.RUnlock()
 	if id == 0 {
 		return nil

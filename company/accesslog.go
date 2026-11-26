@@ -95,6 +95,10 @@ func RecordAccess(ctx *gitea_context.Context, ref AppRef, status int, blocked st
 		rec.User = ctx.Doer.Name
 	}
 
+	if kind, detail := securityKindForBlock(blocked); kind != "" {
+		RecordSecurityEvent(SecurityEvent{At: rec.At, Kind: kind, Source: rec.Client(), App: ref.Owner + "/" + ref.Repo, Detail: detail})
+	}
+
 	ring := accessRingFor(ref.Owner, ref.Repo)
 	ring.mu.Lock()
 	ring.recs[ring.next] = rec

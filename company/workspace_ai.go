@@ -184,14 +184,17 @@ func WorkspaceAI(ctx *context.Context) {
 	// everything the sandbox prevents — and the sandbox does not cover
 	// Gitea's own process. The values come from probes the platform already
 	// ran (company/platformenv.go).
+	// A project is an app from its first request, before it has any file:
+	// that request is where the AI decides what to write.
 	_, deployed := LookupApp(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name)
-	if deployed {
+	isApp := deployed || IsProjectRepo(ctx, repo)
+	if !isApp {
+		_, _, isApp = detectRuntime(func(rel string) bool { return readRepoFile(ctx, repo, rel) != "" })
+	}
+	if isApp {
 		systemPrompt += DescribePlatformEnvironment(ctx.Repo.Owner.Name, ctx.Repo.Repository.Name).AIContext()
 	}
-	// The platform's rules, the parts this request touches (company/appdocs.go):
-	// for a deployed app and for one on its way there — a repository with a
-	// main.py is an app whether or not it has been approved yet.
-	isApp := deployed || readRepoFile(ctx, ctx.Repo.Repository, "main.py") != ""
+	// The platform's rules, the parts this request touches (company/appdocs.go).
 	if isApp {
 		query := req.Instruction + " " + req.ActivePath
 		if n := len(req.History); n > 0 {

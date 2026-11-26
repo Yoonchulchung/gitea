@@ -54,6 +54,7 @@ const (
 	aiPurposeTest           = "연결 테스트"
 	aiPurposePriceEstimate  = "단가 추정"
 	aiPurposeDeployDiagnose = "배포 실패 진단"
+	aiPurposeProjectReview  = "프로젝트 요청 검토"
 )
 
 var (

@@ -40,6 +40,7 @@
 									<div class="tw-font-semibold">{{if $req.Repo}}<a href="{{$req.Repo.Link}}">{{$req.Name}}</a>{{else}}{{$req.Name}}{{end}}</div>
 									{{if $req.Title}}<div class="text-grey tw-text-13">{{$req.Title}}</div>{{end}}
 									{{if $req.Description}}<div class="text-grey tw-text-13">{{$req.Description}}</div>{{end}}
+									{{if $req.AINote}}<div class="tw-text-12 tw-mt-1">{{svg "octicon-sparkle-fill" 12}} {{ctx.Locale.Tr "company.approvals.ai_note" $req.AINote}}</div>{{end}}
 								</td>
 								<td>{{if $req.Requester}}{{$req.Requester.Name}}{{else}}<span class="text-grey">{{ctx.Locale.Tr "company.activity.who_gone"}}</span>{{end}}</td>
 								<td class="text-grey tw-whitespace-nowrap" title="{{DateUtils.FullTime $req.CreatedUnix}}">{{DateUtils.TimeSince $req.CreatedUnix}}</td>

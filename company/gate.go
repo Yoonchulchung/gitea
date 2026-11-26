@@ -94,6 +94,9 @@ var staticAssetPrefixes = []string{
 // menu: they oversee every project from /-/admin.
 func GateNonAdminUI(ctx *context.Context) {
 	path := ctx.Req.URL.Path
+	if ctx.Req.Method == http.MethodPost && (path == "/user/login" || path == "/user/two_factor") {
+		watchSignIn(ctx)
+	}
 	// An app's own requests render nothing of Gitea's — and there are many of
 	// them, each of which was costing a database query for a navbar link.
 	renders := !hasAnyPrefix(path, staticAssetPrefixes) && !isProtocolExempt(path) && !strings.HasPrefix(path, appProxyPrefix+"/")
@@ -129,7 +132,6 @@ func GateNonAdminUI(ctx *context.Context) {
 
 	// The list stays reachable by address; only the menu goes once every deploy no longer needs approval.
 	showDeployRequests := currentDeployApprovalPolicy(ctx).WaivedBy == nil
-	ctx.Data["CompanyShowDeployRequests"] = showDeployRequests
 	ctx.Data["CompanyQuickDeploy"] = !showDeployRequests
 	if ctx.Doer.IsAdmin {
 		if n, err := CountPendingApprovals(ctx); err == nil {
@@ -143,7 +145,7 @@ func GateNonAdminUI(ctx *context.Context) {
 	}
 	ctx.Data["CompanyNewRepoLink"] = setting.AppSubURL + newProjectPath
 
-	if path == "/" || isRepoScopedAllow(path) || isPrefixAllowed(path) || isNotificationsInboxAllow(path) || isUserSettingsAllowed(path) {
+	if path == "/" || isRepoScopedAllow(path) || isPrefixAllowed(path) || isNotificationsInboxAllow(path) || isUserSettingsAllowed(path) || isOrgPage(ctx, path) {
 		return
 	}
 	// The "+" in the dashboard's repository list still links here.
@@ -152,6 +154,20 @@ func GateNonAdminUI(ctx *context.Context) {
 		return
 	}
 	ctx.Redirect(setting.AppSubURL + "/")
+}
+
+// isOrgPage is an organization's own pages, which are Gitea's as they come:
+// anyone may create and run an organization, and Gitea decides who sees what.
+func isOrgPage(ctx *context.Context, path string) bool {
+	if strings.HasPrefix(path, "/org/") {
+		return true
+	}
+	name, rest, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	if name == "" || rest != "" || reservedFirstSegments[name] {
+		return false
+	}
+	u, err := user_model.GetUserByName(ctx, name)
+	return err == nil && u.IsOrganization() // a person's own profile stays closed
 }
 
 func hasAnyPrefix(path string, prefixes []string) bool {

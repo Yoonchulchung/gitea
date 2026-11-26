@@ -260,13 +260,6 @@ func runDeploy(ctx context.Context, job deployJob) {
 		return true
 	})
 
-	// Before the build starts, because the build's first act is pip reaching
-	// an index: refusing here is a message, refusing later is a connection.
-	if !pipEgressAllowed() {
-		failBuild(owner, repo, ReasonInstallFailed, AdminError(errPipNoIndex), priorActual, DepartmentSafeError("deploy", errPipNoIndex))
-		return
-	}
-
 	p := appPathsFor(owner, repo)
 	// A directory of its own for every attempt: keyed by the commit alone, a
 	// redeploy of the running commit emptied the directory the app was
@@ -286,6 +279,14 @@ func runDeploy(ctx context.Context, job deployJob) {
 			recordMissingPackages(owner, repo, denied.packages)
 			return
 		}
+		if errors.Is(err, errPipNoIndex) || errors.Is(err, errMavenNoRepo) || errors.Is(err, errNoJava) {
+			failBuild(owner, repo, ReasonInstallFailed, AdminError(err), priorActual, DepartmentSafeError("deploy", err))
+			return
+		}
+		if errors.Is(err, errNoEntry) {
+			failBuild(owner, repo, ReasonContractViolation, AdminError(err), priorActual, DepartmentSafeError("build", err))
+			return
+		}
 		if errors.Is(err, errNoPython) {
 			failBuild(owner, repo, ReasonNoPython, AdminError(err), priorActual, DepartmentSafeError("build", err))
 			return
@@ -298,7 +299,10 @@ func runDeploy(ctx context.Context, job deployJob) {
 	// the new venv exists (the runner needs it), the old release is still
 	// serving, and the changes are additive so it cannot see them. A failure
 	// here costs a deploy, never an outage.
-	migrationNote, err := migrateForDeploy(ctx, owner, repo, release, job.SHA, settings)
+	var migrationNote string
+	if rt, _ := releaseRuntime(release); rt != RuntimeStatic { // a static site has no data
+		migrationNote, err = migrateForDeploy(ctx, owner, repo, release, job.SHA, settings)
+	}
 	if err != nil {
 		appendBuildLog(p, job.SHA, "FAILED", AdminError(err))
 		failBuild(owner, repo, ReasonMigrationFailed, AdminError(err), priorActual, DepartmentSafeError("migrate", err))
@@ -314,7 +318,9 @@ func runDeploy(ctx context.Context, job deployJob) {
 		return
 	}
 	appendBuildLog(p, job.SHA, "OK", strings.TrimSpace("deployed\n"+buildNote+"\n"+migrationNote))
-	recordFreePackages(ctx, owner, repo, release, settings)
+	if rt, _ := releaseRuntime(release); rt == RuntimePython {
+		recordFreePackages(ctx, owner, repo, release, settings)
+	}
 
 	// Only after a successful activation, and still under deployMu: a failed
 	// deploy leaves the previous release serving, and that is the worst
@@ -341,7 +347,25 @@ func buildRelease(ctx context.Context, job deployJob, p appPaths, release string
 	if err != nil {
 		return "", err
 	}
-
+	runtime, root, ok := detectRuntimeDir(appDir)
+	if !ok {
+		return "", errNoEntry
+	}
+	if err := writeReleaseRuntime(release, runtime, root); err != nil {
+		return "", err
+	}
+	switch runtime {
+	case RuntimeStatic:
+		return strings.TrimSpace(note + "\nstatic site served from /" + root), nil
+	case RuntimeJava:
+		built, err := buildJavaRelease(ctx, p, release, appDir, settings, !packagesNeedApproval(ctx))
+		return strings.TrimSpace(note + "\n" + built), err
+	}
+	// The build's first act is pip reaching an index: refusing here is a
+	// message, refusing later is a connection.
+	if !pipEgressAllowed() {
+		return "", errPipNoIndex
+	}
 	return note, venvForAppDir(ctx, p, release, appDir, settings)
 }
 
@@ -397,9 +421,6 @@ func extractAppSource(ctx context.Context, job deployJob, appDir string) (note s
 	links, err := writeTreeFiles(ctx, gitRepo, tree, appDir)
 	if err != nil {
 		return "", err
-	}
-	if _, err := os.Stat(filepath.Join(appDir, "main.py")); err != nil {
-		return "", errors.New("main.py was not found — the app must have a main.py exposing `app` in its repository root")
 	}
 	if len(links) > 0 {
 		note = "symbolic links are not deployed; left out: " + strings.Join(links, ", ")

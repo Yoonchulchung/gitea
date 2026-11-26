@@ -91,6 +91,18 @@ func runPreflightOn(ctx *context.Context, owner, name string, file fileSource) P
 		result.Checks = append(result.Checks, PreflightCheck{Label: label, Status: preflightWarn, Detail: detail})
 	}
 
+	// A static site needs none of what follows: its files are served as they are.
+	if runtime, root, _ := detectRuntime(func(rel string) bool { return file(rel) != "" }); runtime == RuntimeStatic {
+		ok(tr("company.preflight.static"), tr("company.preflight.static_ok", "/"+root))
+		result.Summary = summarize(ctx, result.Deployable, nil)
+		return result
+	}
+
+	if file("main.py") == "" && file("pom.xml") != "" {
+		preflightJava(ctx, settings, file, &result, ok, fail, warn)
+		return result
+	}
+
 	// The interpreter first: without it nothing else matters, and it is the
 	// one failure a department cannot do anything about.
 	info, pythonErr := pythonProbe()
@@ -176,4 +188,31 @@ func joinOrDash(ctx *context.Context, items []string) string {
 		return ctx.Locale.TrString("company.preflight.none")
 	}
 	return strings.Join(items, ", ")
+}
+
+// preflightJava is the same questions for a Spring Boot app.
+func preflightJava(ctx *context.Context, settings AppSettings, file fileSource, result *PreflightResult, ok, fail, warn func(label, detail string)) {
+	tr := ctx.Locale.TrString
+	info, err := javaProbe()
+	switch {
+	case err != nil || info.MavenErr != nil:
+		fail(tr("company.preflight.java"), tr("company.preflight.java_missing"))
+	case !mavenEgressAllowed():
+		fail(tr("company.preflight.java"), tr("company.preflight.maven_no_repo"))
+	default:
+		ok(tr("company.preflight.java"), tr("company.preflight.java_ok", info.JavaVersion, info.MavenVersion))
+	}
+	pom, err := parsePom([]byte(file("pom.xml")))
+	if err != nil {
+		fail("pom.xml", err.Error())
+	} else {
+		ok("pom.xml", tr("company.preflight.pom_ok", len(pom.Dependencies)))
+		if packagesNeedApproval(ctx) {
+			result.NeedsApproval = deniedJavaDependencies(pom, settings.AllowedPackages())
+		}
+		if len(result.NeedsApproval) > 0 {
+			warn(tr("company.preflight.approval"), tr("company.preflight.approval_needed", joinOrDash(ctx, result.NeedsApproval)))
+		}
+	}
+	result.Summary = summarize(ctx, result.Deployable, result.NeedsApproval)
 }

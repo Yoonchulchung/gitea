@@ -1,0 +1,113 @@
+{{template "admin/layout_head" (dict "pageClass" "admin company-proxy")}}
+	<div class="admin-setting-content">
+		<h4 class="ui top attached header">
+			<a href="{{AppSubUrl}}/-/admin/company-deploys">{{ctx.Locale.Tr "company.admin.deploys_nav"}}</a>
+			<span class="text-grey tw-mx-2">/</span>{{ctx.Locale.Tr "company.adminproxy.title"}}
+		</h4>
+		<div class="ui attached segment">
+			<p class="tw-m-0">{{ctx.Locale.Tr "company.adminproxy.intro" .Mount}}</p>
+		</div>
+
+		{{/* In the order a request meets them: company/proxy.go AppProxy. */}}
+		<h4 class="ui top attached header tw-mt-4"><span class="company-proxy-step">1</span>{{ctx.Locale.Tr "company.adminproxy.access"}}</h4>
+		<div class="ui attached segment">
+			<table class="ui very basic compact table company-proxy-facts">
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.max_access"}}</td><td><b>{{ctx.Locale.Tr (print "company.admin.flow_access_" .MaxAccess)}}</b> <span class="text-grey">{{ctx.Locale.Tr "company.adminproxy.max_access_note"}}</span></td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.apps_by_access"}}</td><td>{{ctx.Locale.Tr "company.adminproxy.access_counts" (index .AccessCounts "public") (index .AccessCounts "login") (index .AccessCounts "org")}}</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.cross_site"}}</td><td>{{ctx.Locale.Tr "company.adminproxy.cross_site_note"}}</td></tr>
+			</table>
+		</div>
+
+		<h4 class="ui top attached header tw-mt-4">
+			<span class="company-proxy-step">2</span>{{ctx.Locale.Tr "company.adminproxy.guard"}}
+			{{if .GuardOn}}<span class="ui green label tw-ml-2">{{ctx.Locale.Tr "company.adminproxy.on"}}</span>{{else}}<span class="ui red label tw-ml-2">{{ctx.Locale.Tr "company.adminproxy.off"}}</span>{{end}}
+		</h4>
+		<div class="ui attached segment">
+			<table class="ui very basic compact table company-proxy-facts">
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.rate"}}</td><td>{{ctx.Locale.Tr "company.adminproxy.rate_value" .RatePerMin .Burst}}</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.ban"}}</td><td>{{ctx.Locale.Tr "company.adminproxy.ban_value" .BanStrikes .BanMinutes}}</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.body"}}</td><td>{{.MaxBodyMB}} MB</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.bots"}}</td><td>{{range .BotAgents}}<span class="company-proxy-chip">{{.}}</span>{{end}}</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.probes"}}</td><td>{{range .ProbePaths}}<span class="company-proxy-chip">{{.}}</span>{{end}}</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.exempt"}}</td><td>{{ctx.Locale.Tr "company.adminproxy.exempt_note"}}</td></tr>
+			</table>
+			<p class="text-grey tw-text-12 tw-mt-2">{{ctx.Locale.Tr "company.adminproxy.guard_config"}}</p>
+			<h5 class="tw-mt-4 tw-mb-2">{{ctx.Locale.Tr "company.adminproxy.banned" (len .Banned)}}</h5>
+			{{if .Banned}}
+				<table class="ui very basic compact table">
+					<thead><tr><th>{{ctx.Locale.Tr "company.adminproxy.visitor"}}</th><th>{{ctx.Locale.Tr "company.adminproxy.until"}}</th></tr></thead>
+					<tbody>
+						{{range .Banned}}<tr><td><code>{{.Key}}</code></td><td>{{DateUtils.TimeSince .Until}}</td></tr>{{end}}
+					</tbody>
+				</table>
+			{{else}}
+				<p class="text-grey tw-m-0">{{ctx.Locale.Tr "company.adminproxy.banned_none"}}</p>
+			{{end}}
+		</div>
+
+		<h4 class="ui top attached header tw-mt-4"><span class="company-proxy-step">3</span>{{ctx.Locale.Tr "company.adminproxy.request"}}</h4>
+		<div class="ui attached segment">
+			<table class="ui very basic compact table company-proxy-facts">
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.request_stripped"}}</td><td>{{range .StrippedRequestHeaders}}<span class="company-proxy-chip">{{.}}</span>{{end}}</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.request_cookies"}}</td><td>{{ctx.Locale.Tr "company.adminproxy.request_cookies_note"}}</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.request_added"}}</td><td>
+					<span class="company-proxy-chip">X-Forwarded-Prefix</span><span class="company-proxy-chip">X-Forwarded-Proto</span><span class="company-proxy-chip">X-Gitea-User</span>
+					<div class="text-grey tw-text-12">{{ctx.Locale.Tr "company.adminproxy.request_added_note"}}</div>
+				</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.connection"}}</td><td>{{ctx.Locale.Tr "company.adminproxy.connection_value" .HeaderTimeout .IdleTimeout}}</td></tr>
+			</table>
+		</div>
+
+		<h4 class="ui top attached header tw-mt-4"><span class="company-proxy-step">4</span>{{ctx.Locale.Tr "company.adminproxy.response"}}</h4>
+		<div class="ui attached segment">
+			<table class="ui very basic compact table company-proxy-facts">
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.security_headers"}}</td><td>
+					{{range .SecurityHeaders}}<div><code>{{.Name}}: {{.Value}}</code></div>{{end}}
+					<div class="text-grey tw-text-12">{{ctx.Locale.Tr "company.adminproxy.security_headers_note"}}</div>
+				</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.response_stripped"}}</td><td>{{range .StrippedResponseHeaders}}<span class="company-proxy-chip">{{.}}</span>{{end}}</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.response_cookies"}}</td><td>{{ctx.Locale.Tr "company.adminproxy.response_cookies_note"}}</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.links"}}</td><td>{{ctx.Locale.Tr "company.adminproxy.links_note"}}</td></tr>
+				<tr><td>{{ctx.Locale.Tr "company.adminproxy.downloads"}}</td><td>
+					{{ctx.Locale.Tr "company.adminproxy.downloads_note"}}
+					<div class="tw-mt-1">{{range .DownloadTypes}}<span class="company-proxy-chip">{{.}}</span>{{end}}</div>
+				</td></tr>
+			</table>
+		</div>
+
+		<h4 class="ui top attached header tw-mt-4">{{ctx.Locale.Tr "company.adminproxy.per_app" (len .Apps)}}</h4>
+		<div class="ui attached segment">
+			{{if .Apps}}
+				<table class="ui very basic compact table">
+					<thead><tr>
+						<th>{{ctx.Locale.Tr "company.admin.col_app"}}</th>
+						<th>{{ctx.Locale.Tr "company.adminproxy.col_access"}}</th>
+						<th>{{ctx.Locale.Tr "company.adminproxy.col_downloads"}}</th>
+						<th>{{ctx.Locale.Tr "company.adminproxy.col_headers"}}</th>
+					</tr></thead>
+					<tbody>
+						{{range .Apps}}
+							<tr>
+								<td><a href="{{AppSubUrl}}/-/admin/company-deploys/{{PathEscape .Owner}}/{{PathEscape .Repo}}">{{.Owner}}/{{.Repo}}</a>{{if not .Running}} <span class="text-grey tw-text-12">{{ctx.Locale.Tr "company.status.stopped"}}</span>{{end}}</td>
+								<td>
+									{{ctx.Locale.Tr (print "company.admin.flow_access_" .Access)}}
+									{{if ne .Access .Written}}<div class="text-grey tw-text-12">{{ctx.Locale.Tr "company.adminproxy.clamped" (ctx.Locale.Tr (print "company.admin.flow_access_" .Written))}}</div>{{end}}
+								</td>
+								<td>{{if .Download}}<span class="text-red">{{ctx.Locale.Tr "company.admin.flow_download_allow"}}</span>{{else}}{{ctx.Locale.Tr "company.adminproxy.download_block"}}{{end}}</td>
+								<td>{{range .Headers}}<div><code>{{.Name}}: {{.Value}}</code></div>{{else}}<span class="text-grey">—</span>{{end}}</td>
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			{{else}}
+				<p class="text-grey tw-m-0">{{ctx.Locale.Tr "company.adminproxy.no_apps"}}</p>
+			{{end}}
+		</div>
+		<p class="text-grey tw-text-13 tw-mt-2">{{ctx.Locale.Tr "company.adminproxy.outbound" .NetworkLink}}</p>
+	</div>
+<style>
+.company-proxy-step { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-right: 8px; border-radius: 50%; background: var(--color-primary); color: var(--color-primary-contrast); font-size: 12px; }
+.company-proxy-facts td:first-child { width: 180px; color: var(--color-text-light-2); vertical-align: top; white-space: nowrap; }
+.company-proxy-chip { display: inline-block; margin: 0 4px 4px 0; padding: 0 7px; border-radius: 4px; background: var(--color-secondary-alpha-40); font-family: var(--fonts-monospace); font-size: 12px; }
+</style>
+{{template "admin/layout_footer" .}}
